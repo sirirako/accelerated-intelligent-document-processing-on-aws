@@ -33,8 +33,8 @@ class CognitoAuth:
 
         Args:
             token_url: Cognito OAuth token endpoint (MCPTokenURL from CloudFormation outputs)
-            client_id:  Cognito app client ID (MCPClientId from CloudFormation outputs)
-            client_secret: Cognito app client secret (MCPClientSecret from CloudFormation outputs)
+            client_id: Cognito app client ID (MCPConnectorClientId from CloudFormation outputs)
+            client_secret: Cognito app client secret (MCPConnectorClientSecret from CloudFormation outputs)
         """
         self._token_url = token_url
         self._client_id = client_id

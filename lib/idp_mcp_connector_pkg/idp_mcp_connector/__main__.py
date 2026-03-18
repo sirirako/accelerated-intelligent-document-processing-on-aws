@@ -10,8 +10,8 @@ Usage:
 Required environment variables:
     IDP_MCP_ENDPOINT       - AgentCore Gateway URL (MCPServerEndpoint from CloudFormation)
     IDP_MCP_TOKEN_URL      - Cognito OAuth token endpoint (MCPTokenURL from CloudFormation)
-    IDP_MCP_CLIENT_ID      - Cognito app client ID (MCPClientId from CloudFormation)
-    IDP_MCP_CLIENT_SECRET  - Cognito app client secret (MCPClientSecret from CloudFormation)
+    IDP_MCP_CLIENT_ID      - Cognito app client ID (MCPConnectorClientId from CloudFormation)
+    IDP_MCP_CLIENT_SECRET  - Cognito app client secret (MCPConnectorClientSecret from CloudFormation)
 """
 
 import asyncio
@@ -35,8 +35,8 @@ logger = logging.getLogger(__name__)
 REQUIRED_ENV_VARS = {
     "IDP_MCP_ENDPOINT": "MCPServerEndpoint",
     "IDP_MCP_TOKEN_URL": "MCPTokenURL",
-    "IDP_MCP_CLIENT_ID": "MCPClientId",
-    "IDP_MCP_CLIENT_SECRET": "MCPClientSecret",
+    "IDP_MCP_CLIENT_ID": "MCPConnectorClientId",
+    "IDP_MCP_CLIENT_SECRET": "MCPConnectorClientSecret",
 }
 
 

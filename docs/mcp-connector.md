@@ -11,18 +11,7 @@ SPDX-License-Identifier: MIT-0
 
 The **IDP MCP Connector** (`idp_mcp_connector`) is a lightweight local Python tool that bridges IDE-based AI coding assistants — such as [Cline](https://github.com/cline/cline) (VS Code) and [Kiro](https://kiro.dev) — to the IDP Accelerator's remote MCP Server running in AWS via Amazon Bedrock AgentCore Gateway.
 
-### Why the Connector Exists
-
-The IDP Accelerator exposes document intelligence capabilities (processing, analytics, results retrieval) through a remote MCP Server hosted on Amazon Bedrock AgentCore Gateway. This server requires **OAuth 2.0 authentication** using pre-registered credentials (client ID and client secret) issued by Amazon Cognito.
-
-IDE tools like Cline support connecting to remote MCP servers, but their OAuth implementation follows the **OAuth 2.1 with Dynamic Client Registration** specification (RFC 7591). This standard requires the client to dynamically register itself with the authorization server — a capability that Amazon Cognito does not support by default. When Cline attempts to connect directly to the AgentCore Gateway, it receives `HTTP 403 Dynamic client registration failed`.
-
-The IDP MCP Connector solves this by:
-
-1. Running **locally** on the developer's machine as a standard stdio MCP server (which Cline and Kiro fully support without any OAuth complexity)
-2. Handling **Cognito authentication** internally using the pre-registered client credentials
-3. **Dynamically discovering** all available tools from the remote MCP Server and re-exposing them locally
-4. **Transparently forwarding** all tool calls from the IDE to the remote server with proper authentication
+The IDP Accelerator exposes document intelligence capabilities through a remote MCP Server that requires OAuth 2.0 authentication via Amazon Cognito. IDE tools like Cline use OAuth 2.1 with Dynamic Client Registration (RFC 7591), which Cognito does not support — causing direct connections to fail. The connector runs locally as a stdio MCP server, handles Cognito authentication internally using pre-registered credentials, and transparently forwards all tool calls to the remote server.
 
 ### Key Features
 
@@ -40,132 +29,40 @@ The IDP MCP Connector solves this by:
 ### High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  Developer's Machine                                                     │
-│                                                                          │
-│  ┌──────────────┐   stdio (MCP)   ┌──────────────────────────────────┐  │
-│  │   Cline      │ ◄─────────────► │       idp_mcp_connector          │  │
-│  │   or Kiro    │                  │       (local Python process)     │  │
-│  └──────────────┘                  └──────────────────────────────────┘  │
-│                                                    │                     │
-│                                    ┌───────────────┘                     │
+┌───────────────────────────────────────────────────────────────────────────┐
+│  Developer's Machine                                                      │
+│                                                                           │
+│  ┌──────────────┐   stdio (MCP)   ┌──────────────────────────────────┐    │
+│  │   Cline      │ ◄─────────────► │       idp_mcp_connector          │    │
+│  │   or Kiro    │                 │       (local Python process)     │    │
+│  └──────────────┘                 └──────────────────────────────────┘    │
+│                                                    │                      │
+│                                    ┌───────────────┘                      │
 │                                    │  1. Cognito Auth (client_credentials)│
-│                                    ▼                                     │
-│                           ┌────────────────┐                            │
-│                           │ AWS Cognito    │                            │
-│                           │ Token Endpoint │                            │
-│                           └────────────────┘                            │
-└────────────────────────────────────────────────────────────────────────-┘
+│                                    ▼                                      │
+│                           ┌─────────────────┐                             │
+│                           │  AWS Cognito    │                             │
+│                           │  Token Endpoint │                             │
+│                           └─────────────────┘                             │
+└───────────────────────────────────────────────────────────────────────────┘
                                     │
                                     │  2. HTTPS + Bearer Token
                                     ▼
-┌─────────────────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────────────────┐
 │  AWS Cloud                                                               │
 │                                                                          │
-│  ┌──────────────────────┐       ┌──────────────────────────────────────┐ │
-│  │  AgentCore Gateway   │ ────► │  agentcore_mcp_handler       │ │
-│  │  (IDP MCP Server)    │       │  (AWS Lambda)                        │ │
-│  │                      │ ◄──── │                                      │ │
-│  └──────────────────────┘       │  Available Tools:                    │ │
-│                                  │  ├── search     (NL analytics)      │ │
-│                                  │  ├── process    (submit documents)  │ │
-│                                  │  ├── reprocess  (re-run pipeline)   │ │
-│                                  │  ├── status     (batch monitoring)  │ │
-│                                  │  └── get_results (extracted data)   │ │
-│                                  └──────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────────┘
+│  ┌──────────────────────┐       ┌─────────────────────────────────────┐  │
+│  │  AgentCore Gateway   │ ────► │  agentcore_mcp_handler (Lambda)     │  │
+│  │  (IDP MCP Server)    │       │                                     │  │
+│  │                      │ ◄──── │  Available Tools:                   │  │
+│  └──────────────────────┘       │  ├── search      (NL analytics)     │  │
+│                                 │  ├── process     (submit docs)      │  │
+│                                 │  ├── reprocess   (re-run pipeline)  │  │
+│                                 │  ├── status      (batch monitor)    │  │
+│                                 │  └── get_results (extracted data)   │  │
+│                                 └─────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
-
-### Authentication Flow
-
-```
-Connector Startup
-      │
-      ▼
- Read config from
- environment vars
-      │
-      ▼
- POST /oauth2/token ──────────────► Cognito Token Endpoint
- grant_type=client_credentials      (MCPTokenURL)
- client_id=<MCPConnectorClientId>
- client_secret=<MCPConnectorClientSecret>
-      │
-      ◄─────────────────────────── access_token (JWT, ~1hr TTL)
-      │
-      ▼
- Call AgentCore Gateway
- GET tools/list ──────────────────► AgentCore Gateway
- Authorization: Bearer <token>       (MCPServerEndpoint)
-      │
-      ◄─────────────────────────── [{name, description, inputSchema}, ...]
-      │
-      ▼
- Dynamically register each
- discovered tool in local
- MCP server
-      │
-      ▼
- Start stdio MCP server
- (ready for Cline / Kiro)
-```
-
-### Runtime Request Flow
-
-```
-User types in Cline: "How many documents were processed this week?"
-      │
-      ▼
-Cline calls: tools/call "search" {"query": "How many documents were processed this week?"}
-      │  (stdio)
-      ▼
-idp_mcp_connector receives tool call
-      │
-      ├── Check if token is still valid (TTL check with 60s buffer)
-      │       └── If expired: re-authenticate with Cognito
-      │
-      ▼
-POST <MCPServerEndpoint>
-Authorization: Bearer <token>
-{"method": "tools/call", "params": {"name": "search", "arguments": {"query": "..."}}}
-      │  (HTTPS)
-      ▼
-AgentCore Gateway → Lambda → Analytics Agent → IDP Data
-      │
-      ◄─── {"success": true, "result": "1,250 documents processed this week with 98.5% success rate."}
-      │
-      ▼
-idp_mcp_connector returns result to Cline via stdio
-      │
-      ▼
-Cline displays result in chat
-```
-
-### Component Details
-
-#### `auth.py` — Cognito OAuth Token Manager
-
-Manages the full OAuth token lifecycle:
-
-- Obtains tokens using the **client credentials grant** (`grant_type=client_credentials`)
-- Caches tokens in memory to avoid unnecessary authentication calls
-- Validates token expiry with a 60-second buffer before making requests
-- Automatically re-authenticates when tokens expire
-
-#### `connector.py` — Transparent MCP Proxy
-
-The core of the connector:
-
-- On startup: discovers all tools from the remote MCP Server via `tools/list`
-- Dynamically registers each discovered tool as a local MCP tool (preserving names, descriptions, and input schemas exactly)
-- On tool call: validates/refreshes auth token, forwards the call to the remote server, and returns the result
-- If new tools are added to the IDP MCP Server, they are automatically discovered on next restart
-
-#### `__main__.py` — Entry Point
-
-Reads configuration from environment variables, wires together `auth.py` and `server.py`, and starts the MCP server on stdio.
-
----
 
 ## 3. How to Install
 
@@ -220,28 +117,35 @@ The connector is configured entirely through environment variables. All four aut
 | `IDP_MCP_CLIENT_ID` | ✅ Yes | `MCPConnectorClientId` | Cognito app client ID (machine-to-machine (M2M) `client_credentials` flow — no user login required) |
 | `IDP_MCP_CLIENT_SECRET` | ✅ Yes | `MCPConnectorClientSecret` | Cognito app client secret |
 
-### Running the Connector Manually (for testing)
+### Configuring Cline
 
-You can test the connector from the command line by setting environment variables and running it:
+Add the following to your Cline MCP settings file (`~/.cline/data/settings/cline_mcp_settings.json`), using the values from your CloudFormation stack outputs:
 
-```bash
-export IDP_MCP_ENDPOINT="https://xxx.bedrock-agentcore.us-east-1.amazonaws.com/mcp"
-export IDP_MCP_TOKEN_URL="https://idp-stack-xxx.auth.us-east-1.amazoncognito.com/oauth2/token"
-export IDP_MCP_CLIENT_ID="abc123def456"
-export IDP_MCP_CLIENT_SECRET="your-client-secret"
-
-python -m idp_mcp_connector
+```json
+{
+  "mcpServers": {
+    "idp-mcp-server": {
+      "notes": "Set command to the full path of the Python interpreter where idp_mcp_connector is installed",
+      "command": "python3",
+      "args": ["-m", "idp_mcp_connector"],
+      "env": {
+        "IDP_MCP_ENDPOINT": "<MCPServerEndpoint from CloudFormation outputs>",
+        "IDP_MCP_TOKEN_URL": "<MCPTokenURL from CloudFormation outputs>",
+        "IDP_MCP_CLIENT_ID": "<MCPConnectorClientId from CloudFormation outputs>",
+        "IDP_MCP_CLIENT_SECRET": "<MCPConnectorClientSecret from CloudFormation outputs>"
+      },
+      "alwaysAllow": [],
+      "disabled": false
+    }
+  }
+}
 ```
 
-On successful startup, you will see:
-```
-IDP MCP Connector starting...
-Authenticating with Cognito...
-Authentication successful. Token valid for 3600s.
-Discovering tools from IDP MCP Server...
-Discovered 5 tools: search, process, reprocess, status, get_results
-IDP MCP Connector ready. Listening on stdio.
-```
+> **Windows note**: Use `"command": "python"` instead of `"python3"`.
+
+See [Section 5](#5-example-working-with-cline) for a complete step-by-step walkthrough.
+
+---
 
 ### Available Tools
 
@@ -250,7 +154,7 @@ The connector dynamically discovers and exposes all tools from the IDP MCP Serve
 | Tool | Description |
 |------|-------------|
 | `search` | Natural language queries on processed document analytics (e.g., "How many invoices failed last week?") |
-| `process` | Submit documents for processing from S3 URI or base64-encoded content |
+| `process` | Submit documents for processing from an S3 URI |
 | `reprocess` | Re-run documents through the classification or extraction pipeline steps |
 | `status` | Check processing status of a batch (total, completed, in-progress, failed counts) |
 | `get_results` | Retrieve extracted fields, confidence scores, and metadata for processed documents |
@@ -300,12 +204,13 @@ On macOS this expands to `/Users/<your-username>/.cline/data/settings/cline_mcp_
 - **JetBrains (PyCharm)**: Cline tool window → MCP Servers → Settings gear icon → "Edit MCP Settings"
 - Or open it directly in any text editor using the path above
 
-Add the IDP connector configuration, using the `MCPConnectorClientId` and `MCPConnectorClientSecret` values from your CloudFormation stack outputs:
+Add the IDP connector configuration using the values from your CloudFormation stack outputs:
 
 ```json
 {
   "mcpServers": {
     "idp-mcp-server": {
+      "notes": "Set command to the full path of the Python interpreter where idp_mcp_connector is installed",
       "command": "python3",
       "args": ["-m", "idp_mcp_connector"],
       "env": {
@@ -348,120 +253,6 @@ After saving the configuration, Cline automatically launches the connector proce
 5. If you see the green dot and all 5 tools — the connector is fully operational. You can now use IDP capabilities directly from the Cline chat.
 
 > **Tip**: You can also verify from the terminal before configuring Cline. Run the connector manually with your environment variables set — if you see `"Discovered 5 tools: search, process, reprocess, status, get_results"` in the output, the credentials and endpoint are correct.
-
-### Step 5: Demo Scenarios
-
-Once connected, all IDP capabilities are available directly from the Cline chat interface.
-
----
-
-#### Scenario 1: Process Documents
-
-Upload documents to the MCP Content Bucket and trigger processing:
-
-```bash
-# Upload documents first
-aws s3 cp ./invoices/ s3://idp-stack-mcp-content-bucket-xxx/demo-invoices/ --recursive
-```
-
-Then in Cline chat:
-> **"Process the invoices I uploaded to s3://idp-stack-mcp-content-bucket-xxx/demo-invoices/"**
-
-Cline calls the `process` tool and returns:
-```
-✅ Successfully queued 12 documents for processing.
-   Batch ID: mcp-batch-20250316-143000
-   Documents queued: 12
-```
-
----
-
-#### Scenario 2: Monitor Processing Status
-
-> **"What's the status of batch mcp-batch-20250316-143000?"**
-
-Cline calls the `status` tool and returns:
-```
-📊 Batch Status: mcp-batch-20250316-143000
-   Total:       12
-   Completed:   9  (75%)
-   In Progress: 2
-   Failed:      1
-   Queued:      0
-```
-
----
-
-#### Scenario 3: Natural Language Analytics
-
-> **"How many documents were processed this month and what's the overall success rate?"**
-
-Cline calls the `search` tool and returns:
-```
-📈 This month's processing summary:
-   1,847 documents processed in March 2026
-   Success rate: 97.3% (1,797 completed, 50 failed)
-   Most common document types: Invoice (42%), W2 (31%), Receipt (27%)
-```
-
----
-
-#### Scenario 4: Retrieve Extraction Results
-
-> **"Get the extraction results for batch mcp-batch-20250316-143000 and show me the invoice data"**
-
-Cline calls the `get_results` tool, receives structured JSON, and displays:
-```json
-{
-  "document_id": "mcp-batch-20250316-143000/invoice-001.pdf",
-  "document_class": "invoice",
-  "fields": {
-    "vendor_info": {"name": "Acme Corp", "address": "123 Main St"},
-    "total_amount": "$4,250.00",
-    "invoice_date": "2026-03-15"
-  },
-  "confidence": {
-    "total_amount": 0.99,
-    "invoice_date": 0.97
-  }
-}
-```
-
-You can then ask Cline to work with this data:
-> **"Create a Python dataclass from this invoice schema"**
-
-Cline generates:
-```python
-from dataclasses import dataclass
-from typing import Optional
-
-@dataclass
-class VendorInfo:
-    name: str
-    address: str
-
-@dataclass
-class Invoice:
-    vendor_info: VendorInfo
-    total_amount: str
-    invoice_date: str
-```
-
----
-
-#### Scenario 5: Reprocess Failed Documents
-
-> **"Reprocess the failed documents from the extraction step for batch mcp-batch-20250316-143000"**
-
-Cline calls the `reprocess` tool:
-```
-🔄 Reprocessing initiated.
-   Batch ID:  mcp-batch-20250316-143000
-   Step:      extraction
-   Queued:    1 document
-```
-
----
 
 ### Troubleshooting
 
