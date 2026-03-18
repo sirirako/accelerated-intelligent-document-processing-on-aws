@@ -423,6 +423,15 @@ Resources:
               - 'bedrock:InvokeModel'
             Resource: 
               - !Sub 'arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0'
+          - Effect: Allow
+            Action:
+              - 'bedrock:CreateBlueprint'
+              - 'bedrock:CreateBlueprintVersion'
+              - 'bedrock:UpdateBlueprint'
+              - 'bedrock:DeleteBlueprint'
+              - 'bedrock:GetBlueprint'
+            Resource:
+              - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:blueprint/*'
 
   CodeBuildKMSPolicy:
     Type: 'AWS::IAM::Policy'
