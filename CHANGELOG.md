@@ -40,8 +40,13 @@ SPDX-License-Identifier: MIT-0
   - `client.batch.rerun()` → `client.batch.reprocess()` (same for `client.document.rerun()` → `.reprocess()`)
   - `idp-cli run-inference` → `idp-cli process`
   - `idp-cli rerun-inference` → `idp-cli reprocess`
-
 - **SDK: `stack.delete()` now waits by default** — The `wait` parameter defaults to `True` (previously fire-and-forget). Pass `wait=False` to restore the old behavior.
+- **MCP: Renamed `docs/mcp-integration.md` to `docs/mcp-server.md`** for clarity.
+- **MCP: Renamed Lambda function `agentcore_analytics_processor` to `agentcore_mcp_handler`** to better reflect its role as the MCP protocol handler (not just analytics).
+  - CloudFormation resource `AgentCoreAnalyticsLambdaFunction` → `AgentCoreMCPHandlerFunction`
+  - CloudFormation resource `AgentCoreAnalyticsLambdaLogGroup` → `AgentCoreMCPHandlerLogGroup`
+  - Lambda FunctionName: `${StackName}-agentcore-analytics` → `${StackName}-agentcore-mcp-handler`
+  - Source directory: `src/lambda/agentcore_analytics_processor/` → `src/lambda/agentcore_mcp_handler/`
 
 ### Fixed
 
