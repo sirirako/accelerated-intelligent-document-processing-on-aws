@@ -33,11 +33,26 @@ SPDX-License-Identifier: MIT-0
 
 - **CLI: `rerun-inference` renamed to `reprocess`** — The `idp-cli rerun-inference` command is now deprecated. Use `idp-cli reprocess` instead. The old command remains available for backward compatibility with a deprecation notice.
 
+- **MCP: Renamed `docs/mcp-integration.md` to `docs/mcp-server.md`** for clarity.
+
+- **MCP: Renamed Lambda function `agentcore_analytics_processor` to `agentcore_mcp_handler`** to better reflect its role as the MCP protocol handler (not just analytics).
+  - CloudFormation resource `AgentCoreAnalyticsLambdaFunction` → `AgentCoreMCPHandlerFunction`
+  - CloudFormation resource `AgentCoreAnalyticsLambdaLogGroup` → `AgentCoreMCPHandlerLogGroup`
+  - Lambda FunctionName: `${StackName}-agentcore-analytics` → `${StackName}-agentcore-mcp-handler`
+  - Source directory: `src/lambda/agentcore_analytics_processor/` → `src/lambda/agentcore_mcp_handler/`
+
 ### Fixed
 
 - **GovCloud template: fix unresolved RBAC resource dependencies** — Added `AuthorGroup`, `ViewerGroup`, `GetMyProfileResolver`, and `UpdateUserResolver` to GovCloud removal lists so they are stripped alongside the `UserPool` they depend on.
 
 - **Test Fixes** — Updated CLI test mocks to align with the new `IDPClient`-based implementation, fixing broken test fixtures that referenced removed internal imports.
+
+- **MCP**: Fixed AgentCore Gateway manager to correctly update gateway target Lambda ARN during stack updates.
+
+### Upgrade Notes
+
+> **MCP users upgrading from a previous version:**
+> During the stack update, CloudFormation will replace the `AgentCoreMCPHandlerFunction` Lambda (previously `AgentCoreAnalyticsLambdaFunction`). The AgentCore Gateway target will be automatically updated to point to the new Lambda. MCP tools may be briefly unavailable (~30–60 seconds) during the update. Historical CloudWatch logs for the old `${StackName}-agentcore-analytics` Lambda will not be migrated to the new log group.
 
 
 ## [0.5.2]

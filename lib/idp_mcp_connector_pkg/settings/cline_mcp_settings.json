@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "idp-mcp-server": {
+      "command": "python3",
+      "args": ["-m", "idp_mcp_connector"],
+      "env": {
+        "IDP_MCP_ENDPOINT": "https://idp-test-6-analytics-gateway-n1hux0p2l9.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp",
+        "IDP_MCP_TOKEN_URL": "https://idp-test-6-1773437622580499689.auth.us-east-1.amazoncognito.com/oauth2/token",
+        "IDP_MCP_CLIENT_ID": "2q6gfht83c69u13rd674ab61gp",
+        "IDP_MCP_CLIENT_SECRET": "l1e92l2f86k0t5d2c6v1bq3ru9eortoqgfoqcm9nblqvjtcpl71"
+      },
+      "alwaysAllow": [],
+      "disabled": false
+    }
+  }
+}

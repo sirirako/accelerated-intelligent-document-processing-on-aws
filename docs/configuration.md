@@ -276,7 +276,7 @@ Key parameters that can be configured during CloudFormation deployment:
 
 ### Integration and Tracing Parameters
 - `EnableXRayTracing`: Enable X-Ray tracing for Lambda functions and Step Functions (default: true). Provides distributed tracing capabilities for debugging and performance analysis.
-- `EnableMCP`: Enable Model Context Protocol (MCP) integration for external application access via AWS Bedrock AgentCore Gateway (default: true). See [mcp-integration.md](mcp-integration.md) for details.
+- `EnableMCP`: Enable Model Context Protocol (MCP) integration for external application access via AWS Bedrock AgentCore Gateway (default: true). See [mcp-server.md](mcp-server.md) for details.
 - `EnableECRImageScanning`: Enable automatic vulnerability scanning for Lambda container images in ECR for Patterns 1-3 (default: false). Recommended for production deployments but may impact deployment reliability. See [troubleshooting.md](troubleshooting.md) for guidance.
 
 ### Pattern Selection
