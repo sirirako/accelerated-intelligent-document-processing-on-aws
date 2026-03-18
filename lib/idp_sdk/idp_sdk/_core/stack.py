@@ -2055,7 +2055,7 @@ def get_or_create_config_bucket(region: str) -> str:
         logger.warning(f"Error listing buckets: {e}")
 
     # Create new bucket with random suffix
-    suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
+    suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))  # nosec B311 - bucket name suffix
     bucket_name = f"{bucket_prefix}{suffix}"
 
     logger.info(f"Creating new config bucket: {bucket_name}")
