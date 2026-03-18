@@ -77,7 +77,7 @@ discovery:
       Format the extracted data using the below JSON format:
       Format the extracted groups and fields using the below JSON format:
   auto_split:
-    model_id: us.amazon.nova-pro-v1:0
+    model_id: us.anthropic.claude-opus-4-6-v1:1m
     system_prompt: >-
       You are an expert document analyst. Your task is to identify
       distinct document sections within a multi-page document package.
