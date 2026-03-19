@@ -100,6 +100,7 @@ const ConfigurationVersionsTable = ({
             {item.versionName}
           </Link>
           {item.isActive && ' (Active)'}
+          {item.managed && ' (Managed)'}
         </Box>
       ),
       sortingField: 'versionName',
