@@ -33,6 +33,8 @@ SPDX-License-Identifier: MIT-0
   - **BDA Sync Command** — New `idp-cli config-sync-bda` command and `client.config.sync_bda()` SDK method for explicit bidirectional synchronization between IDP configuration classes and BDA blueprints. Supports `--direction` (bidirectional, bda-to-idp, idp-to-bda) and `--mode` (replace, merge).
   - **New Models** — `AutoDetectResult`, `AutoDetectSection`, `ConfigSyncBdaResult`, `page_range` field on `DiscoveryResult`.
 
+- **IDP MCP Connector** — Local package that bridges coding assistants like Cline and Kiro to the IDP MCP Server with automatic Cognito authentication and dynamic tool discovery.
+
 ### Changed
 
 - **SDK & CLI: Renamed processing commands for clarity** — Old names are deprecated (emit `DeprecationWarning`) but remain available for backward compatibility:
@@ -40,8 +42,13 @@ SPDX-License-Identifier: MIT-0
   - `client.batch.rerun()` → `client.batch.reprocess()` (same for `client.document.rerun()` → `.reprocess()`)
   - `idp-cli run-inference` → `idp-cli process`
   - `idp-cli rerun-inference` → `idp-cli reprocess`
-
 - **SDK: `stack.delete()` now waits by default** — The `wait` parameter defaults to `True` (previously fire-and-forget). Pass `wait=False` to restore the old behavior.
+- **MCP: Renamed `docs/mcp-integration.md` to `docs/mcp-server.md`** for clarity.
+- **MCP: Renamed Lambda function `agentcore_analytics_processor` to `agentcore_mcp_handler`** to better reflect its role as the MCP protocol handler (not just analytics).
+  - CloudFormation resource `AgentCoreAnalyticsLambdaFunction` → `AgentCoreMCPHandlerFunction`
+  - CloudFormation resource `AgentCoreAnalyticsLambdaLogGroup` → `AgentCoreMCPHandlerLogGroup`
+  - Lambda FunctionName: `${StackName}-agentcore-analytics` → `${StackName}-agentcore-mcp-handler`
+  - Source directory: `src/lambda/agentcore_analytics_processor/` → `src/lambda/agentcore_mcp_handler/`
 
 ### Fixed
 

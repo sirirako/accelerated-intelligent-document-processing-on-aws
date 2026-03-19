@@ -1,11 +1,11 @@
 ---
-title: "MCP Integration"
+title: "MCP Server"
 ---
 
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 SPDX-License-Identifier: MIT-0
 
-# MCP Integration
+# MCP Server
 
 The GenAI IDP solution provides MCP (Model Context Protocol) integration that enables external applications like Amazon Quick Suite to access IDP functionality through AWS Bedrock AgentCore Gateway. This allows third-party applications to query processed document data and perform analytics operations through natural language interfaces.
 
@@ -492,7 +492,7 @@ Example:
    - Handles CloudFormation custom resource lifecycle
    - Configures JWT authorization using Cognito
 
-2. **AgentCore Analytics Lambda**
+2. **AgentCore MCP Handler Lambda**
    - Implements MCP protocol following AgentCore schema
    - Processes natural language queries via search_genaiidp tool
    - Translates queries to appropriate backend operations
@@ -500,7 +500,7 @@ Example:
 
 3. **AgentCore Gateway**
    - AWS Bedrock AgentCore Gateway resource
-   - Routes requests between external applications and analytics Lambda
+   - Routes requests between external applications and MCP handler Lambda
    - Handles authentication and authorization
 
 ### Authentication Flow
@@ -579,35 +579,59 @@ The IDP solution creates a Cognito User Pool with:
 - **Domain**: Auto-generated unique domain (e.g., `stack-name-timestamp.auth.region.amazoncognito.com`)
 - **Password Policy**: Configurable security requirements
 - **User Management**: Admin-managed user creation
-- **OAuth Flows**: Authorization code flow for external applications
+- **OAuth Flows**: Authorization code flow for external applications; client credentials flow for machine-to-machine (M2M) integrations (no user login required)
+
+### Two-Client Architecture
+
+When MCP is enabled, the stack creates **two separate Cognito User Pool Clients** with different OAuth flows. Cognito does not allow mixing `client_credentials` and `authorization_code` flows on the same client, so each integration type requires its own dedicated client.
+
+| CloudFormation Resource | Client Name | OAuth Flow | Purpose |
+|------------------------|-------------|-----------|---------|
+| `ExternalAppClient` | `external-app-client` | `authorization_code` | External apps, QuickSight integration |
+| `MCPConnectorClient` | `mcp-connector-client` | `client_credentials` | MCP Connector machine-to-machine (M2M) auth — no user login required |
 
 ### External App Client
 
-When MCP is enabled, an additional Cognito User Pool Client is created:
+The `ExternalAppClient` is used for external applications requiring user-based login (e.g., Amazon QuickSight).
 
 **Client Configuration:**
-- **Client Name**: "External-App-Client"
+- **Client Name**: `external-app-client`
 - **Client Secret**: Generated automatically
 - **Auth Flows**: USER_PASSWORD_AUTH, ADMIN_USER_PASSWORD_AUTH, REFRESH_TOKEN_AUTH
 - **OAuth Flows**: Authorization code flow
 - **OAuth Scopes**: openid, email, profile
-- **Callback URLs**: 
+- **Callback URLs**:
   - CloudFront distribution URL
   - Quick Suite OAuth callback
   - Cognito User Pool domain
+- **Stack Outputs**: `MCPClientId`, `MCPClientSecret`
+
+### MCP Connector Client
+
+The `MCPConnectorClient` is used by AI coding assistants (Cline, Amazon Q, etc.) that connect to the IDP MCP server via machine-to-machine (M2M) OAuth — authentication happens automatically in the background without any user login prompt.
+
+**Client Configuration:**
+- **Client Name**: `mcp-connector-client`
+- **Client Secret**: Generated automatically
+- **OAuth Flows**: `client_credentials` (machine-to-machine (M2M) — no user login or browser redirect required)
+- **OAuth Scopes**: `idp-mcp-connector/access`
+- **Stack Outputs**: `MCPConnectorClientId`, `MCPConnectorClientSecret`
+
+> **Note**: Use `MCPConnectorClientId` / `MCPConnectorClientSecret` for MCP Connector configuration. These credentials use the machine-to-machine (M2M) `client_credentials` OAuth flow, meaning the connector authenticates directly using its client ID and secret — no user login or browser is involved. The `MCPClientId` / `MCPClientSecret` outputs are reserved for QuickSight and other external apps that use the `authorization_code` flow (user-interactive login).
 
 ### Token Management
 
-External applications can obtain tokens using:
+Each client type uses a different OAuth flow for token acquisition:
 
-**Client Credentials Flow:**
+**MCP Connector — Client Credentials Flow** (machine-to-machine (M2M): the connector authenticates using its client ID and secret directly, with no user login or browser redirect):
 ```bash
 curl -X POST <MCPTokenURL> \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=client_credentials&client_id=<MCPClientId>&client_secret=<MCPClientSecret>"
+  -d "grant_type=client_credentials&scope=idp-mcp-connector/access" \
+  -u "<MCPConnectorClientId>:<MCPConnectorClientSecret>"
 ```
 
-**User Authentication Flow:**
+**External App / QuickSight — Authorization Code Flow** (user-interactive):
 ```bash
 # Step 1: Get authorization code
 <MCPAuthorizationURL>?\
@@ -640,50 +664,68 @@ When MCP integration is enabled, the CloudFormation stack provides the following
 
 ### Authentication Outputs
 
-- **`MCPClientId`**: Cognito User Pool Client ID for MCP authentication
-  - Required for OAuth authentication flows
-  - Used in token requests and API calls
+The stack provides separate output parameters for each Cognito client:
 
-- **`MCPClientSecret`**: Cognito User Pool Client Secret for MCP authentication
-  - Required for client authentication in OAuth flows
+**MCP Connector (client_credentials — use for AI coding assistants):**
+
+- **`MCPConnectorClientId`**: Cognito client ID for the MCP Connector (machine-to-machine (M2M) `client_credentials` flow — no user login required)
+  - Use this when configuring the IDP MCP Connector package
+  - Required for `client_credentials` token requests
+
+- **`MCPConnectorClientSecret`**: Cognito client secret for the MCP Connector (machine-to-machine (M2M) `client_credentials` flow)
+  - Use this when configuring the IDP MCP Connector package
+  - Should be securely stored (e.g., in environment variables or a secrets manager)
+
+**External App / QuickSight (authorization_code — use for user-facing applications):**
+
+- **`MCPClientId`**: Cognito client ID for the External App Client (QuickSight / authorization code flow)
+  - Use this for Amazon QuickSight and other external applications requiring user login
+  - Used in OAuth authorization code flows
+
+- **`MCPClientSecret`**: Cognito client secret for the External App Client (QuickSight / authorization code flow)
+  - Use this for Amazon QuickSight and other external applications requiring user login
   - Should be securely stored and rotated regularly
 
-- **`MCPUserPool`**: Cognito User Pool ID for MCP authentication
+**Shared authentication parameters:**
+
+- **`MCPUserPool`**: Cognito User Pool ID
   - Required for token validation and user management
-  - Used by external applications for authentication setup
+  - Used by both clients
 
 - **`MCPTokenURL`**: OAuth token endpoint URL
   - Format: `https://domain-name.auth.region.amazoncognito.com/oauth2/token`
-  - Used for obtaining access tokens via OAuth flows
+  - Used for obtaining access tokens via both OAuth flows
 
 - **`MCPAuthorizationURL`**: OAuth authorization endpoint URL
   - Format: `https://domain-name.auth.region.amazoncognito.com/oauth2/authorize`
-  - Used for initiating OAuth authorization code flows
+  - Used for initiating OAuth authorization code flows (External App / QuickSight only)
 
 ## Usage Examples
 
 ### External Application Setup
+
+This example uses the MCP Connector client credentials (`MCPConnectorClientId` / `MCPConnectorClientSecret`) for machine-to-machine (M2M) authentication — the application authenticates directly using its client ID and secret, with no user login or browser redirect involved.
 
 ```python
 import requests
 import json
 
 # Configuration from CloudFormation outputs
-GATEWAY_URL = "<MCPServerEndpoint>"  # From stack outputs
-CLIENT_ID = "<MCPClientId>"  # From stack outputs
-CLIENT_SECRET = "<MCPClientSecret>"  # From stack outputs
-TOKEN_URL = "<MCPTokenURL>"  # From stack outputs
-MCP_BUCKET = "<MCPContentBucket>"  # From stack outputs
+GATEWAY_URL = "<MCPServerEndpoint>"       # From stack outputs
+CLIENT_ID = "<MCPConnectorClientId>"      # From stack outputs (M2M client_credentials client)
+CLIENT_SECRET = "<MCPConnectorClientSecret>"  # From stack outputs (M2M client_credentials client)
+TOKEN_URL = "<MCPTokenURL>"              # From stack outputs
+MCP_BUCKET = "<MCPContentBucket>"        # From stack outputs
 
-# Get access token
+# Get access token via client_credentials flow
 token_response = requests.post(
     TOKEN_URL,
     headers={"Content-Type": "application/x-www-form-urlencoded"},
     data={
         "grant_type": "client_credentials",
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET
-    }
+        "scope": "idp-mcp-connector/access"
+    },
+    auth=(CLIENT_ID, CLIENT_SECRET)
 )
 access_token = token_response.json()["access_token"]
 
@@ -714,11 +756,13 @@ print(f"Processing result: {result}")
 
 ### Amazon Quick Suite Integration
 
-For Amazon Quick Suite integration, configure the MCP connection using the CloudFormation stack outputs detailed in the [Output Parameters](#output-parameters) section.
+For Amazon QuickSight integration, configure the MCP connection using the **External App Client** outputs (authorization code flow). These are separate from the MCP Connector credentials.
 
 - **MCP Server**: Use `MCPServerEndpoint` output value
-- **Client ID**: Use `MCPClientId` output value
-- **Client Secret**: Use `MCPClientSecret` output value
+- **Client ID**: Use `MCPClientId` output value _(External App Client — authorization code flow)_
+- **Client Secret**: Use `MCPClientSecret` output value _(External App Client — authorization code flow)_
 - **Token URL**: Use `MCPTokenURL` output value
 - **Authorization URL**: Use `MCPAuthorizationURL` output value
 - **Content Bucket**: Use `MCPContentBucket` output value for document uploads
+
+> **Do not** use `MCPConnectorClientId` / `MCPConnectorClientSecret` for QuickSight. Those are for the MCP Connector's machine-to-machine (M2M) `client_credentials` flow (no user login) and will not work with the `authorization_code` flow required by QuickSight, which expects a user login redirect.

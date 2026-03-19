@@ -289,7 +289,7 @@ Model Context Protocol integration enabling external applications like Amazon Qu
 
 https://github.com/user-attachments/assets/529ce6ad-1062-4af5-97c1-86c3a47ac12c
 
-**Related Documentation**: [MCP Integration Documentation](./mcp-integration.md)
+**Related Documentation**: [MCP Server Documentation](./mcp-server.md)
 
 ---
 

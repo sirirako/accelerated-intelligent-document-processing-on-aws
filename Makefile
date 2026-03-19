@@ -38,6 +38,8 @@ endif
 	@sed -i.bak 's/version=".*"/version="$(V)"/' lib/idp_common_pkg/setup.py && rm -f lib/idp_common_pkg/setup.py.bak
 	@sed -i.bak 's/@click.version_option(version=".*")/@click.version_option(version="$(V)")/' lib/idp_cli_pkg/idp_cli/cli.py && rm -f lib/idp_cli_pkg/idp_cli/cli.py.bak
 	@sed -i.bak 's/^__version__ = ".*"/__version__ = "$(V)"/' lib/idp_sdk/idp_sdk/__init__.py && rm -f lib/idp_sdk/idp_sdk/__init__.py.bak
+	@sed -i.bak 's/^version = ".*"/version = "$(V)"/' lib/idp_mcp_connector_pkg/pyproject.toml && rm -f lib/idp_mcp_connector_pkg/pyproject.toml.bak
+	@sed -i.bak 's/^__version__ = ".*"/__version__ = "$(V)"/' lib/idp_mcp_connector_pkg/idp_mcp_connector/__init__.py && rm -f lib/idp_mcp_connector_pkg/idp_mcp_connector/__init__.py.bak
 	@echo -e "$(GREEN)✅ Version updated to $(V) in:$(NC)"
 	@echo "  - VERSION"
 	@echo "  - lib/idp_cli_pkg/pyproject.toml"
@@ -46,6 +48,8 @@ endif
 	@echo "  - lib/idp_sdk/idp_sdk/__init__.py"
 	@echo "  - lib/idp_common_pkg/pyproject.toml"
 	@echo "  - lib/idp_common_pkg/setup.py"
+	@echo "  - lib/idp_mcp_connector_pkg/pyproject.toml"
+	@echo "  - lib/idp_mcp_connector_pkg/idp_mcp_connector/__init__.py"
 
 # Default target - run both lint and test
 .DEFAULT_GOAL := all
@@ -71,11 +75,13 @@ setup:
 	$(VENV_DIR)/bin/pip install -e lib/idp_cli_pkg
 	@echo "Installing idp_sdk package..."
 	$(VENV_DIR)/bin/pip install -e lib/idp_sdk
+	@echo "Installing idp_mcp_connector package..."
+	$(VENV_DIR)/bin/pip install -e lib/idp_mcp_connector_pkg
 	@echo "Installing capacity planning test dependencies..."
 	$(VENV_DIR)/bin/pip install -r src/lambda/calculate_capacity/requirements-test.txt
 	@echo ""
 	@echo -e "$(GREEN)✅ Setup complete! Virtual environment created at $(VENV_DIR)$(NC)"
-	@echo -e "$(GREEN)   idp_common, idp-cli, idp_sdk, and test dependencies are now installed.$(NC)"
+	@echo -e "$(GREEN)   idp_common, idp-cli, idp_sdk, idp_mcp_connector, and test dependencies are now installed.$(NC)"
 	@echo -e "$(YELLOW)   All 'make' targets will automatically use $(VENV_DIR)/bin/python.$(NC)"
 	@echo -e "$(YELLOW)   To activate manually: source $(VENV_DIR)/bin/activate$(NC)"
 
