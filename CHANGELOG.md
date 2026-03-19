@@ -7,6 +7,8 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **Managed Configuration Versions** — Pre-deployed test sets now have dedicated stack-managed config versions (`managed: true`) that are automatically created and overwritten on stack updates. Save and delete are disabled for managed versions in the UI and API. Test Studio auto-selects the matching config version when a test set is selected, replacing the hardcoded mapping.
+
 - **Removed older Claude models** from Configuration UI picklists (3.x, 4.0, 4.1). Haiku 4.5, Sonnet 4.5, Sonnet 4.6, Opus 4.5, and Opus 4.6 are available for selection in the UI. Existing configurations using older versions still work.
 
 - **Discovery UX Enhancements** — Major improvements to the Discovery experience:
