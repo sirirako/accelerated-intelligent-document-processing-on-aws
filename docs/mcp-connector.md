@@ -96,7 +96,7 @@ uv pip install -e genaiic-idp-accelerator/lib/idp_mcp_connector_pkg
 
 ```bash
 python -m idp_mcp_connector --version
-# Output: idp_mcp_connector 1.0.0
+# Output: idp_mcp_connector 0.5.2
 
 python -m idp_mcp_connector --help
 # Displays usage information and required environment variables

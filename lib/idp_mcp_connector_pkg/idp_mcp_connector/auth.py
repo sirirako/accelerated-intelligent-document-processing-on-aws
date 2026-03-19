@@ -78,7 +78,10 @@ class CognitoAuth:
             response = await client.post(
                 self._token_url,
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
-                data={"grant_type": "client_credentials"},
+                data={
+                    "grant_type": "client_credentials",
+                    "scope": "idp-mcp-connector/access",
+                },
                 auth=(self._client_id, self._client_secret),
             )
             response.raise_for_status()
