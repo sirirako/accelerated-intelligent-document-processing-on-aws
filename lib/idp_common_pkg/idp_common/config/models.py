@@ -1297,10 +1297,16 @@ class ConfigurationRecord(BaseModel):
         # Stringify values (preserve booleans, convert numbers to strings)
         stringified = self._stringify_values(config_dict)
 
+        # Map managed field to PascalCase DynamoDB convention (before spreading into item)
+        managed_value = stringified.pop("managed", None)
+
         configuration_type = f"{self.configuration_type}#{self.version}" if self.version else self.configuration_type
 
         # Build DynamoDB item
         item = {"Configuration": configuration_type, **stringified}
+
+        if managed_value is not None:
+            item["Managed"] = managed_value
 
         # Add ConfigurationRecord level fields
         if self.is_active is not None:
@@ -1360,10 +1366,14 @@ class ConfigurationRecord(BaseModel):
         # These are not part of the config data model
         _DYNAMODB_NON_CONFIG_FIELDS = {
             "Configuration", "IsActive", "CreatedAt", "UpdatedAt", "Description",
-            "BdaProjectArn", "BdaSyncStatus", "BdaLastSyncedAt",
+            "BdaProjectArn", "BdaSyncStatus", "BdaLastSyncedAt", "Managed",
             "_config_format", "_config_storage",
         }
         config_data = {k: v for k, v in item.items() if k not in _DYNAMODB_NON_CONFIG_FIELDS}
+
+        # Map PascalCase DynamoDB field back to lowercase Pydantic field
+        if "Managed" in item:
+            config_data["managed"] = item["Managed"]
 
         # Set config_type discriminator directly from DynamoDB Configuration key
         # DynamoDB keys match Pydantic discriminators exactly:
