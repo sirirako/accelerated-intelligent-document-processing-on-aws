@@ -281,13 +281,14 @@ Key parameters that can be configured during CloudFormation deployment:
 - `ExecutionTimeThresholdMs`: Maximum acceptable execution time before alerting (default: 30000 ms)
 - `LogLevel`: Set logging level (DEBUG, INFO, WARN, ERROR)
 - `WAFAllowedIPv4Ranges`: IP restrictions for web UI access (default: allow all)
-- `CloudFrontPriceClass`: Set CloudFront price class for UI distribution
-- `CloudFrontAllowedGeos`: Optional geographic restrictions for UI access
+- `CloudFrontPriceClass`: Set CloudFront price class for UI distribution (CloudFront hosting only)
+- `CloudFrontAllowedGeos`: Optional geographic restrictions for UI access (CloudFront hosting only)
+- `WebUIHosting`: Select hosting mode — `CloudFront` (default) or `ALB` for VPC-based hosting (see [ALB Hosting](./alb-hosting.md))
 - `CustomConfigPath`: Optional S3 URI to a custom configuration file that overrides pattern presets. Leave blank to use selected pattern configuration. Example: s3://my-bucket/custom-config/config.yaml
 
 ### Integration and Tracing Parameters
 - `EnableXRayTracing`: Enable X-Ray tracing for Lambda functions and Step Functions (default: true). Provides distributed tracing capabilities for debugging and performance analysis.
-- `EnableMCP`: Enable Model Context Protocol (MCP) integration for external application access via AWS Bedrock AgentCore Gateway (default: true). See [mcp-integration.md](mcp-integration.md) for details.
+- `EnableMCP`: Enable Model Context Protocol (MCP) integration for external application access via AWS Bedrock AgentCore Gateway (default: true). See [mcp-server.md](mcp-server.md) for details.
 - `EnableECRImageScanning`: Enable automatic vulnerability scanning for Lambda container images in ECR for Patterns 1-3 (default: false). Recommended for production deployments but may impact deployment reliability. See [troubleshooting.md](troubleshooting.md) for guidance.
 
 ### Pattern Selection

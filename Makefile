@@ -19,19 +19,27 @@ endif
 
 # Update version across all packages
 # Usage: make version V=0.6.0
+# Validates PEP 440 compliance before updating (e.g., 0.5.3, 1.0.0, 0.6.0.dev1, 1.0.0rc1)
 .PHONY: version
 version:
 ifndef V
 	$(error VERSION is not set. Usage: make version V=x.y.z)
 endif
+	@$(PYTHON) -c "from packaging.version import Version; Version('$(V)')" 2>/dev/null || \
+		(echo -e "$(RED)ERROR: '$(V)' is not a valid PEP 440 version.$(NC)" && \
+		 echo -e "$(YELLOW)Valid examples: 0.5.3, 1.0.0, 0.6.0.dev1, 1.0.0a1, 1.0.0rc1, 1.0.0.post1$(NC)" && \
+		 echo -e "$(YELLOW)Invalid examples: 0.5.3.wip5, 1.0-beta, v1.0.0$(NC)" && \
+		 exit 1)
 	@echo "Updating version to $(V)..."
 	@echo "$(V)" > VERSION
-	@sed -i '' 's/^version = ".*"/version = "$(V)"/' lib/idp_cli_pkg/pyproject.toml
-	@sed -i '' 's/^version = ".*"/version = "$(V)"/' lib/idp_sdk/pyproject.toml
-	@sed -i '' 's/^version = ".*"/version = "$(V)"/' lib/idp_common_pkg/pyproject.toml
-	@sed -i '' 's/version=".*"/version="$(V)"/' lib/idp_common_pkg/setup.py
-	@sed -i '' 's/@click.version_option(version=".*")/@click.version_option(version="$(V)")/' lib/idp_cli_pkg/idp_cli/cli.py
-	@sed -i '' 's/^__version__ = ".*"/__version__ = "$(V)"/' lib/idp_sdk/idp_sdk/__init__.py
+	@sed -i.bak 's/^version = ".*"/version = "$(V)"/' lib/idp_cli_pkg/pyproject.toml && rm -f lib/idp_cli_pkg/pyproject.toml.bak
+	@sed -i.bak 's/^version = ".*"/version = "$(V)"/' lib/idp_sdk/pyproject.toml && rm -f lib/idp_sdk/pyproject.toml.bak
+	@sed -i.bak 's/^version = ".*"/version = "$(V)"/' lib/idp_common_pkg/pyproject.toml && rm -f lib/idp_common_pkg/pyproject.toml.bak
+	@sed -i.bak 's/version=".*"/version="$(V)"/' lib/idp_common_pkg/setup.py && rm -f lib/idp_common_pkg/setup.py.bak
+	@sed -i.bak 's/@click.version_option(version=".*")/@click.version_option(version="$(V)")/' lib/idp_cli_pkg/idp_cli/cli.py && rm -f lib/idp_cli_pkg/idp_cli/cli.py.bak
+	@sed -i.bak 's/^__version__ = ".*"/__version__ = "$(V)"/' lib/idp_sdk/idp_sdk/__init__.py && rm -f lib/idp_sdk/idp_sdk/__init__.py.bak
+	@sed -i.bak 's/^version = ".*"/version = "$(V)"/' lib/idp_mcp_connector_pkg/pyproject.toml && rm -f lib/idp_mcp_connector_pkg/pyproject.toml.bak
+	@sed -i.bak 's/^__version__ = ".*"/__version__ = "$(V)"/' lib/idp_mcp_connector_pkg/idp_mcp_connector/__init__.py && rm -f lib/idp_mcp_connector_pkg/idp_mcp_connector/__init__.py.bak
 	@echo -e "$(GREEN)✅ Version updated to $(V) in:$(NC)"
 	@echo "  - VERSION"
 	@echo "  - lib/idp_cli_pkg/pyproject.toml"
@@ -40,8 +48,11 @@ endif
 	@echo "  - lib/idp_sdk/idp_sdk/__init__.py"
 	@echo "  - lib/idp_common_pkg/pyproject.toml"
 	@echo "  - lib/idp_common_pkg/setup.py"
+	@echo "  - lib/idp_mcp_connector_pkg/pyproject.toml"
+	@echo "  - lib/idp_mcp_connector_pkg/idp_mcp_connector/__init__.py"
 
 # Default target - run both lint and test
+.DEFAULT_GOAL := all
 all: lint test
 
 # Create virtual environment and install all packages in development mode
@@ -64,11 +75,13 @@ setup:
 	$(VENV_DIR)/bin/pip install -e lib/idp_cli_pkg
 	@echo "Installing idp_sdk package..."
 	$(VENV_DIR)/bin/pip install -e lib/idp_sdk
+	@echo "Installing idp_mcp_connector package..."
+	$(VENV_DIR)/bin/pip install -e lib/idp_mcp_connector_pkg
 	@echo "Installing capacity planning test dependencies..."
 	$(VENV_DIR)/bin/pip install -r src/lambda/calculate_capacity/requirements-test.txt
 	@echo ""
 	@echo -e "$(GREEN)✅ Setup complete! Virtual environment created at $(VENV_DIR)$(NC)"
-	@echo -e "$(GREEN)   idp_common, idp-cli, idp_sdk, and test dependencies are now installed.$(NC)"
+	@echo -e "$(GREEN)   idp_common, idp-cli, idp_sdk, idp_mcp_connector, and test dependencies are now installed.$(NC)"
 	@echo -e "$(YELLOW)   All 'make' targets will automatically use $(VENV_DIR)/bin/python.$(NC)"
 	@echo -e "$(YELLOW)   To activate manually: source $(VENV_DIR)/bin/activate$(NC)"
 
@@ -242,7 +255,7 @@ ui-lint:
 	STORED_HASH=$$(test -f src/ui/.checksum && cat src/ui/.checksum || echo ""); \
 	if [ "$$CURRENT_HASH" != "$$STORED_HASH" ]; then \
 		echo "UI code checksum changed - running lint..."; \
-		cd src/ui && npm ci --prefer-offline --no-audit && npm run lint -- --fix && npm run typecheck && \
+		cd src/ui && npm ci --prefer-offline --no-audit && npm run lint -- --fix && npm run typecheck || exit 1; \
 		echo "$$CURRENT_HASH" > .checksum; \
 		echo -e "$(GREEN)✅ UI lint and typecheck completed and checksum updated$(NC)"; \
 	else \
@@ -265,11 +278,11 @@ codegen-check:
 		if [ -n "$$CI" ] || [ -n "$$GITHUB_ACTIONS" ]; then \
 			echo -e "$(RED)ERROR: Generated GraphQL files are out of date!$(NC)"; \
 			echo -e "$(YELLOW)Run 'make codegen' and commit the updated files.$(NC)"; \
-			git diff --stat src/ui/src/graphql/generated/; \
+			git --no-pager diff --stat src/ui/src/graphql/generated/; \
 			exit 1; \
 		else \
 			echo -e "$(YELLOW)Generated GraphQL files were out of date — auto-updated.$(NC)"; \
-			git diff --stat src/ui/src/graphql/generated/; \
+			git --no-pager diff --stat src/ui/src/graphql/generated/; \
 			echo -e "$(YELLOW)Please commit the changes above.$(NC)"; \
 		fi \
 	else \
