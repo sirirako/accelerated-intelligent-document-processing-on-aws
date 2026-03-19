@@ -104,7 +104,7 @@ from .models import (
     StopWorkflowsResult,
 )
 
-__version__ = "0.5.3.dev8"
+__version__ = "0.5.3.dev9"
 
 __all__ = [
     # Client
