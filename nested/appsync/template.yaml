@@ -3598,12 +3598,20 @@ Resources:
         Variables:
           LOG_LEVEL: !Ref LogLevel
           TRACKING_TABLE_NAME: !Ref TrackingTableName
+          USERS_TABLE_NAME: !Ref UsersTableName
       LoggingConfig:
         LogGroup: !Ref ListDocumentsByDateRangeResolverFunctionLogGroup
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackingTableName
         - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:GetItem
+              Resource:
+                - !Ref UsersTableArn
+                - !Sub "${UsersTableArn}/index/*"
             - Effect: Allow
               Action:
                 - kms:Encrypt
