@@ -192,6 +192,13 @@ Parameters:
     Type: String
     Description: ARN of IDP Common Agents Layer
 
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+        - W1030  # ARN pattern matching when Ref resolves to empty string (UsersTableArn default)
+        - W1031  # ARN pattern matching when Fn::Sub resolves to empty string (UsersTableArn default)
+
 Conditions:
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
   HasGuardrail: !Equals [!Ref HasGuardrailConfig, "true"]

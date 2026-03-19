@@ -221,7 +221,6 @@ Resources:
 
   SGIngressManagerCustomResource:
     Type: Custom::SGIngressManager
-    DependsOn: ALBSecurityGroup
     Properties:
       ServiceToken: !GetAtt SGIngressManagerFunction.Arn
       SecurityGroupId: !Ref ALBSecurityGroup
@@ -426,9 +425,6 @@ Resources:
 
   RegisterTargetsCustomResource:
     Type: Custom::RegisterTargets
-    DependsOn:
-      - S3InterfaceEndpoint
-      - S3TargetGroup
     Properties:
       ServiceToken: !GetAtt RegisterTargetsFunction.Arn
       VpcEndpointId: !Ref S3InterfaceEndpoint

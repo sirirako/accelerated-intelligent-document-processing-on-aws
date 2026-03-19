@@ -1208,7 +1208,6 @@ Resources:
 
   PreviousIDPPatternValue:
     Type: Custom::ReadPreviousIDPPattern
-    DependsOn: SettingsParameter
     Properties:
       ServiceToken: !GetAtt ReadPreviousIDPPatternFunction.Arn
       SettingsParameterName: !Ref SettingsParameter
@@ -1221,7 +1220,6 @@ Resources:
     DependsOn:
       - IsStacknameLengthOK
       - CopyConfigurationFiles
-      - PreviousIDPPatternValue
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: ./patterns/unified/.aws-sam/packaged.yaml
@@ -3210,9 +3208,6 @@ Resources:
 
   BackfillCustomResource:
     Type: Custom::GSIBackfill
-    DependsOn:
-      - TrackingTable
-      - BackfillStateMachine
     Properties:
       ServiceToken: !GetAtt BackfillTriggerFunction.Arn
       TrackingTableName: !Ref TrackingTable
