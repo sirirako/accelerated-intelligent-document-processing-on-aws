@@ -7,6 +7,14 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **RBAC Security Hardening** — Comprehensive audit and hardening of GraphQL API authorization against the documented RBAC permission matrix:
+  - **Query-level `@aws_auth` directives** — Added server-side role enforcement to 20+ GraphQL queries that were previously open to all authenticated users. Configuration, pricing, capacity, discovery, test studio, config library, and agent query system queries now enforce role restrictions at the AppSync schema level (e.g., Reviewer cannot access configuration, discovery, test studio, or pricing queries).
+  - **Admin-only enforcement for "Save as Version" / "Save as Default"** — The `updateConfiguration` resolver now checks caller role and rejects non-Admin users attempting `saveAsVersion` or `saveAsDefault` operations, which were previously only blocked in the UI.
+  - **Server-side RBAC filtering in `listDocumentsByDateRange`** — Added reviewer-only document filtering and config-version scope filtering to the date range resolver, matching the existing `listDocuments` GSI resolver pattern. Updated CloudFormation template with `USERS_TABLE_NAME` environment variable and DynamoDB IAM permissions.
+  - **Updated RBAC documentation** (`docs/rbac.md`) — Complete mutation and query authorization tables, AppSync `@aws_auth` + `@aws_iam` limitation documented, all previously missing API entries added.
+
+- **Threat Model Documentation** — Comprehensive threat model for the GenAI IDP Accelerator covering architecture overview, STRIDE analysis, feature-specific threats (agent analysis, companion chat, knowledge base, Lambda hooks, MCP integration, RBAC, reporting, SDK/CLI, web UI), risk assessment matrix, AI-generated threat analysis, implementation guide, and Threat Composer JSON export.
+
 - **Managed Configuration Versions** — Pre-deployed test sets now have dedicated stack-managed config versions (`managed: true`) that are automatically created and overwritten on stack updates. Save and delete are disabled for managed versions in the UI and API. Test Studio auto-selects the matching config version when a test set is selected, replacing the hardcoded mapping.
 
 - **Removed older Claude models** from Configuration UI picklists (3.x, 4.0, 4.1). Haiku 4.5, Sonnet 4.5, Sonnet 4.6, Opus 4.5, and Opus 4.6 are available for selection in the UI. Existing configurations using older versions still work.
