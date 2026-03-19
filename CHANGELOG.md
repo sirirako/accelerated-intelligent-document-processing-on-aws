@@ -35,6 +35,13 @@ SPDX-License-Identifier: MIT-0
 
 - **IDP MCP Connector** — Local package that bridges coding assistants like Cline and Kiro to the IDP MCP Server with automatic Cognito authentication and dynamic tool discovery.
 
+- **ALB+S3 VPC Hosting Mode** — Alternative web UI hosting using Application Load Balancer with S3 VPC Interface Endpoint for environments that require VPC-based hosting (private networks, regulated environments, corporate networks without internet-facing CDN access). ([#245](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/245))
+  - New `WebUIHosting` parameter (`CloudFront` | `ALB`) with conditional resource creation — CloudFront and ALB resources are mutually exclusive
+  - ALB hosting nested stack (`nested/alb-hosting/template.yaml`) with ALB, S3 Interface VPC Endpoint, security groups, custom resource Lambdas for VPC CIDR lookup and target registration
+  - TLS 1.3 enforcement, access logging, scoped VPC endpoint policy (`s3:GetObject`/`s3:ListBucket` only), and multi-CIDR security group ingress management
+  - Self-signed certificate generation script (`scripts/generate_self_signed_cert.sh`) for demo/testing
+  - New documentation: `docs/alb-hosting.md` — prerequisites, deployment steps, security considerations, troubleshooting, CloudFront vs ALB comparison
+
 ### Changed
 
 - **SDK & CLI: Renamed processing commands for clarity** — Old names are deprecated (emit `DeprecationWarning`) but remain available for backward compatibility:
@@ -57,6 +64,8 @@ SPDX-License-Identifier: MIT-0
 - **Discovery subscription handler dropping errorMessage and other fields** — Fixed bug where the UI subscription handler did `{ ...oldJob, status: updatedJob.status }`, discarding all fields except status from real-time subscription updates. Error messages, discovered class names, and status messages were being sent by the backend but silently dropped by the UI. Now spreads all fields: `{ ...oldJob, ...updatedJob }`.
 
 - **Discovery processor S3 race condition causing NoSuchKey failures** — The discovery upload resolver sends the SQS message before the browser finishes uploading the file to S3 via presigned POST. Previously worked around with a hardcoded `time.sleep(30)`. Replaced with `_wait_for_s3_object()` that polls S3 with exponential backoff (2s initial, 10s max, 60s timeout), proceeding as soon as the file appears.
+
+- **CLI `--parameters` parsing for comma-delimited values** — Fixed `idp-cli deploy --parameters` to handle values containing commas (e.g., `ALBSubnetIds=subnet-a,subnet-b`). Previously the naive `split(",")` broke multi-value parameters. ([#245](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/245))
 
 - **GovCloud template: fix unresolved RBAC resource dependencies** — Added `AuthorGroup`, `ViewerGroup`, `GetMyProfileResolver`, and `UpdateUserResolver` to GovCloud removal lists so they are stripped alongside the `UserPool` they depend on.
 

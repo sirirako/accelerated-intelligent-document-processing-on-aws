@@ -2,10 +2,7 @@
 # SPDX-License-Identifier: MIT-0
 
 AWSTemplateFormatVersion: "2010-09-09"
-Description: >-
-  ALB hosting nested stack for GenAI IDP Web UI.
-  Creates an Application Load Balancer with S3 VPC Interface Endpoint
-  to serve static web content without CloudFront.
+Description: AWS GenAI IDP Accelerator - ALB hosting nested stack
 
 Parameters:
   VpcId:
