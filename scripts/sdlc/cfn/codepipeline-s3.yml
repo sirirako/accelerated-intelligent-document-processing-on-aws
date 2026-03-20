@@ -122,6 +122,8 @@ Resources:
     Metadata:
       cfn_nag:
         rules_to_suppress:
+          - id: F3
+            reason: "CodeBuild role requires broad permissions for dynamic deployment operations. Scoped to SDLC pipeline only. All operations logged in CloudTrail."
           - id: W11
             reason: "Some IAM List/Get operations and service-linked roles require wildcard resources"
     Properties:

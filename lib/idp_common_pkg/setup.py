@@ -26,11 +26,11 @@ extras_require = {
     ],
     # Image handling dependencies
     "image": [
-        "Pillow==11.2.1",
+        "Pillow==12.1.1",
     ],
     # OCR module dependencies
     "ocr": [
-        "Pillow==11.2.1",
+        "Pillow==12.1.1",
         "pypdfium2>=5.5.0",
         "amazon-textract-textractor[pandas]==1.9.2",
         "numpy==1.26.4",
@@ -40,15 +40,15 @@ extras_require = {
     ],
     # Classification module dependencies
     "classification": [
-        "Pillow==11.2.1",  # For image handling
+        "Pillow==12.1.1",  # For image handling
     ],
     # Extraction module dependencies
     "extraction": [
-        "Pillow==11.2.1",  # For image handling
+        "Pillow==12.1.1",  # For image handling
     ],
     # Assessment module dependencies
     "assessment": [
-        "Pillow==11.2.1",  # For image handling
+        "Pillow==12.1.1",  # For image handling
     ],
     # Evaluation module dependencies
     "evaluation": [
@@ -98,7 +98,7 @@ extras_require = {
     "all": [
         "stickler-eval==0.1.5",
         "genson==1.3.0",
-        "Pillow==11.2.1",
+        "Pillow==12.1.1",
         "pypdfium2>=5.5.0",
         "amazon-textract-textractor[pandas]==1.9.2",
         "munkres>=1.1.4",

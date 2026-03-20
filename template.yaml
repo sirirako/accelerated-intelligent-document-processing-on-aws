@@ -807,6 +807,8 @@ Resources:
       BuildMethod: python3.12
       cfn_nag:
         rules_to_suppress:
+          - id: W11
+            reason: "bedrock-agentcore:InvokeAgentRuntime, aws-marketplace, and logs:DescribeLogGroups APIs do not support resource-level permissions"
           - id: W89
             reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
           - id: W92
@@ -5060,6 +5062,8 @@ Resources:
     Metadata:
       cfn_nag:
         rules_to_suppress:
+          - id: W11
+            reason: "servicequotas:GetServiceQuota and ListServiceQuotas APIs do not support resource-level permissions"
           - id: W89
             reason: "Function does not require VPC access as it only interacts with AWS services via APIs"
           - id: W92
