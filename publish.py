@@ -507,7 +507,7 @@ STDERR:
     def check_prerequisites(self):
         """Check for required commands and versions"""
         # Check required commands
-        required_commands = ["aws", "sam"]
+        required_commands = ["aws", "sam", "uv"]
         for cmd in required_commands:
             if not shutil.which(cmd):
                 self.console.print(
@@ -2123,23 +2123,24 @@ STDERR:
             else:
                 install_spec = "./lib/idp_common_pkg"
 
-            # Install dependencies into layer python directory
+            # Install dependencies into layer python directory using uv
             # Use platform-specific flags to ensure x86_64 Lambda compatibility
             # regardless of the local machine's architecture (e.g., ARM64 Mac)
+            # Note: uv is used instead of pip because uv-created venvs don't include pip,
+            # and uv handles package installation directly without needing pip in the venv.
             cmd = [
-                sys.executable,
-                "-m",
+                "uv",
                 "pip",
                 "install",
                 install_spec,
-                "--platform",
-                "manylinux2014_x86_64",
-                "--implementation",
-                "cp",
+                "--python-platform",
+                "x86_64-manylinux2014",
                 "--python-version",
-                "312",
+                "3.12",
                 "--only-binary=:all:",
-                "-t",
+                "--no-binary",
+                "idp-common",
+                "--target",
                 layer_python_dir,
                 "--upgrade",
             ]
