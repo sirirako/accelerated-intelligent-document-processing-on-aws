@@ -760,7 +760,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fieldMetrics: any = results.fieldMetrics ? parseFieldMetrics(results.fieldMetrics as string) : null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const confusionMatrix: any = results.confusionMatrix ? parseConfusionMatrix(results.confusionMatrix as string) : null;
+  const _confusionMatrix: any = results.confusionMatrix ? parseConfusionMatrix(results.confusionMatrix as string) : null;
 
   // Helper function to get merged config from results.config
   // The config may be stored as a JSON string (possibly double-stringified) with {Default: {...}, Custom: {...}} or already merged
