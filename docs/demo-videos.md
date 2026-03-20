@@ -287,11 +287,13 @@ Model Context Protocol integration enabling external applications like Amazon Qu
 
 
 #### Demo with Quick Suite
-**Duration**: ~3 minutes
+**Duration**: ~3 minutes  
+
 https://github.com/user-attachments/assets/529ce6ad-1062-4af5-97c1-86c3a47ac12c
 
 #### Demo with Cline 
-**Duration**: ~5 minutes
+**Duration**: ~5 minutes  
+
 https://github.com/user-attachments/assets/28d3a358-7aec-4c40-9081-ad4683d2a89f
 
 
