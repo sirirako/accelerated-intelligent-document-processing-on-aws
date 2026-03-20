@@ -37,6 +37,7 @@ export default defineConfig({
           items: [
             { label: "Architecture", slug: "architecture" },
             { label: "Deployment", slug: "deployment" },
+            { label: "ALB Hosting", slug: "alb-hosting" },
             { label: "Configuration", slug: "configuration" },
             {
               label: "Configuration Versions",
@@ -106,7 +107,8 @@ export default defineConfig({
             { label: "Code Intelligence", slug: "code-intelligence" },
             { label: "Knowledge Base", slug: "knowledge-base" },
             { label: "Custom MCP Agent", slug: "custom-mcp-agent" },
-            { label: "MCP Integration", slug: "mcp-integration" },
+            { label: "MCP Connector", slug: "mcp-connector" },
+            { label: "MCP Server", slug: "mcp-server" },
           ],
         },
         {
