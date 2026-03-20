@@ -35,6 +35,17 @@ Key capabilities:
 - **Track** which version was used for each processed document and test run
 - **Select** a specific version when uploading documents, running tests, or using the CLI
 
+#### Managed Configuration Versions
+
+The stack automatically deploys **managed configuration versions** for each pre-deployed test set (`fake-w2`, `docsplit`, `ocr-benchmark`, `realkie-fcc-verified`). These are marked with `managed: true` and have the following behavior:
+
+- **Overwritten on stack updates** — always reflect the latest defaults shipped with the solution
+- **Save disabled** — the Save button is disabled and an info banner explains the config is stack-managed
+- **Delete disabled** — managed versions cannot be deleted in the UI or via the API
+- **Editable copies** — use "Save as Version" to create a custom, editable copy
+- **Not importable** — managed configs are stored separately (`config_library/managed_config/`) and do not appear in the configuration import browser
+- **Test Studio integration** — when a test set is selected, the matching managed config version is auto-selected
+
 For comprehensive documentation, see [configuration-versions.md](configuration-versions.md).
 
 ### Configuration Management Features
@@ -270,13 +281,14 @@ Key parameters that can be configured during CloudFormation deployment:
 - `ExecutionTimeThresholdMs`: Maximum acceptable execution time before alerting (default: 30000 ms)
 - `LogLevel`: Set logging level (DEBUG, INFO, WARN, ERROR)
 - `WAFAllowedIPv4Ranges`: IP restrictions for web UI access (default: allow all)
-- `CloudFrontPriceClass`: Set CloudFront price class for UI distribution
-- `CloudFrontAllowedGeos`: Optional geographic restrictions for UI access
+- `CloudFrontPriceClass`: Set CloudFront price class for UI distribution (CloudFront hosting only)
+- `CloudFrontAllowedGeos`: Optional geographic restrictions for UI access (CloudFront hosting only)
+- `WebUIHosting`: Select hosting mode — `CloudFront` (default) or `ALB` for VPC-based hosting (see [ALB Hosting](./alb-hosting.md))
 - `CustomConfigPath`: Optional S3 URI to a custom configuration file that overrides pattern presets. Leave blank to use selected pattern configuration. Example: s3://my-bucket/custom-config/config.yaml
 
 ### Integration and Tracing Parameters
 - `EnableXRayTracing`: Enable X-Ray tracing for Lambda functions and Step Functions (default: true). Provides distributed tracing capabilities for debugging and performance analysis.
-- `EnableMCP`: Enable Model Context Protocol (MCP) integration for external application access via AWS Bedrock AgentCore Gateway (default: true). See [mcp-integration.md](mcp-integration.md) for details.
+- `EnableMCP`: Enable Model Context Protocol (MCP) integration for external application access via AWS Bedrock AgentCore Gateway (default: true). See [mcp-server.md](mcp-server.md) for details.
 - `EnableECRImageScanning`: Enable automatic vulnerability scanning for Lambda container images in ECR for Patterns 1-3 (default: false). Recommended for production deployments but may impact deployment reliability. See [troubleshooting.md](troubleshooting.md) for guidance.
 
 ### Pattern Selection
