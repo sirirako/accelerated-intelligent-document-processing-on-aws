@@ -2620,7 +2620,10 @@ def _batch_status_to_display_dicts(batch_status):
             "CLASSIFYING",
             "EXTRACTING",
             "ASSESSING",
+            "RULE_VALIDATION",
+            "RULE_VALIDATION_ORCHESTRATOR",
             "SUMMARIZING",
+            "HITL_IN_PROGRESS",
             "EVALUATING",
         ):
             running_docs.append(doc_dict)

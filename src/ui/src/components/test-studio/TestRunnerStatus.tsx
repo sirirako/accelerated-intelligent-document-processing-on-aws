@@ -40,8 +40,8 @@ const TestRunnerStatus = ({ testRunId = null, onComplete = null }: TestRunnerSta
 
         setTestRunStatus(status);
 
-        // Close modal when test is complete (progress = 100%)
-        if (status.progress === 100 && onComplete) {
+        // Stop polling when test run reaches a terminal state
+        if ((status.status === 'COMPLETE' || status.status === 'PARTIAL_COMPLETE') && onComplete) {
           onComplete();
         }
       } catch (error) {

@@ -474,6 +474,8 @@ type TestRun @aws_cognito_user_pools @aws_iam {
   weightedOverallScores: AWSJSON
   averageConfidence: Float
   accuracyBreakdown: AWSJSON
+  confusionMatrix: AWSJSON
+  fieldMetrics: AWSJSON
   splitClassificationMetrics: AWSJSON
   totalCost: Float
   costBreakdown: AWSJSON

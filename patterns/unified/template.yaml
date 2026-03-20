@@ -3185,6 +3185,65 @@ Resources:
       LogGroupName: !Sub "/${AWS::StackName}/lambda/EvaluationFunction"
       RetentionInDays: !Ref LogRetentionDays
 
+  ##########################################################################
+  # Test Execution Aggregation Function
+  ##########################################################################
+
+  TestExecutionAggregationFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: DockerBuildRun
+    Metadata:
+      SkipBuild: True
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Cloudwatch does not support resource-level permissions"
+          - id: W89
+            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs"
+          - id: W92
+            reason: "Function does not require concurrent execution limits as it is designed to scale based on demand"
+    # checkov:skip=CKV_AWS_116: "DLQ not required for this function as it is invoked synchronously"
+    # checkov:skip=CKV_AWS_173: "Environment variables do not contain sensitive data - only configuration values"
+    # checkov:skip=CKV_AWS_117: "Function does not require VPC access as it only interacts with AWS services via APIs"
+    # checkov:skip=CKV_AWS_115: "Function does not require reserved concurrency as it scales based on demand"
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref AWS::NoValue]
+      PackageType: Image
+      ImageUri: !Sub "${ECRRepository.RepositoryUri}:test-execution-aggregation-function-${ImageVersion}"
+      Architectures:
+        - arm64
+      Timeout: 900
+      MemorySize: 4096
+      Tracing: Active
+      Environment:
+        Variables:
+          LOG_LEVEL: !Ref LogLevel
+          TRACKING_TABLE: !Ref TrackingTable
+      LoggingConfig:
+        LogGroup: !Ref TestExecutionAggregationFunctionLogGroup
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - DynamoDBReadPolicy:
+            TableName: !Ref TrackingTable
+        - S3ReadPolicy:
+            BucketName: !Ref OutputBucket
+        - Statement:
+          - Effect: Allow
+            Action: cloudwatch:PutMetricData
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - kms:Decrypt
+              - kms:DescribeKey
+            Resource: !Ref CustomerManagedEncryptionKeyArn
+
+  TestExecutionAggregationFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !Ref CustomerManagedEncryptionKeyArn
+      LogGroupName: !Sub "/${AWS::StackName}/lambda/TestExecutionAggregationFunction"
+      RetentionInDays: !Ref LogRetentionDays
+
   RuleValidationFunction:
     Type: AWS::Serverless::Function
     DependsOn: DockerBuildRun
@@ -4267,6 +4326,7 @@ Outputs:
         # Shared log groups
         - !Ref SummarizationFunctionLogGroup
         - !Ref EvaluationFunctionLogGroup
+        - !Ref TestExecutionAggregationFunctionLogGroup
         - !Ref StateMachineLogGroup
 
   DashboardName:
@@ -4276,3 +4336,7 @@ Outputs:
   DashboardArn:
     Description: ARN of the Unified CloudWatch Dashboard
     Value: !Sub "arn:${AWS::Partition}:cloudwatch::${AWS::AccountId}:dashboard/${AWS::StackName}-${AWS::Region}-Unified"
+
+  TestExecutionAggregationFunctionArn:
+    Description: ARN of the Test Execution Aggregation Function
+    Value: !GetAtt TestExecutionAggregationFunction.Arn

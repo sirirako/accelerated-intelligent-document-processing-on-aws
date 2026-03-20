@@ -451,6 +451,8 @@ export const getTestRun = /* GraphQL */ `
       weightedOverallScores
       averageConfidence
       accuracyBreakdown
+      confusionMatrix
+      fieldMetrics
       splitClassificationMetrics
       totalCost
       costBreakdown

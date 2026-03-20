@@ -941,10 +941,12 @@ export type TestRun = {
   completedFiles?: Maybe<Scalars['Int']['output']>;
   config?: Maybe<Scalars['AWSJSON']['output']>;
   configVersion?: Maybe<Scalars['String']['output']>;
+  confusionMatrix?: Maybe<Scalars['AWSJSON']['output']>;
   context?: Maybe<Scalars['String']['output']>;
   costBreakdown?: Maybe<Scalars['AWSJSON']['output']>;
   createdAt?: Maybe<Scalars['AWSDateTime']['output']>;
   failedFiles?: Maybe<Scalars['Int']['output']>;
+  fieldMetrics?: Maybe<Scalars['AWSJSON']['output']>;
   filesCount: Scalars['Int']['output'];
   overallAccuracy?: Maybe<Scalars['Float']['output']>;
   splitClassificationMetrics?: Maybe<Scalars['AWSJSON']['output']>;

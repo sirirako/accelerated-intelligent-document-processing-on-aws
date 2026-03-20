@@ -2353,7 +2353,7 @@ STDERR:
         )
 
         # Map each layer name to its zip file
-        expected_layers = ["base", "reporting", "agents"]
+        expected_layers = ["base", "evaluation", "reporting", "agents"]
         for layer_name in expected_layers:
             # Find the zip for this layer (format: idp-common-{name}-{source_hash}.zip)
             # Match based on current source hash to ensure we use up-to-date layers
@@ -2446,8 +2446,8 @@ STDERR:
             )
             return True  # Need rebuild
 
-        # We have at least some layer zips, check we have all 3
-        expected_layers = ["base", "reporting", "agents"]
+        # We have at least some layer zips, check we have all 4
+        expected_layers = ["base", "evaluation", "reporting", "agents"]
         for layer_name in expected_layers:
             found = any(f"idp-common-{layer_name}-" in z for z in layer_zips)
             if not found:
@@ -2469,9 +2469,15 @@ STDERR:
         # Ensure layers directory exists
         os.makedirs(".aws-sam/layers", exist_ok=True)
 
-        # Define the 3 layers
+        # Define the 4 layers
         layers_config = {
-            "base": ["docs_service", "image"],
+            "base": [
+                "docs_service",
+                "image",
+            ],
+            "evaluation": [
+                "evaluation"
+            ],  # Separate layer for stickler (includes numpy)
             "reporting": ["reporting"],
             "agents": ["agents"],
         }
