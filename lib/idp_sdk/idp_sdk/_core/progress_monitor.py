@@ -199,7 +199,10 @@ class ProgressMonitor:
             "CLASSIFYING",
             "EXTRACTING",
             "ASSESSING",
+            "RULE_VALIDATION",
+            "RULE_VALIDATION_ORCHESTRATOR",
             "SUMMARIZING",
+            "HITL_IN_PROGRESS",
             "EVALUATING",
         ]:
             status_summary["running"].append(status)

@@ -25,6 +25,11 @@ Parameters:
     Type: String
     Description: ARN of the AgentProcessorFunction from main template
   
+  TestExecutionAggregationFunctionArn:
+    Type: String
+    Default: ""
+    Description: ARN of the TestExecutionAggregationFunction from pattern stack (optional)
+  
   # DynamoDB Tables
   TrackingTableName:
     Type: String
@@ -204,6 +209,7 @@ Conditions:
   HasGuardrail: !Equals [!Ref HasGuardrailConfig, "true"]
   ShouldCreateEvaluationBaselineBucket: !Equals [!Ref ShouldCreateEvaluationBaselineBucket, "true"]
   ShouldCreateReportingBucket: !Equals [!Ref ShouldCreateReportingBucket, "true"]
+  HasTestExecutionAggregationFunction: !Not [!Equals [!Ref TestExecutionAggregationFunctionArn, ""]]
 
 Resources:
 
@@ -2877,6 +2883,7 @@ Resources:
                 - ShouldCreateReportingBucket
                 - !Ref ReportingBucketName
                 - !Ref ReportingBucketName
+          TEST_EXECUTION_AGGREGATION_FUNCTION_ARN: !Ref TestExecutionAggregationFunctionArn
       Events:
         SQSEvent:
           Type: SQS
@@ -2935,6 +2942,14 @@ Resources:
                 - kms:GenerateDataKey*
                 - kms:DescribeKey
               Resource: !Ref CustomerManagedEncryptionKeyArn
+        - !If
+          - HasTestExecutionAggregationFunction
+          - Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Ref TestExecutionAggregationFunctionArn
+          - !Ref AWS::NoValue
 
 
   ##########################################################################

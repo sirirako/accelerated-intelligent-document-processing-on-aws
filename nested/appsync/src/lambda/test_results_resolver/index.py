@@ -92,6 +92,8 @@ def handle_cache_update_request(event, context):
                 'weightedOverallScores': aggregated_metrics.get('weighted_overall_scores', {}),
                 'averageConfidence': aggregated_metrics.get('average_confidence'),
                 'accuracyBreakdown': aggregated_metrics.get('accuracy_breakdown', {}),
+                'confusionMatrix': aggregated_metrics.get('confusion_matrix', {}),
+                'fieldMetrics': aggregated_metrics.get('field_metrics', {}),
                 'splitClassificationMetrics': aggregated_metrics.get('split_classification_metrics', {}),
                 'totalCost': aggregated_metrics.get('total_cost', 0),
                 'costBreakdown': aggregated_metrics.get('cost_breakdown', {})
@@ -211,6 +213,8 @@ def get_test_results(test_run_id):
         # Check if cached data needs recalculation
         cached_scores = cached_metrics.get('weightedOverallScores')
         if ('splitClassificationMetrics' not in cached_metrics or 
+            'confusionMatrix' not in cached_metrics or
+            'fieldMetrics' not in cached_metrics or
             isinstance(cached_scores, list)):
             logger.info(f"Cached metrics incomplete or outdated, recalculating for test run: {test_run_id}")
             # Force recalculation by falling through to aggregation logic
@@ -228,6 +232,8 @@ def get_test_results(test_run_id):
                 'weightedOverallScores': cached_metrics.get('weightedOverallScores', {}),
                 'averageConfidence': cached_metrics.get('averageConfidence'),
                 'accuracyBreakdown': cached_metrics.get('accuracyBreakdown', {}),
+                'confusionMatrix': cached_metrics.get('confusionMatrix', {}),
+                'fieldMetrics': cached_metrics.get('fieldMetrics', {}),
                 'splitClassificationMetrics': cached_metrics.get('splitClassificationMetrics', {}),
                 'totalCost': cached_metrics.get('totalCost', 0),
                 'costBreakdown': cached_metrics.get('costBreakdown', {}),
@@ -237,57 +243,9 @@ def get_test_results(test_run_id):
                 'configVersion': metadata.get('ConfigVersion'),
                 'config': _get_test_run_config(test_run_id)
             }
-    
-    # Calculate aggregated metrics
-    aggregated_metrics = _aggregate_test_run_metrics(test_run_id)
-    
-    result = {
-        'testRunId': test_run_id,
-        'testSetId': metadata.get('TestSetId'),
-        'testSetName': metadata.get('TestSetName'),
-        'status': current_status,
-        'filesCount': metadata.get('FilesCount', 0),
-        'completedFiles': metadata.get('CompletedFiles', 0),
-        'failedFiles': metadata.get('FailedFiles', 0),
-        'overallAccuracy': aggregated_metrics.get('overall_accuracy'),
-        'weightedOverallScores': aggregated_metrics.get('weighted_overall_scores', {}),
-        'averageConfidence': aggregated_metrics.get('average_confidence'),
-        'accuracyBreakdown': aggregated_metrics.get('accuracy_breakdown', {}),
-        'splitClassificationMetrics': aggregated_metrics.get('split_classification_metrics', {}),
-        'totalCost': aggregated_metrics.get('total_cost', 0),
-        'costBreakdown': aggregated_metrics.get('cost_breakdown', {}),
-        'createdAt': _format_datetime(metadata.get('CreatedAt')),
-        'completedAt': _format_datetime(metadata.get('CompletedAt')),
-        'context': metadata.get('Context'),
-        'configVersion': metadata.get('ConfigVersion'),
-        'config': _get_test_run_config(test_run_id)
-    }
-
-    # Cache only the static metrics (not status/counts)
-    try:
-        logger.info(f"Caching metrics for test run: {test_run_id}")
-        
-        # Cache only static metrics
-        metrics_to_cache = {
-            'overallAccuracy': aggregated_metrics.get('overall_accuracy'),
-            'weightedOverallScores': aggregated_metrics.get('weighted_overall_scores', {}),
-            'averageConfidence': aggregated_metrics.get('average_confidence'),
-            'accuracyBreakdown': aggregated_metrics.get('accuracy_breakdown', {}),
-            'splitClassificationMetrics': aggregated_metrics.get('split_classification_metrics', {}),
-            'totalCost': aggregated_metrics.get('total_cost', 0),
-            'costBreakdown': aggregated_metrics.get('cost_breakdown', {})
-        }
-        
-        table.update_item(
-            Key={'PK': f'testrun#{test_run_id}', 'SK': 'metadata'},
-            UpdateExpression='SET testRunResult = :testRunResult',
-            ExpressionAttributeValues={':testRunResult': float_to_decimal(metrics_to_cache)}
-        )
-        logger.info(f"Successfully cached metrics for test run: {test_run_id}")
-    except Exception as e:
-        logger.warning(f"Failed to cache results for {test_run_id}: {e}")
-    
-    return result
+    else:
+        raise ValueError(f"Test run {test_run_id} processing completed, evaluating results")
+  
 
 def _query_test_runs_from_gsi(table, start_iso, end_iso):
     """Query test runs from TypeDateIndex GSI instead of scanning the full table.
@@ -385,11 +343,16 @@ def get_test_runs_by_date_range(start_date_time, end_date_time):
             if 'Item' in updated_response:
                 item = updated_response['Item']
         
+        # Show EVALUATING if metrics not yet cached
+        display_status = status_result.get('status') if status_result else item.get('Status')
+        if display_status in ['COMPLETE', 'PARTIAL_COMPLETE'] and not item.get('testRunResult'):
+            display_status = 'EVALUATING'
+        
         test_runs.append({
             'testRunId': item['TestRunId'],
             'testSetId': item.get('TestSetId'),
             'testSetName': item.get('TestSetName'),
-            'status': status_result.get('status') if status_result else item.get('Status'),
+            'status': display_status,
             'filesCount': item.get('FilesCount', 0),
             'completedFiles': status_result.get('completedFiles') if status_result else item.get('CompletedFiles', 0),
             'failedFiles': status_result.get('failedFiles') if status_result else item.get('FailedFiles', 0),
@@ -445,11 +408,16 @@ def get_test_runs(time_period_hours=2):
             if 'Item' in updated_response:
                 item = updated_response['Item']
         
+        # Show EVALUATING if metrics not yet cached
+        display_status = status_result.get('status') if status_result else item.get('Status')
+        if display_status in ['COMPLETE', 'PARTIAL_COMPLETE'] and not item.get('testRunResult'):
+            display_status = 'EVALUATING'
+        
         test_runs.append({
             'testRunId': item['TestRunId'],
             'testSetId': item.get('TestSetId'),
             'testSetName': item.get('TestSetName'),
-            'status': status_result.get('status') if status_result else item.get('Status'),
+            'status': display_status,
             'filesCount': item.get('FilesCount', 0),
             'completedFiles': status_result.get('completedFiles') if status_result else item.get('CompletedFiles', 0),
             'failedFiles': status_result.get('failedFiles') if status_result else item.get('FailedFiles', 0),
@@ -625,11 +593,16 @@ def get_test_run_status(test_run_id):
             except Exception as e:
                 logger.error(f"Failed to auto-update test run {test_run_id} status: {e}")
         
+        # Report EVALUATING to caller until cached metrics are available
+        display_status = overall_status
+        if display_status in ['COMPLETE', 'PARTIAL_COMPLETE'] and not item.get('testRunResult'):
+            display_status = 'EVALUATING'
+        
         progress = ((completed_files + total_failed_files) / files_count * 100) if files_count > 0 else 0
         
         result = {
             'testRunId': test_run_id,
-            'status': overall_status,
+            'status': display_status,
             'filesCount': files_count,
             'completedFiles': completed_files,
             'failedFiles': total_failed_files,
@@ -645,11 +618,59 @@ def get_test_run_status(test_run_id):
         return None
 
 def _aggregate_test_run_metrics(test_run_id):
-    """Aggregate metrics from Athena queries for all documents in test run"""
-    # Get evaluation metrics from Athena
-    evaluation_metrics = _get_evaluation_metrics_from_athena(test_run_id)
+    """Aggregate metrics using Stickler bulk evaluator (with Athena fallback)"""
     
-    # Get cost data from Athena
+    # Try Stickler-based aggregation via Lambda function
+    test_execution_aggregation_arn = os.environ.get('TEST_EXECUTION_AGGREGATION_FUNCTION_ARN')
+    
+    if test_execution_aggregation_arn:
+        try:
+            lambda_client = boto3.client('lambda')
+            
+            # Invoke the test execution aggregation function
+            response = lambda_client.invoke(
+                FunctionName=test_execution_aggregation_arn,
+                InvocationType='RequestResponse',
+                Payload=json.dumps({
+                    'test_run_id': test_run_id
+                })
+            )
+            
+            # Parse response
+            payload = json.loads(response['Payload'].read())
+            
+            if payload.get('statusCode') == 200:
+                stickler_metrics = json.loads(payload['body'])
+                
+                # If we got valid results, use them and get split metrics and confidence from Athena
+                if stickler_metrics.get('document_count', 0) > 0:
+                    logger.info(f"Using Stickler aggregation for test run {test_run_id}")
+                    
+                    # Get split metrics and confidence from Athena
+                    athena_metrics = _get_evaluation_metrics_from_athena(test_run_id)
+                    cost_data = _get_cost_data_from_athena(test_run_id)
+                    
+                    # Merge Stickler metrics with Athena split metrics and confidence
+                    return {
+                        **stickler_metrics,
+                        'average_confidence': athena_metrics.get('average_confidence'),
+                        'split_classification_metrics': athena_metrics.get('split_classification_metrics', {}),
+                        'total_cost': cost_data.get('total_cost', 0),
+                        'cost_breakdown': cost_data.get('cost_breakdown', {})
+                    }
+                else:
+                    logger.warning(f"Test execution aggregation returned empty metrics (document_count=0) for {test_run_id}, falling back to Athena")
+            else:
+                logger.warning(f"Test execution aggregation returned error: {payload}")
+                
+        except Exception as e:
+            logger.error(f"Test execution aggregation Lambda failed for {test_run_id}, falling back to Athena: {e}")
+    else:
+        logger.info(f"TEST_EXECUTION_AGGREGATION_FUNCTION_ARN not set, using Athena aggregation")
+    
+    # Fallback to Athena-based aggregation
+    logger.info(f"Using Athena aggregation for test run {test_run_id}")
+    evaluation_metrics = _get_evaluation_metrics_from_athena(test_run_id)
     cost_data = _get_cost_data_from_athena(test_run_id)
     
     return {
@@ -849,7 +870,7 @@ def _execute_athena_query(query, database):
         return []
 
 def _get_evaluation_metrics_from_athena(test_run_id):
-    """Get evaluation metrics from Athena document_evaluations table"""
+    """Get split classification metrics and confidence from Athena"""
     database = os.environ.get('ATHENA_DATABASE')
     if not database:
         logger.warning("ATHENA_DATABASE environment variable not set")
@@ -858,18 +879,10 @@ def _get_evaluation_metrics_from_athena(test_run_id):
     _validate_sql_input(test_run_id, 'test_run_id')
     _validate_sql_input(database, 'database')
 
-    # Get aggregated metrics directly from document_evaluations table
+    # Get only split classification metrics from Athena
+    # Other metrics (accuracy, precision, recall, etc.) come from Stickler aggregation
     query = f"""
     SELECT 
-        AVG(CAST(accuracy AS DOUBLE)) as avg_accuracy,
-        AVG(CAST(precision AS DOUBLE)) as avg_precision,
-        AVG(CAST(recall AS DOUBLE)) as avg_recall,
-        AVG(CAST(f1_score AS DOUBLE)) as avg_f1_score,
-        AVG(CAST(false_alarm_rate AS DOUBLE)) as avg_false_alarm_rate,
-        AVG(CAST(false_discovery_rate AS DOUBLE)) as avg_false_discovery_rate,
-        AVG(CAST(page_level_accuracy AS DOUBLE)) as avg_page_level_accuracy,
-        AVG(CAST(split_accuracy_without_order AS DOUBLE)) as avg_split_accuracy_without_order,
-        AVG(CAST(split_accuracy_with_order AS DOUBLE)) as avg_split_accuracy_with_order,
         SUM(CAST(total_pages AS INT)) as total_pages,
         SUM(CAST(total_splits AS INT)) as total_splits,
         SUM(CAST(correctly_classified_pages AS INT)) as correctly_classified_pages,
@@ -886,16 +899,6 @@ def _get_evaluation_metrics_from_athena(test_run_id):
     
     result = results[0]
     
-    # Get weighted overall scores per document
-    weighted_scores_query = f"""
-    SELECT document_id, weighted_overall_score
-    FROM "{database}"."document_evaluations" 
-    WHERE document_id LIKE '{test_run_id}%' AND weighted_overall_score IS NOT NULL
-    """
-    
-    weighted_results = _execute_athena_query(weighted_scores_query, database)
-    weighted_overall_scores = {r['document_id']: r['weighted_overall_score'] for r in weighted_results}
-    
     # Get confidence data from attribute_evaluations table
     confidence_query = f"""
     SELECT AVG(CAST(confidence AS DOUBLE)) as avg_confidence
@@ -906,26 +909,28 @@ def _get_evaluation_metrics_from_athena(test_run_id):
     confidence_results = _execute_athena_query(confidence_query, database)
     avg_confidence = confidence_results[0]['avg_confidence'] if confidence_results and confidence_results[0]['avg_confidence'] is not None else None
     
+    # Calculate split accuracies from summed counts
+    total_pages = result.get('total_pages', 0)
+    total_splits = result.get('total_splits', 0)
+    correctly_classified_pages = result.get('correctly_classified_pages', 0)
+    correctly_split_without_order = result.get('correctly_split_without_order', 0)
+    correctly_split_with_order = result.get('correctly_split_with_order', 0)
+    
+    page_level_accuracy = correctly_classified_pages / total_pages if total_pages > 0 else None
+    split_accuracy_without_order = correctly_split_without_order / total_splits if total_splits > 0 else None
+    split_accuracy_with_order = correctly_split_with_order / total_splits if total_splits > 0 else None
+    
     return {
-        'overall_accuracy': result.get('avg_accuracy'),
-        'weighted_overall_scores': weighted_overall_scores,
         'average_confidence': avg_confidence,
-        'accuracy_breakdown': {
-            'precision': result.get('avg_precision'),
-            'recall': result.get('avg_recall'),
-            'f1_score': result.get('avg_f1_score'),
-            'false_alarm_rate': result.get('avg_false_alarm_rate'),
-            'false_discovery_rate': result.get('avg_false_discovery_rate')
-        },
         'split_classification_metrics': {
-            'page_level_accuracy': result.get('avg_page_level_accuracy'),
-            'split_accuracy_without_order': result.get('avg_split_accuracy_without_order'),
-            'split_accuracy_with_order': result.get('avg_split_accuracy_with_order'),
-            'total_pages': result.get('total_pages', 0),
-            'total_splits': result.get('total_splits', 0),
-            'correctly_classified_pages': result.get('correctly_classified_pages', 0),
-            'correctly_split_without_order': result.get('correctly_split_without_order', 0),
-            'correctly_split_with_order': result.get('correctly_split_with_order', 0)
+            'page_level_accuracy': page_level_accuracy,
+            'split_accuracy_without_order': split_accuracy_without_order,
+            'split_accuracy_with_order': split_accuracy_with_order,
+            'total_pages': total_pages,
+            'total_splits': total_splits,
+            'correctly_classified_pages': correctly_classified_pages,
+            'correctly_split_without_order': correctly_split_without_order,
+            'correctly_split_with_order': correctly_split_with_order
         }
     }
 
