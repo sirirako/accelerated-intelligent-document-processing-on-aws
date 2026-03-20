@@ -810,7 +810,7 @@ def _get_evaluation_metrics_from_athena(test_run_id):
         SUM(CAST(correctly_split_with_order AS INT)) as correctly_split_with_order
     FROM "{database}"."document_evaluations" 
     WHERE document_id LIKE '{test_run_id}%'
-    """
+    """  # nosec B608 - validated by _validate_sql_input()
     
     results = _execute_athena_query(query, database)
     
@@ -824,7 +824,7 @@ def _get_evaluation_metrics_from_athena(test_run_id):
     SELECT AVG(CAST(confidence AS DOUBLE)) as avg_confidence
     FROM "{database}"."attribute_evaluations" 
     WHERE document_id LIKE '{test_run_id}%' AND confidence IS NOT NULL AND confidence != ''
-    """
+    """  # nosec B608 - validated by _validate_sql_input()
     
     confidence_results = _execute_athena_query(confidence_query, database)
     avg_confidence = confidence_results[0]['avg_confidence'] if confidence_results and confidence_results[0]['avg_confidence'] is not None else None
@@ -875,7 +875,7 @@ def _get_cost_data_from_athena(test_run_id):
     FROM "{database}"."metering" 
     WHERE document_id LIKE '{test_run_id}/%'
     GROUP BY context, service_api, unit
-    """
+    """  # nosec B608 - validated by _validate_sql_input()
     
     results = _execute_athena_query(query, database)
     
