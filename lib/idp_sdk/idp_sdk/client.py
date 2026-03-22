@@ -137,6 +137,7 @@ class IDPClient:
             DocumentOperation,
             EvaluationOperation,
             ManifestOperation,
+            PublishOperation,
             SearchOperation,
             StackOperation,
             TestingOperation,
@@ -152,6 +153,7 @@ class IDPClient:
         self.search = SearchOperation(self)
         self.evaluation = EvaluationOperation(self)
         self.assessment = AssessmentOperation(self)
+        self.publish = PublishOperation(self)
 
     @property
     def stack_name(self) -> Optional[str]:
