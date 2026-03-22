@@ -24,8 +24,6 @@ python3 publish.py idp-1234567890 idp us-east-1
 # With verbose output for debugging build failures
 python3 publish.py idp-1234567890 idp us-east-1 --verbose
 
-# Legacy build script
-./publish.sh <cfn_bucket_basename> <cfn_prefix> <region>
 ```
 
 The build process:
@@ -91,8 +89,10 @@ pytest -m "integration"
 The IDP CLI is used for programmatic deployment and batch processing:
 
 ```bash
-# Install CLI
+# Install all packages into current Python environment
 make setup
+# Or create an isolated .venv first
+make setup-venv
 
 # Deploy a new stack
 idp-cli deploy \

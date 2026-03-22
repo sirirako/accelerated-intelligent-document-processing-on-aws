@@ -5,6 +5,14 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **Consolidated publish and headless deploy into `idp-cli`** — All build/publish/deploy functionality now available through the CLI, deprecating standalone scripts:
+  - `publish.py` and `publish.sh` are deprecated — use `idp-cli publish` instead. `publish.py` remains as a thin backward-compatibility wrapper. `publish.sh` has been removed.
+  - `scripts/generate_govcloud_template.py` is deprecated — use `idp-cli publish --headless` or `idp-cli deploy --headless` instead. The script remains as a thin wrapper.
+  - New `--template-file` option on `idp-cli deploy` for deploying from a local CloudFormation template file produced by a previous `idp-cli publish`.
+  - `idp-cli deploy --headless` (without `--from-code`) now downloads the published template, transforms to headless with GovCloud config defaults, uploads to S3, and deploys — all in one command.
+
 ## [0.5.3]
 
 ### Added
