@@ -7,6 +7,8 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **idp_common API Reference & Documentation** — Added `docs/idpcommon-api-reference.md` covering all 22 modules, created 6 missing module READMEs (discovery, schema, image, s3, utils, metrics), updated core data model docs to match current code, fixed `IDPConfig` lazy-loading bug in `__init__.py`, and integrated into docs-site sidebar.
+
 - **Consolidated publish and headless deploy into `idp-cli`** — All build/publish/deploy functionality now available through the CLI, deprecating standalone scripts:
   - `publish.py` and `publish.sh` are deprecated — use `idp-cli publish` instead. `publish.py` remains as a thin backward-compatibility wrapper. `publish.sh` has been removed.
   - `scripts/generate_govcloud_template.py` is deprecated — use `idp-cli publish --headless` or `idp-cli deploy --headless` instead. The script remains as a thin wrapper.
