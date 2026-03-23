@@ -54,6 +54,7 @@ export default defineConfig({
             { label: "Web UI", slug: "web-ui" },
             { label: "IDP CLI", slug: "idp-cli" },
             { label: "IDP SDK", slug: "idp-sdk" },
+            { label: "idp_common API Reference", slug: "idpcommon-api-reference" },
             { label: "Demo Videos", slug: "demo-videos" },
             { label: "Troubleshooting", slug: "troubleshooting" },
             { label: "Error Analyzer", slug: "error-analyzer" },
