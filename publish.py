@@ -70,6 +70,9 @@ class IDPPublisher:
         self.enterprise_bucket_policy = (
             False  # Optional SSL+account-only policy (req #5)
         )
+        self.bucket_tags: dict[
+            str, str
+        ] = {}  # Optional tags for artifact bucket (req #10)
 
     def clean_checksums(self):
         """Delete all .checksum files and Lambda layer caches for full rebuild"""
@@ -402,6 +405,9 @@ STDERR:
         self.console.print(
             "  [yellow][--enterprise-bucket-policy][/yellow]: Optional. Apply SSL-only + account-restricted bucket policy (req #5)"
         )
+        self.console.print(
+            "  [yellow][--tags Key1=Value1,Key2=Value2][/yellow]: Optional. Apply tags to the artifact bucket (req #10)"
+        )
 
     def check_parameters(self, args):
         """Check and validate input parameters"""
@@ -497,6 +503,28 @@ STDERR:
                 self.console.print(
                     "[green]Enterprise bucket policy will be applied (SSL-only + account-restricted)[/green]"
                 )
+            elif arg == "--tags":
+                if i + 1 >= len(remaining_args):
+                    self.console.print(
+                        "[red]Error: --tags requires a value (e.g. Key1=Value1,Key2=Value2)[/red]"
+                    )
+                    self.print_usage()
+                    sys.exit(1)
+                tags_str = remaining_args[i + 1]
+                try:
+                    for pair in tags_str.split(","):
+                        key, value = pair.strip().split("=", 1)
+                        self.bucket_tags[key.strip()] = value.strip()
+                    self.console.print(
+                        f"[green]Artifact bucket will be tagged: {self.bucket_tags}[/green]"
+                    )
+                except ValueError:
+                    self.console.print(
+                        "[red]Error: --tags must be Key=Value pairs separated by commas[/red]"
+                    )
+                    self.print_usage()
+                    sys.exit(1)
+                i += 1  # Skip the next argument (the tags string)
             else:
                 self.console.print(
                     f"[yellow]Warning: Unknown argument '{arg}' ignored[/yellow]"
@@ -684,12 +712,36 @@ STDERR:
             )
             sys.exit(1)
 
+    def _apply_bucket_tags(self):
+        """Apply tags to the artifact bucket (req #10).
+
+        Called when --tags is provided. Applies the given key/value tags via
+        put_bucket_tagging. Enterprise standards typically require tags on all
+        S3 buckets for cost allocation, compliance, and inventory tracking.
+        No-op when bucket_tags is empty (default behaviour preserved).
+        """
+        if not self.bucket_tags:
+            return
+        try:
+            tag_set = [{"Key": k, "Value": v} for k, v in self.bucket_tags.items()]
+            self.s3_client.put_bucket_tagging(
+                Bucket=self.bucket,
+                Tagging={"TagSet": tag_set},
+            )
+            self.console.print(
+                f"[green]✅ Bucket tags applied: {self.bucket_tags}[/green]"
+            )
+        except ClientError as e:
+            self.console.print(f"[red]Failed to apply tags to bucket: {e}[/red]")
+            sys.exit(1)
+
     def setup_artifacts_bucket(self):
         """Create bucket if necessary, then apply optional enterprise hardening.
 
-        Enterprise options (both off by default):
+        Enterprise options (all off by default):
           --kms-key-arn ARN            Apply SSE-KMS with a customer-managed CMK (req #4)
           --enterprise-bucket-policy   Apply SSL-only + account-only bucket policy (req #5)
+          --tags Key1=Value1,...        Apply tags to the bucket (req #10)
         """
         try:
             self.s3_client.head_bucket(Bucket=self.bucket)
@@ -729,6 +781,7 @@ STDERR:
         # Apply optional enterprise hardening (no-op when flags are not set)
         self._apply_kms_encryption()  # req #4 — SSE-KMS CMK
         self._apply_enterprise_bucket_policy()  # req #5 — SSL-only + account-restricted policy
+        self._apply_bucket_tags()  # req #10 — enterprise resource tags
 
     def get_file_checksum(self, file_path):
         """Get SHA256 checksum of a file"""
