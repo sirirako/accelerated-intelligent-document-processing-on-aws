@@ -1,0 +1,227 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Test VPC for IDP ALB Hosting - Simulates a customer's private network
+  with 2 private subnets in different AZs. Includes a self-signed ACM certificate.
+
+Parameters:
+  VpcCidr:
+    Type: String
+    Default: '10.1.0.0/16'
+    Description: CIDR block for the VPC
+
+  PrivateSubnet1Cidr:
+    Type: String
+    Default: '10.1.1.0/24'
+    Description: CIDR block for private subnet 1
+
+  PrivateSubnet2Cidr:
+    Type: String
+    Default: '10.1.2.0/24'
+    Description: CIDR block for private subnet 2
+
+  CertificateDomain:
+    Type: String
+    Default: 'idp-alb.internal'
+    Description: Domain name for the self-signed certificate
+
+Resources:
+  #############################################
+  # VPC
+  #############################################
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: IDP-ALB-TestVPC
+
+  #############################################
+  # Private Subnets (2 AZs)
+  #############################################
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PrivateSubnet1Cidr
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: IDP-ALB-PrivateSubnet1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PrivateSubnet2Cidr
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: IDP-ALB-PrivateSubnet2
+
+  #############################################
+  # Route Table for Private Subnets
+  #############################################
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: IDP-ALB-PrivateRouteTable
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  #############################################
+  # Self-Signed Certificate via Custom Resource
+  #############################################
+  CertificateLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ACMImportPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - acm:ImportCertificate
+                  - acm:DeleteCertificate
+                  - acm:AddTagsToCertificate
+                Resource: '*'
+
+  CertificateLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-SelfSignedCert'
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 60
+      Role: !GetAtt CertificateLambdaRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import subprocess
+          import tempfile
+          import os
+          import boto3
+          import cfnresponse
+
+          def handler(event, context):
+              try:
+                  request_type = event['RequestType']
+                  domain = event['ResourceProperties']['Domain']
+
+                  if request_type == 'Delete':
+                      cert_arn = event.get('PhysicalResourceId', '')
+                      if cert_arn.startswith('arn:aws:acm:'):
+                          try:
+                              acm = boto3.client('acm')
+                              acm.delete_certificate(CertificateArn=cert_arn)
+                          except Exception as e:
+                              print(f"Failed to delete cert: {e}")
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                      return
+
+                  # Generate self-signed certificate using openssl
+                  with tempfile.TemporaryDirectory() as tmpdir:
+                      key_file = os.path.join(tmpdir, 'key.pem')
+                      cert_file = os.path.join(tmpdir, 'cert.pem')
+
+                      subprocess.run([
+                          'openssl', 'req', '-x509', '-newkey', 'rsa:2048',
+                          '-keyout', key_file, '-out', cert_file,
+                          '-days', '365', '-nodes',
+                          '-subj', f'/CN={domain}',
+                          '-addext', f'subjectAltName=DNS:{domain}'
+                      ], check=True, capture_output=True)
+
+                      with open(cert_file, 'rb') as f:
+                          cert_body = f.read()
+                      with open(key_file, 'rb') as f:
+                          private_key = f.read()
+
+                  # Import into ACM
+                  acm = boto3.client('acm')
+                  response = acm.import_certificate(
+                      Certificate=cert_body,
+                      PrivateKey=private_key,
+                      Tags=[
+                          {'Key': 'Name', 'Value': f'IDP-ALB-SelfSigned-{domain}'},
+                          {'Key': 'ManagedBy', 'Value': 'CloudFormation'},
+                      ]
+                  )
+                  cert_arn = response['CertificateArn']
+
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS,
+                      {'CertificateArn': cert_arn}, cert_arn)
+
+              except Exception as e:
+                  print(f"Error: {e}")
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': str(e)})
+
+  SelfSignedCertificate:
+    Type: Custom::SelfSignedCertificate
+    Properties:
+      ServiceToken: !GetAtt CertificateLambda.Arn
+      Domain: !Ref CertificateDomain
+
+Outputs:
+  VpcId:
+    Description: VPC ID for IDP ALB deployment
+    Value: !Ref VPC
+    Export:
+      Name: !Sub '${AWS::StackName}-VpcId'
+
+  SubnetIds:
+    Description: Comma-separated subnet IDs for IDP ALB deployment
+    Value: !Sub '${PrivateSubnet1},${PrivateSubnet2}'
+    Export:
+      Name: !Sub '${AWS::StackName}-SubnetIds'
+
+  PrivateSubnet1Id:
+    Description: Private Subnet 1 ID
+    Value: !Ref PrivateSubnet1
+
+  PrivateSubnet2Id:
+    Description: Private Subnet 2 ID
+    Value: !Ref PrivateSubnet2
+
+  CertificateArn:
+    Description: ACM Certificate ARN for IDP ALB deployment
+    Value: !GetAtt SelfSignedCertificate.CertificateArn
+    Export:
+      Name: !Sub '${AWS::StackName}-CertificateArn'
+
+  IDPDeployCommand:
+    Description: Command to deploy IDP with ALB using these outputs
+    Value: !Sub >-
+      idp-cli deploy
+      --stack-name IDP-ALB
+      --admin-email siriratk@amazon.com
+      --from-code .
+      --parameters "WebUIHosting=ALB,ALBVpcId=${VPC},ALBSubnetIds=${PrivateSubnet1}\\,${PrivateSubnet2},ALBCertificateArn=${SelfSignedCertificate.CertificateArn},ALBScheme=internal"
+      --wait
