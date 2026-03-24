@@ -1,5 +1,9 @@
 # Deploying with ALB for Private Network (Instead of CloudFront)
 
+> **Scope:** This is the end-to-end runbook for deploying the GenAI IDP Accelerator in a **fully private / enterprise network** environment. It covers all the steps needed to go from a standard deployment to a private-network-compliant one.
+>
+> As additional private network requirements are implemented (e.g., private AppSync API, SSO integration), this document will be expanded. For the technical reference on the ALB hosting feature alone, see [ALB Hosting Guide](./alb-hosting.md).
+
 This guide covers deploying the GenAI IDP Accelerator using an Application Load Balancer (ALB) instead of CloudFront, using the **Publish Templates + Deploy Separately** approach.
 
 > **Note**: For standard deployments, CloudFront hosting (the default) is recommended. Use ALB hosting only when your environment has specific requirements that prevent using CloudFront (e.g., private network requirements, regulated environments, air-gapped VPCs).
