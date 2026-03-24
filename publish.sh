@@ -55,6 +55,7 @@ print_usage() {
   echo "  --clean-build         Delete all .checksum files to force full rebuild"
   echo "  --kms-key-arn ARN     KMS CMK ARN for artifact bucket server-side encryption (req #4)"
   echo "  --enterprise-bucket-policy  Apply SSL-only + account-restricted bucket policy (req #5)"
+  echo "  --tags Key1=Value1,...      Apply tags to the artifact bucket (req #10)"
   echo ""
   echo "Examples:"
   echo "  $0 my-bucket idp us-east-1"
