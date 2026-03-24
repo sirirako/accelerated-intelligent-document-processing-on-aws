@@ -66,6 +66,10 @@ class IDPPublisher:
         self.lint_enabled = True
         self.account_id = None
         self._layer_arns = {}  # Store built layer ARNs for template injection
+        self.kms_key_arn = None  # Optional CMK for artifact bucket SSE-KMS (req #4)
+        self.enterprise_bucket_policy = (
+            False  # Optional SSL+account-only policy (req #5)
+        )
 
     def clean_checksums(self):
         """Delete all .checksum files and Lambda layer caches for full rebuild"""
@@ -392,6 +396,12 @@ STDERR:
         self.console.print(
             "  [yellow][--lint on|off][/yellow]: Optional. Enable/disable UI linting and build validation (default: on)"
         )
+        self.console.print(
+            "  [yellow][--kms-key-arn ARN][/yellow]: Optional. KMS CMK ARN for artifact bucket server-side encryption (req #4)"
+        )
+        self.console.print(
+            "  [yellow][--enterprise-bucket-policy][/yellow]: Optional. Apply SSL-only + account-restricted bucket policy (req #5)"
+        )
 
     def check_parameters(self, args):
         """Check and validate input parameters"""
@@ -470,6 +480,23 @@ STDERR:
                 i += 1  # increment arg counter to avoid parsing "on/off" as an arg of its own
             elif arg == "--clean-build":
                 self.clean_checksums()
+            elif arg == "--kms-key-arn":
+                if i + 1 >= len(remaining_args):
+                    self.console.print(
+                        "[red]Error: --kms-key-arn requires a KMS ARN value[/red]"
+                    )
+                    self.print_usage()
+                    sys.exit(1)
+                self.kms_key_arn = remaining_args[i + 1]
+                self.console.print(
+                    f"[green]Artifact bucket will use KMS CMK: {self.kms_key_arn}[/green]"
+                )
+                i += 1  # Skip the next argument (the ARN)
+            elif arg == "--enterprise-bucket-policy":
+                self.enterprise_bucket_policy = True
+                self.console.print(
+                    "[green]Enterprise bucket policy will be applied (SSL-only + account-restricted)[/green]"
+                )
             else:
                 self.console.print(
                     f"[yellow]Warning: Unknown argument '{arg}' ignored[/yellow]"
@@ -564,8 +591,106 @@ STDERR:
                 return 1
         return 0
 
+    def _apply_kms_encryption(self):
+        """Apply KMS CMK encryption to the artifact bucket (req #4).
+
+        Called when --kms-key-arn is provided. Applies SSE-KMS with the given CMK
+        and enables BucketKeyEnabled to reduce KMS API call costs.
+        No-op when kms_key_arn is not set (default SSE-S3 behaviour is preserved).
+        """
+        if not self.kms_key_arn:
+            return
+        try:
+            self.s3_client.put_bucket_encryption(
+                Bucket=self.bucket,
+                ServerSideEncryptionConfiguration={
+                    "Rules": [
+                        {
+                            "ApplyServerSideEncryptionByDefault": {
+                                "SSEAlgorithm": "aws:kms",
+                                "KMSMasterKeyID": self.kms_key_arn,
+                            },
+                            "BucketKeyEnabled": True,  # reduces KMS API costs
+                        }
+                    ]
+                },
+            )
+            self.console.print(
+                f"[green]✅ Bucket KMS encryption applied (CMK: {self.kms_key_arn})[/green]"
+            )
+        except ClientError as e:
+            self.console.print(
+                f"[red]Failed to apply KMS encryption to bucket: {e}[/red]"
+            )
+            sys.exit(1)
+
+    def _apply_enterprise_bucket_policy(self):
+        """Apply enterprise bucket policy to the artifact bucket (req #5).
+
+        Called when --enterprise-bucket-policy is provided. Adds two Deny statements:
+          - DenyInsecureTransport: rejects all HTTP (non-TLS) requests
+          - DenyExternalAccess: rejects requests from principals outside this AWS account
+
+        This is intentionally optional so that the standard public deployment
+        (aws-ml-blog-* buckets) continues to work without any bucket policy.
+        """
+        if not self.enterprise_bucket_policy:
+            return
+        if not self.account_id:
+            self.console.print(
+                "[red]account_id not available; cannot apply enterprise bucket policy[/red]"
+            )
+            sys.exit(1)
+        try:
+            bucket_policy = {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "DenyInsecureTransport",
+                        "Effect": "Deny",
+                        "Principal": "*",
+                        "Action": "s3:*",
+                        "Resource": [
+                            f"arn:aws:s3:::{self.bucket}",
+                            f"arn:aws:s3:::{self.bucket}/*",
+                        ],
+                        "Condition": {"Bool": {"aws:SecureTransport": "false"}},
+                    },
+                    {
+                        "Sid": "DenyExternalAccess",
+                        "Effect": "Deny",
+                        "Principal": "*",
+                        "Action": "s3:*",
+                        "Resource": [
+                            f"arn:aws:s3:::{self.bucket}",
+                            f"arn:aws:s3:::{self.bucket}/*",
+                        ],
+                        "Condition": {
+                            "StringNotEquals": {"aws:PrincipalAccount": self.account_id}
+                        },
+                    },
+                ],
+            }
+            self.s3_client.put_bucket_policy(
+                Bucket=self.bucket,
+                Policy=json.dumps(bucket_policy),
+            )
+            self.console.print(
+                "[green]✅ Enterprise bucket policy applied (SSL-only + account-restricted)[/green]"
+            )
+        except ClientError as e:
+            self.console.print(
+                f"[red]Failed to apply enterprise bucket policy: {e}[/red]"
+            )
+            sys.exit(1)
+
     def setup_artifacts_bucket(self):
-        """Create bucket if necessary"""
+        """Create bucket if necessary, then apply optional enterprise hardening.
+
+        Enterprise options (both off by default):
+          --kms-key-arn ARN            Apply SSE-KMS with a customer-managed CMK (req #4)
+          --enterprise-bucket-policy   Apply SSL-only + account-only bucket policy (req #5)
+        """
         try:
             self.s3_client.head_bucket(Bucket=self.bucket)
             self.console.print(f"[green]Using existing bucket: {self.bucket}[/green]")
@@ -600,6 +725,10 @@ STDERR:
                 self.console.print("[red]Error accessing bucket:[/red]")
                 self.console.print(str(e), style="red", markup=False)
                 sys.exit(1)
+
+        # Apply optional enterprise hardening (no-op when flags are not set)
+        self._apply_kms_encryption()  # req #4 — SSE-KMS CMK
+        self._apply_enterprise_bucket_policy()  # req #5 — SSL-only + account-restricted policy
 
     def get_file_checksum(self, file_path):
         """Get SHA256 checksum of a file"""
@@ -2702,16 +2831,16 @@ STDERR:
                 raise Exception("Python linting validation failed")
             timing_breakdown["Python linting"] = time.time() - step_start
 
-            # Set up S3 bucket
-            step_start = time.time()
-            self.setup_artifacts_bucket()
-            timing_breakdown["S3 bucket setup"] = time.time() - step_start
-
-            # Get AWS account ID (needed for ECR placeholder)
+            # Get AWS account ID (needed for ECR placeholder and enterprise bucket policy)
             if not self.account_id:
                 if not self.sts_client:
                     self.sts_client = boto3.client("sts", region_name=self.region)
                 self.account_id = self.sts_client.get_caller_identity()["Account"]
+
+            # Set up S3 bucket (account_id must be resolved first for enterprise bucket policy)
+            step_start = time.time()
+            self.setup_artifacts_bucket()
+            timing_breakdown["S3 bucket setup"] = time.time() - step_start
 
             # Perform smart rebuild detection and cache management
             step_start = time.time()
