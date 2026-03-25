@@ -78,9 +78,11 @@ VpcConfig: !If
 
 ---
 
-## Remaining Steps 🔲
+## All Steps Complete ✅
 
-### Step 3 — AppSync VPC Endpoints (in `template.yaml`)
+> All 8 steps are implemented. The sections below are retained as reference documentation.
+
+### Step 3 — AppSync VPC Endpoints — Refactored ✅ (commit 141cd3f8)
 
 Add 2 conditional `AWS::EC2::VPCEndpoint` resources in `LambdaSubnetIds`:
 
@@ -167,108 +169,32 @@ SqsVpcEndpoint:
 > 2. Use Interface endpoints for S3/DynamoDB instead (more expensive but no new parameter)
 > **Recommendation**: Add `LambdaRouteTableIds` parameter (optional, empty default)
 
-### Step 5 — Lambda VpcConfig in `template.yaml`
+### Step 5 — Lambda VpcConfig in `template.yaml` ✅ (commit 7c962a2a)
 
-Add conditional `VpcConfig` to these Lambdas that call AppSync:
-- `QueueSender`
-- `QueueProcessor`
-- `WorkflowTracker`
-- `AgentProcessorFunction`
-- `AgentChatProcessorFunction`
-- `DiscoveryProcessorFunction`
-- `SaveReportingDataFunctionV2` (calls S3/Glue)
+Added VpcConfig to 7 Lambdas: `QueueSender`, `QueueProcessor`, `WorkflowTracker`, `SaveReportingDataFunctionV2`, `AgentChatProcessorFunction`, `AgentProcessorFunction`, `DiscoveryProcessorFunction`.
 
-Pattern:
-```yaml
-VpcConfig:
-  !If
-    - UsePrivateAppSync
-    - SubnetIds: !Ref LambdaSubnetIds
-      SecurityGroupIds:
-        - !Ref LambdaVpcSecurityGroup
-    - !Ref AWS::NoValue
-```
+### Step 6 — Update `nested/appsync/template.yaml` ✅ (commit 6997cddc)
 
-Also **remove** `W89`/`CKV_AWS_117` suppression comments from these Lambdas (since they'll be in VPC when private mode is active).
+Added `UsePrivateAppSync`, `LambdaSubnetIds`, `LambdaSecurityGroupId` params + `IsPrivateAppSync` condition + VpcConfig to 4 resolver Lambdas: `AbortWorkflowResolverFunction`, `CopyToBaselineResolverFunction`, `ProcessChangesResolverFunction`, `ReprocessDocumentResolverFunction`.
 
-### Step 6 — Update `nested/appsync/template.yaml`
+### Step 7 — Update `patterns/unified/template.yaml` ✅ (commit 68c853e7)
 
-Pass new parameters from main stack:
+Added `UsePrivateAppSync`, `LambdaSubnetIds`, `LambdaSecurityGroupId` params + `IsPrivateAppSync` condition + VpcConfig to 10 processing Lambdas:
+`BDAProcessResultsFunction`, `OCRFunction`, `ClassificationFunction`, `ExtractionFunction`, `AssessmentFunction`, `ProcessResultsFunction`, `SummarizationFunction`, `EvaluationFunction`, `RuleValidationFunction`, `RuleValidationOrchestrationFunction`.
 
-```yaml
-# Add to Parameters section in nested/appsync/template.yaml
-UsePrivateAppSync:
-  Type: String
-  Default: "false"
-  AllowedValues: ["true", "false"]
+### Step 8 — Update `docs/deployment-private-network.md` ✅ (commit 7220d9b9)
 
-LambdaSubnetIds:
-  Type: CommaDelimitedList
-  Default: ""
-
-LambdaSecurityGroupId:
-  Type: String
-  Default: ""
-```
-
-Add condition:
-```yaml
-IsPrivateAppSync: !Equals [!Ref UsePrivateAppSync, "true"]
-```
-
-Add `VpcConfig` to these Lambdas:
-- `AbortWorkflowResolverFunction`
-- `CopyToBaselineResolverFunction`
-- `ProcessChangesResolverFunction`
-- `ReprocessDocumentResolverFunction`
-
-Pass params in `APPSYNCSTACK` resource in `template.yaml`:
-```yaml
-UsePrivateAppSync: !If [UsePrivateAppSync, "true", "false"]
-LambdaSubnetIds: !Join [",", !Ref LambdaSubnetIds]
-LambdaSecurityGroupId: !If [UsePrivateAppSync, !Ref LambdaVpcSecurityGroup, ""]
-```
-
-### Step 7 — Update `patterns/unified/template.yaml`
-
-Pass new parameters and add `VpcConfig` to all ~9 container functions that use `APPSYNC_API_URL`:
-- `bda-invoke-function`
-- `bda-processresults-function`
-- `bda-completion-function`
-- `ocr-function`
-- `classification-function`
-- `extraction-function`
-- `assessment-function`
-- `processresults-function`
-- `summarization-function`
-
-### Step 8 — Update `docs/deployment-private-network.md`
-
-Add a new section explaining `AppSyncVisibility=PRIVATE` parameters and usage.
+Added "Private AppSync API (`AppSyncVisibility=PRIVATE`)" section with full two-step deployment runbook, VPC endpoint details, and test VPC commands.
 
 ---
 
-## Full Deployment Command (when complete)
+## Full Deployment Command
 
-```bash
-aws cloudformation create-stack \
-  --stack-name IDP-PRIVATE \
-  --template-url https://s3.us-east-1.amazonaws.com/idp-<account-id>-us-east-1/idp/idp-main.yaml \
-  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-  --parameters \
-    ParameterKey=AdminEmail,ParameterValue=siriratk@amazon.com \
-    ParameterKey=WebUIHosting,ParameterValue=ALB \
-    ParameterKey=ALBVpcId,ParameterValue=vpc-xxxxx \
-    'ParameterKey=ALBSubnetIds,ParameterValue=subnet-pub1\,subnet-pub2' \
-    ParameterKey=ALBCertificateArn,ParameterValue=arn:aws:acm:... \
-    ParameterKey=ALBScheme,ParameterValue=internal \
-    ParameterKey=AppSyncVisibility,ParameterValue=PRIVATE \
-    'ParameterKey=LambdaSubnetIds,ParameterValue=subnet-priv1\,subnet-priv2'
-```
+See [deployment-private-network.md — Private AppSync API section](./deployment-private-network.md#private-appsync-api-appsynvisibilityprivate) for complete deploy commands.
 
 ## Test VPC
-Already deployed as `IDP-ALB-TestVPC` stack with:
+Pre-deployed as `IDP-ALB-TestVPC` stack with:
 - VPC: `vpc-0f42ddb124c806ba1`
 - Public/ALB subnets: `subnet-0ae7c007a67c0a483`, `subnet-00b39e8345d9f0ff2`
 - Use same subnets for Lambda in testing (no separate private subnets in test VPC)
-- Cert: `arn:aws:acm:us-east-1:<account-id>:certificate/<cert-id>`
+- Cert: see `IDP-ALB-TestVPC` stack output `CertificateArn`

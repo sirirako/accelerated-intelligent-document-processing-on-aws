@@ -118,7 +118,7 @@ python publish.py <cfn_bucket_basename> <cfn_prefix> <region>
 **Example:**
 
 ```bash
-python publish.py idp-549366490058 idp us-east-1
+python publish.py idp-<account-id> idp us-east-1
 ```
 
 > **macOS note**: Use `python` (conda/venv) instead of `python3` (system Python 3.9) to ensure boto3 and other dependencies are available.
@@ -139,7 +139,7 @@ When complete, the script outputs:
 If the build fails, use the `--verbose` flag for debugging:
 
 ```bash
-python publish.py idp-549366490058 idp us-east-1 --verbose
+python publish.py idp-<account-id> idp us-east-1 --verbose
 ```
 
 ---
@@ -307,3 +307,144 @@ You can switch an existing CloudFront-hosted stack to ALB hosting (or vice versa
 ---
 
 For full details, see [ALB Hosting Guide](./alb-hosting.md) and [Deployment Guide](./deployment.md).
+
+---
+
+## Private AppSync API (`AppSyncVisibility=PRIVATE`)
+
+By default the AppSync GraphQL API is internet-facing (`GLOBAL`). For regulated or air-gapped environments you can make it **VPC-private** so it is only reachable from within the VPC.
+
+> **When to use**: Private AppSync mode is for deployments where the AppSync endpoint must never be reachable from the public internet. It is typically combined with `WebUIHosting=ALB` and an internal ALB scheme.
+
+### How it works
+
+```
+VPC
+├── Public/ALB Subnets  ─── ALB (WebUI)
+└── Lambda Subnets      ─── Lambda functions ──▶ VPC Interface Endpoints ──▶ AppSync / Bedrock / DynamoDB / …
+```
+
+All Lambda functions (queue workers, processing pipeline, resolver Lambdas) are placed in your private subnets. They communicate with AppSync and all other AWS services exclusively through **VPC Interface Endpoints** — no traffic leaves the AWS backbone.
+
+### New parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `AppSyncVisibility` | `GLOBAL` \| `PRIVATE` | No (default: `GLOBAL`) | Set to `PRIVATE` to restrict the AppSync API to VPC-only access |
+| `LambdaSubnetIds` | CommaDelimitedList | Yes (when `PRIVATE`) | Private subnet IDs for all Lambda functions |
+
+> **Note**: `AppSyncVisibility` is **immutable** after the AppSync API is created. To change it you must delete and recreate the stack.
+
+### Two-step deployment
+
+Private AppSync requires two CFN stacks — one owned by the application team, one by the networking team.
+
+#### Step 1 — Deploy the IDP stack (app team)
+
+```bash
+aws cloudformation create-stack \
+  --stack-name IDP-PRIVATE \
+  --template-url https://s3.us-east-1.amazonaws.com/<ARTIFACT_BUCKET>/<PREFIX>/idp-main.yaml \
+  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+  --parameters \
+    ParameterKey=AdminEmail,ParameterValue=admin@example.com \
+    ParameterKey=WebUIHosting,ParameterValue=ALB \
+    ParameterKey=ALBVpcId,ParameterValue=vpc-xxxxx \
+    'ParameterKey=ALBSubnetIds,ParameterValue=subnet-pub1\,subnet-pub2' \
+    ParameterKey=ALBCertificateArn,ParameterValue=arn:aws:acm:us-east-1:... \
+    ParameterKey=ALBScheme,ParameterValue=internal \
+    ParameterKey=AppSyncVisibility,ParameterValue=PRIVATE \
+    'ParameterKey=LambdaSubnetIds,ParameterValue=subnet-priv1\,subnet-priv2'
+```
+
+> **Tip**: `ALBSubnetIds` (for the ALB) and `LambdaSubnetIds` (for Lambda) can be the same subnets if you don't have separate private subnets, or different subnets for stricter isolation.
+
+#### Step 2 — Get the Lambda Security Group output
+
+Once the IDP stack is `CREATE_COMPLETE`, retrieve the Lambda SG ID needed by the networking team:
+
+```bash
+aws cloudformation describe-stacks \
+  --stack-name IDP-PRIVATE \
+  --query "Stacks[0].Outputs[?OutputKey=='LambdaVpcSecurityGroupId'].OutputValue" \
+  --output text
+```
+
+#### Step 3 — Deploy VPC endpoints (networking team)
+
+The networking team deploys `scripts/vpc-endpoints.yaml` which creates 12 Interface endpoints + 2 Gateway endpoints in your VPC:
+
+```bash
+aws cloudformation deploy \
+  --stack-name IDP-PRIVATE-VPCEndpoints \
+  --template-file scripts/vpc-endpoints.yaml \
+  --capabilities CAPABILITY_IAM \
+  --parameter-overrides \
+    IDPStackName=IDP-PRIVATE \
+    VpcId=vpc-xxxxx \
+    SubnetIds=subnet-priv1,subnet-priv2 \
+    LambdaSecurityGroupId=<SG-FROM-STEP-2>
+```
+
+The VPC endpoints template creates:
+- **Interface endpoints** (HTTPS, PrivateDNS enabled): `appsync-api`, `appsync`, `sqs`, `states`, `kms`, `logs`, `bedrock-runtime`, `ssm`, `secretsmanager`, `lambda`, `events`, `athena`
+- **Gateway endpoints** (free): `s3`, `dynamodb`
+
+---
+
+### Test VPC reference values
+
+The following test VPC is pre-configured for private AppSync testing:
+
+| Resource | Value |
+|----------|-------|
+| VPC ID | `vpc-0f42ddb124c806ba1` |
+| ALB Subnets | `subnet-0ae7c007a67c0a483`, `subnet-00b39e8345d9f0ff2` |
+| Lambda Subnets | Same as ALB subnets (simplified test setup) |
+| ACM Certificate | See `IDP-ALB-TestVPC` stack output `CertificateArn` |
+
+Full deploy command for the test VPC (replace `<CERT_ARN>` with the value from `IDP-ALB-TestVPC` stack outputs):
+
+```bash
+# Get test VPC outputs first
+aws cloudformation describe-stacks \
+  --stack-name IDP-ALB-TestVPC \
+  --query 'Stacks[0].Outputs[*].{Key:OutputKey,Value:OutputValue}' \
+  --output table
+
+# Deploy IDP stack (replace <CERT_ARN> with CertificateArn from above)
+aws cloudformation create-stack \
+  --stack-name IDP-PRIVATE \
+  --template-url https://s3.us-east-1.amazonaws.com/<ARTIFACT_BUCKET>/idp/idp-main.yaml \
+  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+  --parameters \
+    ParameterKey=AdminEmail,ParameterValue=admin@example.com \
+    ParameterKey=WebUIHosting,ParameterValue=ALB \
+    ParameterKey=ALBVpcId,ParameterValue=vpc-0f42ddb124c806ba1 \
+    'ParameterKey=ALBSubnetIds,ParameterValue=subnet-0ae7c007a67c0a483\,subnet-00b39e8345d9f0ff2' \
+    ParameterKey=ALBCertificateArn,ParameterValue=<CERT_ARN> \
+    ParameterKey=ALBScheme,ParameterValue=internal \
+    ParameterKey=AppSyncVisibility,ParameterValue=PRIVATE \
+    'ParameterKey=LambdaSubnetIds,ParameterValue=subnet-0ae7c007a67c0a483\,subnet-00b39e8345d9f0ff2'
+```
+
+Then deploy VPC endpoints after stack is complete:
+
+```bash
+# Get Lambda SG ID
+LAMBDA_SG=$(aws cloudformation describe-stacks \
+  --stack-name IDP-PRIVATE \
+  --query "Stacks[0].Outputs[?OutputKey=='LambdaVpcSecurityGroupId'].OutputValue" \
+  --output text)
+
+# Deploy networking stack
+aws cloudformation deploy \
+  --stack-name IDP-PRIVATE-VPCEndpoints \
+  --template-file scripts/vpc-endpoints.yaml \
+  --capabilities CAPABILITY_IAM \
+  --parameter-overrides \
+    IDPStackName=IDP-PRIVATE \
+    VpcId=vpc-0f42ddb124c806ba1 \
+    SubnetIds=subnet-0ae7c007a67c0a483,subnet-00b39e8345d9f0ff2 \
+    LambdaSecurityGroupId=$LAMBDA_SG
+```
