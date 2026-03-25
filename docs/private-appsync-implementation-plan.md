@@ -36,6 +36,33 @@ UsePrivateAppSync: !Equals [ !Ref AppSyncVisibility, "PRIVATE" ]
 - `Visibility: !If [UsePrivateAppSync, PRIVATE, GLOBAL]` on `GraphQLApi`
 - `LambdaVpcSecurityGroup` (conditional `AWS::EC2::SecurityGroup` in `ALBVpcId`, allows HTTPS egress only)
 
+### Step 3 + 4 — VPC Endpoints + new param/condition (commit 86ab955f)
+- `AppSyncApiVpcEndpoint` + `AppSyncControlVpcEndpoint` (Interface, `UsePrivateAppSync`)
+- Service Interface endpoints: `SqsVpcEndpoint`, `StatesVpcEndpoint`, `KmsVpcEndpoint`, `CloudWatchLogsVpcEndpoint`, `BedrockRuntimeVpcEndpoint`, `SsmVpcEndpoint`, `SecretsManagerVpcEndpoint`, `LambdaVpcEndpoint`, `EventsVpcEndpoint`, `AthenaVpcEndpoint`
+- Gateway endpoints: `S3VpcEndpoint`, `DynamoDbVpcEndpoint` (conditional on `UsePrivateAppSyncWithRouteTables`)
+- `LambdaRouteTableIds` parameter (CommaDelimitedList, default `""`)
+- `UsePrivateAppSyncWithRouteTables` condition: `!And [PRIVATE, !Not [RouteTableIds empty]]`
+
+### Step 5 — Lambda VpcConfig in `template.yaml` (commit 7c962a2a)
+Added conditional `VpcConfig` to all 7 Lambdas that call AppSync:
+- `QueueSender` — after `Tracing: Active`, before `DeadLetterQueue`
+- `QueueProcessor` — after `Tracing: Active`, before `LoggingConfig`
+- `WorkflowTracker` — after `Tracing: Active`, before `DeadLetterQueue`
+- `SaveReportingDataFunctionV2` — after `Tracing: Active`, before `LoggingConfig`
+- `AgentChatProcessorFunction` — after `MemorySize: 1024 # Increase memory...`, before `Environment`
+- `AgentProcessorFunction` — after `MemorySize: 1024`, before `Environment`
+- `DiscoveryProcessorFunction` — after `Layers: IDPCommonBaseLayer`, before `Environment`
+
+Pattern used (identical for all 7):
+```yaml
+VpcConfig: !If
+  - UsePrivateAppSync
+  - SubnetIds: !Ref LambdaSubnetIds
+    SecurityGroupIds:
+      - !Ref LambdaVpcSecurityGroup
+  - !Ref AWS::NoValue
+```
+
 ---
 
 ## Remaining Steps 🔲
