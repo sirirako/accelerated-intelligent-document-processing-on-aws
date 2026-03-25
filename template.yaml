@@ -5935,10 +5935,6 @@ Resources:
   GraphQLApi:
     Type: AWS::AppSync::GraphQLApi
     # checkov:skip=CKV_AWS_194: AppSync has Field-Level logging is determined by LogLevel parameter
-    # Visibility is immutable — changing it requires replacing the API.
-    # UpdateReplacePolicy: Retain keeps the old API so dependent resources are
-    # cleanly migrated to the new one by CloudFormation during stack update.
-    UpdateReplacePolicy: Retain
     Properties:
       Name: !Sub ${AWS::StackName}-api
       Visibility: !If [UsePrivateAppSync, PRIVATE, GLOBAL]
