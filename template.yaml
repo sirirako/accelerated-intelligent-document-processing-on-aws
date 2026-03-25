@@ -3706,6 +3706,12 @@ Resources:
       Layers:
         - !Ref IDPCommonBaseLayer
       Tracing: Active
+      VpcConfig: !If
+        - UsePrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaVpcSecurityGroup
+        - !Ref AWS::NoValue
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt QueueSenderDLQ.Arn
@@ -3788,6 +3794,12 @@ Resources:
       Layers:
         - !Ref IDPCommonBaseLayer
       Tracing: Active
+      VpcConfig: !If
+        - UsePrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaVpcSecurityGroup
+        - !Ref AWS::NoValue
       LoggingConfig:
         LogGroup: !Ref QueueProcessorLogGroup
       Environment:
@@ -3904,6 +3916,12 @@ Resources:
       Layers:
         - !Ref IDPCommonBaseLayer
       Tracing: Active
+      VpcConfig: !If
+        - UsePrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaVpcSecurityGroup
+        - !Ref AWS::NoValue
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt WorkflowTrackerDLQ.Arn
@@ -4150,6 +4168,12 @@ Resources:
         - !Ref IDPCommonReportingLayer
       MemorySize: 1024
       Tracing: Active
+      VpcConfig: !If
+        - UsePrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaVpcSecurityGroup
+        - !Ref AWS::NoValue
       LoggingConfig:
         LogGroup: !Ref SaveReportingDataFunctionV2LogGroup
       Policies:
@@ -4826,6 +4850,12 @@ Resources:
       Layers:
         - !Ref IDPCommonAgentsLayer
       MemorySize: 1024 # Increase memory for agents with MCP clients and streaming
+      VpcConfig: !If
+        - UsePrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaVpcSecurityGroup
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
@@ -5284,6 +5314,12 @@ Resources:
       Layers:
         - !Ref IDPCommonAgentsLayer
       MemorySize: 1024
+      VpcConfig: !If
+        - UsePrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaVpcSecurityGroup
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
@@ -6744,6 +6780,12 @@ Resources:
 
       Layers:
         - !Ref IDPCommonBaseLayer
+      VpcConfig: !If
+        - UsePrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaVpcSecurityGroup
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
