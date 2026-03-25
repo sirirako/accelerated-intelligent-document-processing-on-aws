@@ -62,9 +62,19 @@ Parameters:
     Default: "private"
     Description: Value for the Environment tag applied to all resources.
 
+  CreateSsmEndpoint:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Set to "false" if an SSM Interface VPC endpoint already exists in the VPC
+      (e.g. pre-created for EC2 SSM access). Creating a duplicate causes a DNS
+      conflict and will fail the stack. Default is "true" (create the endpoint).
+
 Conditions:
   CreateGatewayEndpoints: !Not
     - !Equals [ !Join [ "", !Ref RouteTableIds ], "" ]
+  ShouldCreateSsmEndpoint: !Equals [ !Ref CreateSsmEndpoint, "true" ]
 
 Resources:
 
@@ -232,6 +242,7 @@ Resources:
 
   SsmVpcEndpoint:
     Type: AWS::EC2::VPCEndpoint
+    Condition: ShouldCreateSsmEndpoint
     Properties:
       VpcId: !Ref VpcId
       ServiceName: !Sub "com.amazonaws.${AWS::Region}.ssm"
