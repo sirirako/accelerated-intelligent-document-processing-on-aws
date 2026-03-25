@@ -36,12 +36,25 @@ UsePrivateAppSync: !Equals [ !Ref AppSyncVisibility, "PRIVATE" ]
 - `Visibility: !If [UsePrivateAppSync, PRIVATE, GLOBAL]` on `GraphQLApi`
 - `LambdaVpcSecurityGroup` (conditional `AWS::EC2::SecurityGroup` in `ALBVpcId`, allows HTTPS egress only)
 
-### Step 3 + 4 — VPC Endpoints + new param/condition (commit 86ab955f)
-- `AppSyncApiVpcEndpoint` + `AppSyncControlVpcEndpoint` (Interface, `UsePrivateAppSync`)
-- Service Interface endpoints: `SqsVpcEndpoint`, `StatesVpcEndpoint`, `KmsVpcEndpoint`, `CloudWatchLogsVpcEndpoint`, `BedrockRuntimeVpcEndpoint`, `SsmVpcEndpoint`, `SecretsManagerVpcEndpoint`, `LambdaVpcEndpoint`, `EventsVpcEndpoint`, `AthenaVpcEndpoint`
-- Gateway endpoints: `S3VpcEndpoint`, `DynamoDbVpcEndpoint` (conditional on `UsePrivateAppSyncWithRouteTables`)
-- `LambdaRouteTableIds` parameter (CommaDelimitedList, default `""`)
-- `UsePrivateAppSyncWithRouteTables` condition: `!And [PRIVATE, !Not [RouteTableIds empty]]`
+### Step 3 + 4 — VPC Endpoints (commits 86ab955f → refactored in 141cd3f8)
+
+**Original**: Added 12 Interface + 2 Gateway VPC endpoints directly in `template.yaml`.
+
+**Refactored** (commit `141cd3f8`) per enterprise networking separation:
+- **Removed** all VPC endpoint resources from `template.yaml` (app team owns application, not networking)
+- **Removed** `LambdaRouteTableIds` parameter and `UsePrivateAppSyncWithRouteTables` condition
+- **Added** `LambdaVpcSecurityGroupId` Output to `template.yaml` — networking team uses this as input
+- **Created** `scripts/vpc-endpoints.yaml` — standalone CFN template owned by the networking team:
+  - Parameters: `VpcId`, `SubnetIds`, `LambdaSecurityGroupId` (from IDP Output), optional `RouteTableIds`
+  - Creates `VpcEndpointSecurityGroup` (inbound 443 from Lambda SG)
+  - 12 Interface endpoints: AppSync API + control, SQS, Step Functions, KMS, CloudWatch Logs, Bedrock Runtime, SSM, Secrets Manager, Lambda, EventBridge, Athena
+  - 2 Gateway endpoints (optional, free): S3, DynamoDB
+  - All resources tagged with `IDPStack` and `Environment`
+
+**Deploy order**:
+1. App team: `aws cloudformation deploy --template-file template.yaml ... --parameter-overrides AppSyncVisibility=PRIVATE LambdaSubnetIds=...`
+2. Get SG: `aws cloudformation describe-stacks --stack-name <NAME> --query "Stacks[0].Outputs[?OutputKey=='LambdaVpcSecurityGroupId'].OutputValue" --output text`
+3. Networking team: `aws cloudformation deploy --template-file scripts/vpc-endpoints.yaml ... --parameter-overrides IDPStackName=<NAME> VpcId=<VPC> SubnetIds=<SUBNETS> LambdaSecurityGroupId=<SG>`
 
 ### Step 5 — Lambda VpcConfig in `template.yaml` (commit 7c962a2a)
 Added conditional `VpcConfig` to all 7 Lambdas that call AppSync:
