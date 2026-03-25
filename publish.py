@@ -625,6 +625,21 @@ STDERR:
         Called when --kms-key-arn is provided. Applies SSE-KMS with the given CMK
         and enables BucketKeyEnabled to reduce KMS API call costs.
         No-op when kms_key_arn is not set (default SSE-S3 behaviour is preserved).
+
+        ⚠️  CRITICAL WARNING — Key lifecycle:
+        Once applied, ALL objects in the bucket (templates, Lambda zips, layers)
+        are encrypted with this CMK. If the key is disabled or deleted, ALL S3
+        objects become inaccessible, blocking ALL future stack deployments.
+
+        NEVER use a KMS key that belongs to a CloudFormation stack you may delete.
+        When CFN deletes a stack it also deletes the CustomerManagedEncryptionKey
+        resource, scheduling the key for deletion and immediately blocking access
+        to all objects encrypted with it.
+
+        Use a DEDICATED, standalone KMS key managed outside of any deployable stack.
+        To recover from accidental key deletion:
+            aws kms cancel-key-deletion --key-id <key-id>
+            aws kms enable-key --key-id <key-id>
         """
         if not self.kms_key_arn:
             return
