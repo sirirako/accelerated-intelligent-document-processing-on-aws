@@ -1,9 +1,10 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   Test VPC for IDP ALB Hosting - Simulates a customer's private network with
-  2 private subnets for the ALB (different AZs) and 1 additional Lambda subnet
-  (separate from ALB subnets, for testing private AppSync VPC config).
-  Includes a self-signed ACM certificate via Lambda custom resource.
+  2 private subnets for the ALB (different AZs), 1 additional Lambda subnet
+  (for testing private AppSync VPC config), a standalone KMS CMK for artifact
+  bucket encryption (req #4), and a self-signed ACM certificate.
+  The KMS key has DeletionPolicy=Retain so it survives stack deletion.
 
 Parameters:
   VpcCidr:
@@ -114,6 +115,47 @@ Resources:
     Properties:
       SubnetId: !Ref LambdaSubnet
       RouteTableId: !Ref PrivateRouteTable
+
+  #############################################
+  # KMS CMK for artifact bucket encryption (req #4)
+  # Managed by THIS stack (not the IDP stack) so that
+  # deleting the IDP stack never schedules this key for deletion.
+  #############################################
+  ArtifactBucketKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Sub 'CMK for IDP artifact bucket encryption — managed by ${AWS::StackName}'
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowAccountRootFullControl
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: AllowS3ServiceUse
+            Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action:
+              - kms:GenerateDataKey
+              - kms:Decrypt
+            Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-ArtifactBucketKey'
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  ArtifactBucketKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${AWS::StackName}-artifact-bucket-key'
+      TargetKeyId: !Ref ArtifactBucketKey
 
   #############################################
   # Self-Signed Certificate via Custom Resource
@@ -244,6 +286,19 @@ Outputs:
     Value: !Ref LambdaSubnet
     Export:
       Name: !Sub '${AWS::StackName}-LambdaSubnetId'
+
+  ArtifactBucketKeyArn:
+    Description: >
+      KMS CMK ARN for artifact bucket encryption — pass as --kms-key-arn
+      to publish.py/publish.sh. This key is managed by this stack (NOT the
+      IDP stack), so deleting the IDP stack will NOT delete this key.
+    Value: !GetAtt ArtifactBucketKey.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ArtifactBucketKeyArn'
+
+  ArtifactBucketKeyAlias:
+    Description: KMS CMK alias for artifact bucket encryption
+    Value: !Sub 'alias/${AWS::StackName}-artifact-bucket-key'
 
   CertificateArn:
     Description: ACM Certificate ARN for IDP ALB deployment
