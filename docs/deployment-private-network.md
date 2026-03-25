@@ -12,25 +12,7 @@ This guide covers deploying the GenAI IDP Accelerator using an Application Load 
 
 ### 1. Build Tools
 
-- bash shell (Linux, macOS, Windows-WSL)
-- AWS CLI (`aws`)
-- [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html) — install via Homebrew on macOS:
-  ```bash
-  brew tap aws/tap && brew install aws-sam-cli
-  sam --version  # verify: SAM CLI, version 1.x
-  ```
-- Python 3.12 or later with required packages:
-  ```bash
-  pip install boto3 rich typer PyYAML botocore setuptools ruff build cfn-lint
-  ```
-  > **macOS tip**: Use your conda or virtual environment Python, not `/usr/bin/python3` (system Python 3.9 on macOS lacks packages). Use `python` or the full path e.g. `/opt/anaconda3/bin/python`.
-- Docker (must be running during publish)
-- **Node.js 22.12+ and npm 10+** — required for UI build. Install via Homebrew on macOS:
-  ```bash
-  brew install node@22
-  export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
-  node --version  # verify: v22.x
-  ```
+See [Deployment Guide → Dependencies](./deployment.md#dependencies) for the full list of required build tools and installation instructions (AWS CLI, SAM CLI, Python 3.12+, Docker, Node.js 22+).
 
 ### 2. VPC Requirements
 
