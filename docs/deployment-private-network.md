@@ -448,3 +448,38 @@ aws cloudformation deploy \
     SubnetIds=subnet-0ae7c007a67c0a483,subnet-00b39e8345d9f0ff2 \
     LambdaSecurityGroupId=$LAMBDA_SG
 ```
+
+---
+
+## Disabling Internet-Facing Features for Private Deployments
+
+When deploying in a fully private/air-gapped environment, disable features that require outbound internet connectivity or public AWS service endpoints:
+
+| Parameter | Value | Why |
+|-----------|-------|-----|
+| `EnableMCP` | `'false'` | Disables AWS Bedrock AgentCore Gateway integration (external MCP agents require public endpoint) |
+| `DocumentKnowledgeBase` | `"DISABLED"` | Disables Bedrock Knowledge Base creation (avoids S3 Vector Store or OpenSearch Serverless which may require additional VPC endpoints) |
+
+> **Code Intelligence** is already disabled by default and requires no parameter change.
+
+### Adding to the deploy command
+
+Include these additional parameters when deploying with `AppSyncVisibility=PRIVATE`:
+
+```bash
+aws cloudformation create-stack \
+  --stack-name IDP-PRIVATE \
+  --template-url https://s3.us-east-1.amazonaws.com/<ARTIFACT_BUCKET>/idp/idp-main.yaml \
+  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+  --parameters \
+    ParameterKey=AdminEmail,ParameterValue=admin@example.com \
+    ParameterKey=WebUIHosting,ParameterValue=ALB \
+    ParameterKey=ALBVpcId,ParameterValue=vpc-xxxxx \
+    'ParameterKey=ALBSubnetIds,ParameterValue=subnet-pub1\,subnet-pub2' \
+    ParameterKey=ALBCertificateArn,ParameterValue=<CERT_ARN> \
+    ParameterKey=ALBScheme,ParameterValue=internal \
+    ParameterKey=AppSyncVisibility,ParameterValue=PRIVATE \
+    'ParameterKey=LambdaSubnetIds,ParameterValue=subnet-priv1\,subnet-priv2' \
+    ParameterKey=EnableMCP,ParameterValue=false \
+    ParameterKey=DocumentKnowledgeBase,ParameterValue=DISABLED
+```
