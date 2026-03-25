@@ -15,6 +15,11 @@ SPDX-License-Identifier: MIT-0
   - New `--template-file` option on `idp-cli deploy` for deploying from a local CloudFormation template file produced by a previous `idp-cli publish`.
   - `idp-cli deploy --headless` (without `--from-code`) now downloads the published template, transforms to headless with GovCloud config defaults, uploads to S3, and deploys — all in one command.
 
+### Fixed
+
+- **Evaluation schema error for free-form objects** — Stickler mapper now detects and skips unevaluable object schemas (e.g., objects with `additionalProperties` but no defined `properties`, and arrays of such objects) instead of raising validation errors.
+
+
 ## [0.5.3]
 
 ### Added
