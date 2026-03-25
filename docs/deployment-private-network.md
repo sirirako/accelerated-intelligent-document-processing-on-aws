@@ -1,12 +1,15 @@
-# Deploying with ALB for Private Network (Instead of CloudFront)
+# Deploying IDP in a Private Network
 
-> **Scope:** This is the end-to-end runbook for deploying the GenAI IDP Accelerator in a **fully private / enterprise network** environment. It covers all the steps needed to go from a standard deployment to a private-network-compliant one.
->
-> As additional private network requirements are implemented (e.g., private AppSync API, SSO integration), this document will be expanded. For the technical reference on the ALB hosting feature alone, see [ALB Hosting Guide](./alb-hosting.md).
+This runbook deploys the GenAI IDP Accelerator in a **fully private / air-gapped environment**:
 
-This guide covers deploying the GenAI IDP Accelerator using an Application Load Balancer (ALB) instead of CloudFront, using the **Publish Templates + Deploy Separately** approach.
+- Web UI served via an **internal ALB** (no CloudFront)
+- AppSync API accessible **only from inside the VPC** (no public endpoint)
+- All Lambda → AWS service traffic routed through **VPC Interface Endpoints**
+- Internet-facing features (MCP Gateway, Knowledge Base) **disabled**
 
-> **Note**: For standard deployments, CloudFront hosting (the default) is recommended. Use ALB hosting only when your environment has specific requirements that prevent using CloudFront (e.g., private network requirements, regulated environments, air-gapped VPCs).
+> For standard public deployments, see [Deployment Guide](./deployment.md).
+
+---
 
 ## Prerequisites
 
@@ -16,250 +19,240 @@ See [Deployment Guide → Dependencies](./deployment.md#dependencies) for the fu
 
 ### 2. VPC Requirements
 
-You need an existing VPC with the following:
+You need an existing VPC with:
 
 - **At least 2 subnets in different Availability Zones** — required by ALB
-  - **Private subnets** (recommended for internal ALBs)
-  - **Public subnets** (for internet-facing ALBs)
-- **DNS resolution enabled** — the VPC must have `enableDnsSupport` and `enableDnsHostnames` set to `true`
-- **Sufficient IP space** — the S3 VPC Interface Endpoint creates ENIs in each subnet
+- **DNS resolution enabled** — `enableDnsSupport` and `enableDnsHostnames` must be `true`
+- **Subnet IDs** for the ALB (can be the same or different from Lambda subnets)
 
-> **Don't have a VPC?** Use the provided CloudFormation template to create a test VPC with 2 private subnets and a self-signed ACM certificate in one step — see [Creating a Test VPC](#optional-creating-a-test-vpc-via-cloudformation) below.
+> **Don't have a VPC?** Use the provided template to create one:
+> ```bash
+> aws cloudformation deploy \
+>   --stack-name IDP-TestVPC \
+>   --template-file scripts/alb-test-vpc.yaml \
+>   --capabilities CAPABILITY_IAM \
+>   --region us-east-1
+>
+> # Get outputs (VpcId, SubnetIds, CertificateArn)
+> aws cloudformation describe-stacks \
+>   --stack-name IDP-TestVPC \
+>   --query 'Stacks[0].Outputs[*].{Key:OutputKey,Value:OutputValue}' \
+>   --output table
+> ```
 
 ### 3. ACM Certificate
 
-An ACM certificate is required for the ALB HTTPS listener. Options:
+An ACM certificate is required for the ALB HTTPS listener:
 
-- **ACM-issued certificate** (recommended for production) — request via ACM with DNS or email validation
-- **Imported certificate** — import your organization's CA-signed certificate into ACM
-- **Self-signed certificate** (for testing only):
-
-```bash
-# Generate and import a self-signed certificate
-CERT_ARN=$(./scripts/generate_self_signed_cert.sh --region us-east-1 --domain myapp.internal)
-echo "Certificate ARN: $CERT_ARN"
-
-# Options:
-#   --region   AWS region for ACM import (default: from AWS config)
-#   --domain   Domain name for the certificate CN/SAN (default: self-signed.internal)
-#   --days     Certificate validity in days (default: 365)
-```
+- **ACM-issued** (production): request via ACM console with DNS/email validation
+- **Imported**: import your organization's CA-signed cert into ACM
+- **Self-signed** (testing only):
+  ```bash
+  CERT_ARN=$(./scripts/generate_self_signed_cert.sh --region us-east-1 --domain myapp.internal)
+  ```
 
 ### 4. Network Connectivity
 
-Users must be able to reach the ALB:
-
-- **Internal ALB**: Users need VPN, Direct Connect, or access from within the VPC (e.g., WorkSpaces, Cloud9, SSM port forwarding)
-- **Internet-facing ALB**: Users can access directly, but the ALB security group controls which source IPs are allowed
+Users must reach the internal ALB via VPN, Direct Connect, WorkSpaces, or SSM port forwarding.
 
 ---
 
-## Optional: Creating a Test VPC via CloudFormation
+## Step 1: Build and Publish Artifacts
 
-If you don't have a VPC yet, use the provided template to create one with 2 private subnets and a self-signed ACM certificate:
-
-```bash
-aws cloudformation deploy \
-  --stack-name IDP-ALB-TestVPC \
-  --template-file scripts/alb-test-vpc.yaml \
-  --capabilities CAPABILITY_IAM \
-  --region us-east-1
-```
-
-When complete, get the outputs to use in the IDP deployment:
-
-```bash
-aws cloudformation describe-stacks \
-  --stack-name IDP-ALB-TestVPC \
-  --region us-east-1 \
-  --query 'Stacks[0].Outputs[*].{Key:OutputKey,Value:OutputValue}' \
-  --output table
-```
-
-The stack outputs `VpcId`, `SubnetIds`, `CertificateArn`, and a ready-to-use `IDPDeployCommand`.
-
----
-
-## Step 1: Build and Publish with publish.py
-
-> **Important**: Make sure Node.js 22.12+ is in your PATH before running publish.py, otherwise the UI validation step will fail.
+> **Node.js 22.12+ must be in your PATH** before running publish.py.
 
 ```bash
 export PATH="/opt/homebrew/opt/node@22/bin:$PATH"  # macOS with brew node@22
 node --version  # must be v22.x or later
 
-python publish.py <cfn_bucket_basename> <cfn_prefix> <region>
+python publish.py <bucket-basename> idp <region>
+# Example: python publish.py idp-<account-id> idp us-east-1
 ```
 
-**Parameters:**
-
-- `cfn_bucket_basename`: Base name for the S3 bucket (e.g., `idp-<account-id>` for global uniqueness). The script creates bucket `<basename>-<region>` automatically if it doesn't exist.
-- `cfn_prefix`: S3 prefix for artifacts (e.g., `idp`)
-- `region`: AWS region (e.g., `us-east-1`)
-
-**Example:**
-
-```bash
-python publish.py idp-<account-id> idp us-east-1
-```
-
-> **macOS note**: Use `python` (conda/venv) instead of `python3` (system Python 3.9) to ensure boto3 and other dependencies are available.
-
-This will:
-
-- Create the S3 bucket if it doesn't exist
-- Build and cache Lambda layers
-- Build SAM templates for all nested stacks and patterns concurrently
-- Validate and build the UI (Node 22+ required)
-- Package and upload all artifacts to S3
-
-When complete, the script outputs:
-
-- The **CloudFormation template S3 URL**
-- A **1-Click Launch URL** for the CloudFormation console
-
-If the build fails, use the `--verbose` flag for debugging:
-
-```bash
-python publish.py idp-<account-id> idp us-east-1 --verbose
-```
+The script creates an S3 bucket (`<bucket-basename>-<region>`) if needed, builds all Lambda layers and templates, and uploads artifacts. When done, it prints the **Template URL** to use in Step 2.
 
 ---
 
-## Step 2: Deploy via CloudFormation with ALB Parameters
+## Step 2: Deploy the IDP Stack
 
-### Option A: AWS CLI — New Stack
-
-Use `aws cloudformation create-stack` with `--template-url` (note: `aws cloudformation deploy` does **not** support `--template-url`, only `--template-file`):
+Replace the placeholder values and run:
 
 ```bash
 aws cloudformation create-stack \
-  --region us-east-1 \
-  --stack-name my-idp-stack \
-  --template-url https://s3.us-east-1.amazonaws.com/<bucket>/idp/idp-main.yaml \
+  --stack-name IDP-PRIVATE \
+  --template-url https://s3.<region>.amazonaws.com/<bucket>/idp/idp-main.yaml \
   --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+  --region <region> \
   --parameters \
-    ParameterKey=AdminEmail,ParameterValue=your.email@example.com \
+    ParameterKey=AdminEmail,ParameterValue=admin@example.com \
     ParameterKey=WebUIHosting,ParameterValue=ALB \
-    ParameterKey=ALBVpcId,ParameterValue=vpc-xxxxx \
-    'ParameterKey=ALBSubnetIds,ParameterValue=subnet-aaaa\,subnet-bbbb' \
-    ParameterKey=ALBCertificateArn,ParameterValue=arn:aws:acm:us-east-1:123456789012:certificate/xxxxx \
-    ParameterKey=ALBScheme,ParameterValue=internal
+    ParameterKey=ALBVpcId,ParameterValue=<vpc-id> \
+    'ParameterKey=ALBSubnetIds,ParameterValue=<subnet-1>\,<subnet-2>' \
+    ParameterKey=ALBCertificateArn,ParameterValue=<cert-arn> \
+    ParameterKey=ALBScheme,ParameterValue=internal \
+    ParameterKey=AppSyncVisibility,ParameterValue=PRIVATE \
+    'ParameterKey=LambdaSubnetIds,ParameterValue=<subnet-1>\,<subnet-2>' \
+    ParameterKey=EnableMCP,ParameterValue=false \
+    ParameterKey=DocumentKnowledgeBase,ParameterValue=DISABLED
 ```
 
-> **Important**: For `ALBSubnetIds`, escape the comma with a backslash inside single quotes: `'ParameterKey=ALBSubnetIds,ParameterValue=subnet-aaaa\,subnet-bbbb'`. Without escaping, the AWS CLI splits the value into a list and fails validation.
-
-### Option B: AWS CLI — Update Existing Stack
-
-```bash
-aws cloudformation update-stack \
-  --stack-name my-idp-stack \
-  --template-url https://s3.us-east-1.amazonaws.com/<bucket>/idp/idp-main.yaml \
-  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-  --region us-east-1 \
-  --parameters \
-    ParameterKey=AdminEmail,ParameterValue=your.email@example.com \
-    ParameterKey=WebUIHosting,ParameterValue=ALB \
-    ParameterKey=ALBVpcId,ParameterValue=vpc-xxxxx \
-    'ParameterKey=ALBSubnetIds,ParameterValue=subnet-aaaa\,subnet-bbbb' \
-    ParameterKey=ALBCertificateArn,ParameterValue=arn:aws:acm:us-east-1:123456789012:certificate/xxxxx \
-    ParameterKey=ALBScheme,ParameterValue=internal
-```
-
-### Option C: CloudFormation Console
-
-1. Use the **1-Click Launch URL** from the publish script output, or navigate to **CloudFormation → Create Stack** and paste the template S3 URL.
-2. In the parameter form, set the following values:
+**Key parameters:**
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| `AdminEmail` | `your.email@example.com` | Admin email for notifications |
-| `WebUIHosting` | `ALB` | Switches from CloudFront to ALB hosting |
-| `ALBVpcId` | `vpc-xxxxx` | VPC for the ALB and S3 VPC endpoint |
-| `ALBSubnetIds` | `subnet-aaaa,subnet-bbbb` | Min 2 subnets in different AZs |
-| `ALBCertificateArn` | `arn:aws:acm:...` | ACM certificate ARN for HTTPS |
-| `ALBScheme` | `internal` or `internet-facing` | ALB accessibility |
-| `ALBAllowedCIDRs` | *(optional)* | CIDRs for ALB ingress; empty = VPC CIDR |
+| `WebUIHosting` | `ALB` | Serve UI via internal ALB instead of CloudFront |
+| `ALBScheme` | `internal` | ALB not reachable from internet |
+| `AppSyncVisibility` | `PRIVATE` | AppSync API only accessible inside the VPC |
+| `LambdaSubnetIds` | subnet IDs | Subnets where Lambda functions run (can match ALBSubnetIds) |
+| `EnableMCP` | `false` | Disable Bedrock AgentCore Gateway (requires public endpoint) |
+| `DocumentKnowledgeBase` | `DISABLED` | Disable Knowledge Base (avoids extra VPC endpoints) |
 
-3. Acknowledge IAM capabilities and click **Create stack** (or **Update stack**).
-4. Wait for the stack to reach `CREATE_COMPLETE` (10–15 minutes).
+> **`AppSyncVisibility` is immutable** — it cannot be changed after the stack is created. To switch between GLOBAL and PRIVATE, delete and recreate the stack.
 
-### Monitor Deployment Progress
+> **Comma escaping**: always escape commas in `ALBSubnetIds` and `LambdaSubnetIds` with a backslash inside single quotes: `'ParameterKey=...,ParameterValue=subnet-a\,subnet-b'`
+
+Wait for the stack to reach `CREATE_COMPLETE` (~15 minutes):
 
 ```bash
-# Check stack status
-aws cloudformation describe-stacks --stack-name my-idp-stack --region us-east-1 \
+aws cloudformation describe-stacks --stack-name IDP-PRIVATE --region <region> \
   --query 'Stacks[0].StackStatus' --output text
-
-# Watch latest events
-aws cloudformation describe-stack-events --stack-name my-idp-stack --region us-east-1 \
-  --query 'StackEvents[0:10].{Resource:LogicalResourceId,Status:ResourceStatus,Reason:ResourceStatusReason}' \
-  --output table
 ```
 
 ---
 
-## Step 3: Access the UI
+## Step 3: Deploy VPC Endpoints
 
-### Get the ALB URL
+Lambda functions need VPC Interface Endpoints to reach AWS services (AppSync, Bedrock, SQS, etc.) without leaving the AWS backbone.
+
+**Your VPC may already have some of these endpoints** (e.g. SSM for EC2 access). The helper script detects what's already there and prints the exact deploy command for only the missing ones.
+
+### 3a. Check existing endpoints
 
 ```bash
-aws cloudformation describe-stacks --stack-name IDP-ALB \
+./scripts/check-vpc-endpoints.sh \
+  --vpc-id <vpc-id> \
+  --stack-name IDP-PRIVATE \
+  --region <region>
+```
+
+Example output:
+```
+🔍 Checking IDP stack outputs from: IDP-PRIVATE
+   Lambda SG: sg-0e7f3764a5b908021
+   Subnets: subnet-0ae7c007a67c0a483
+
+🔍 Checking existing VPC endpoints in vpc-0f42ddb124c806ba1...
+
+   com.amazonaws.<region>.appsync-api      ➕ missing — will create
+   com.amazonaws.<region>.appsync          ➕ missing — will create
+   com.amazonaws.<region>.ssm              ✅ already exists — will skip
+   com.amazonaws.<region>.sqs              ➕ missing — will create
+   ...
+
+📊 Summary: 11 to create, 1 already exist
+
+📋 Run this command to deploy the missing endpoints:
+
+aws cloudformation deploy \
+  --stack-name IDP-PRIVATE-VPCEndpoints \
+  --template-file scripts/vpc-endpoints.yaml \
+  --capabilities CAPABILITY_IAM \
+  --region us-east-1 \
+  --parameter-overrides \
+    IDPStackName=IDP-PRIVATE \
+    VpcId=vpc-0f42ddb124c806ba1 \
+    SubnetIds=subnet-0ae7c007a67c0a483,subnet-00b39e8345d9f0ff2 \
+    LambdaSecurityGroupId=sg-0e7f3764a5b908021 \
+    CreateSsmEndpoint=false
+```
+
+### 3b. Run the printed command
+
+Copy the `aws cloudformation deploy` command from the script output and run it. The stack deploys 12 Interface endpoints (skipping any that already exist) plus optional S3/DynamoDB Gateway endpoints.
+
+Wait for `CREATE_COMPLETE`:
+```bash
+aws cloudformation describe-stacks --stack-name IDP-PRIVATE-VPCEndpoints --region <region> \
+  --query 'Stacks[0].StackStatus' --output text
+```
+
+---
+
+## Step 4: Access the UI
+
+### Get the UI URL
+
+```bash
+aws cloudformation describe-stacks --stack-name IDP-PRIVATE \
   --query 'Stacks[0].Outputs[?OutputKey==`ApplicationWebURL`].OutputValue' \
   --output text
 ```
 
-### Internet-Facing ALB
+The URL will look like `https://internal-IDP-PRIVATE-webui-alb-<id>.<region>.elb.amazonaws.com`.
 
-Access the ALB DNS name directly from the URL above.
+### Accessing via VPN or Direct Connect (production)
 
-### Internal ALB
+Connect to the VPC through your organization's VPN or Direct Connect — the ALB DNS name resolves and routes automatically.
 
-For internal ALBs, you need network connectivity to the VPC. Common approaches:
+### Accessing via SSM port forwarding (testing)
 
-**VPN or Direct Connect** (recommended for production):
+1. Ensure there is an EC2 instance in the VPC with `AmazonSSMManagedInstanceCore` role.
 
-Access the ALB DNS name directly through your organization's private network connection.
-
-**SSM Port Forwarding** (recommended for testing):
-
-1. Launch a small EC2 instance (e.g., `t3.micro`) in the same VPC with an IAM role that includes `AmazonSSMManagedInstanceCore`.
-2. Start a port forwarding session:
-
+2. In **Terminal 1** — forward the ALB:
    ```bash
    aws ssm start-session \
-     --target INSTANCE_ID \
+     --target <ec2-instance-id> \
      --document-name AWS-StartPortForwardingSessionToRemoteHost \
-     --parameters '{"host":["ALB_DNS_NAME"],"portNumber":["443"],"localPortNumber":["8443"]}'
+     --parameters '{"host":["<ALB_DNS_NAME>"],"portNumber":["443"],"localPortNumber":["8443"]}'
    ```
 
-3. Add a local hosts file entry so the browser sends the correct Host header:
-
+3. In **Terminal 2** — forward AppSync (required for private AppSync):
    ```bash
-   echo "127.0.0.1 ALB_DNS_NAME" | sudo tee -a /etc/hosts
+   # Get the AppSync VPC endpoint DNS
+   APPSYNC_VPCE=$(aws ec2 describe-vpc-endpoints \
+     --filters "Name=vpc-id,Values=<vpc-id>" "Name=service-name,Values=com.amazonaws.<region>.appsync-api" \
+     --query 'VpcEndpoints[0].DnsEntries[0].DnsName' --output text)
+
+   # Get the AppSync API hostname from the IDP stack
+   APPSYNC_URL=$(aws cloudformation describe-stacks --stack-name IDP-PRIVATE \
+     --query 'Stacks[0].Outputs[?OutputKey==`ApplicationWebURL`].OutputValue' \
+     --output text)
+   # The AppSync hostname is shown in the browser network tab when you open the UI
+
+   sudo aws ssm start-session \
+     --target <ec2-instance-id> \
+     --document-name AWS-StartPortForwardingSessionToRemoteHost \
+     --parameters "{\"host\":[\"$APPSYNC_VPCE\"],\"portNumber\":[\"443\"],\"localPortNumber\":[\"443\"]}"
    ```
 
-4. Open `https://ALB_DNS_NAME:8443/` in your browser (accept the certificate warning for self-signed certs).
-5. Remove the hosts entry when done testing.
+4. In **Terminal 3** — add a hosts entry for AppSync:
+   ```bash
+   # Get AppSync hostname (e.g. xxxxx.appsync-api.us-east-1.amazonaws.com)
+   # from the browser network tab or from: aws appsync list-graphql-apis --query 'graphqlApis[?name==`IDP-PRIVATE-api`].uris.GRAPHQL'
+   echo "127.0.0.1 <appsync-hostname>.appsync-api.<region>.amazonaws.com" | sudo tee -a /etc/hosts
+   ```
+
+5. Open `https://<ALB_DNS_NAME>:8443/` in your browser (accept the self-signed cert warning).
+
+6. **Clean up when done**:
+   ```bash
+   sudo sed -i '' '/<appsync-hostname>/d' /etc/hosts
+   # Ctrl+C in both SSM terminal sessions
+   ```
+
+> **In production**: users on VPN/Direct Connect don't need any of steps 2–6. DNS resolves automatically inside the VPC.
 
 ---
 
 ## What Gets Automatically Configured
 
-When you set `WebUIHosting=ALB`, the following are automatically handled — no manual configuration needed:
+When `WebUIHosting=ALB` and `AppSyncVisibility=PRIVATE`, the following are handled automatically:
 
-- **S3 CORS origins** — resolve to the ALB URL
-- **Cognito callback/logout URLs** — OAuth redirect URLs point to the ALB URL
-- **UI build configuration** — `VITE_CLOUDFRONT_DOMAIN` resolves to the ALB URL
-- **CodeBuild post-deploy** — CloudFront cache invalidation is skipped
-- **Stack outputs** — `ApplicationWebURL` returns the ALB URL
-- **S3 bucket policy** — uses `aws:sourceVpce` condition instead of CloudFront OAI
-
----
-
-## Switching Between CloudFront and ALB
-
-You can switch an existing CloudFront-hosted stack to ALB hosting (or vice versa) by updating the stack with the new `WebUIHosting` parameter value and providing the required ALB parameters. CloudFormation will conditionally create or remove the appropriate resources.
+- **S3 CORS origins** → ALB URL
+- **Cognito callback/logout URLs** → ALB URL
+- **UI build** → `VITE_CLOUDFRONT_DOMAIN` set to ALB URL
+- **S3 bucket policy** → `aws:sourceVpce` condition (VPC endpoint access only)
+- **21 Lambda functions** → placed in VPC subnets with HTTPS-only egress
 
 ---
 
@@ -267,201 +260,11 @@ You can switch an existing CloudFront-hosted stack to ALB hosting (or vice versa
 
 | Issue | Resolution |
 |-------|------------|
-| **`ModuleNotFoundError: No module named 'boto3'`** | Use your conda/venv Python, not system Python 3.9. Run `python publish.py ...` instead of `python3 publish.py ...`, or use the full path e.g. `/opt/anaconda3/bin/python publish.py ...` |
-| **`npm error engine Unsupported engine`** | Node.js 22.12+ is required. Install via `brew install node@22` and add to PATH: `export PATH="/opt/homebrew/opt/node@22/bin:$PATH"` |
-| **`aws: error: the following arguments are required: --template-file`** | `aws cloudformation deploy` only supports `--template-file`. Use `aws cloudformation create-stack` or `update-stack` with `--template-url` instead. |
-| **`Invalid type for parameter Parameters[N].ParameterValue`** | When passing comma-separated subnet IDs, escape the comma: `'ParameterKey=ALBSubnetIds,ParameterValue=subnet-aaaa\,subnet-bbbb'` |
-| **403 Forbidden** | Verify ALB target group health checks pass (expected: 200, 307, 405). Check S3 bucket policy has correct VPC endpoint ID. |
-| **404 Not Found** | Ensure request path matches a listener rule (`/` or `/*`). Verify the WebUI bucket contains `index.html`. |
-| **Target Group Unhealthy** | VPC endpoint ENI IPs may be stale if the endpoint was recreated. Check VPC endpoint security group allows HTTPS from ALB. |
-| **UI Not Loading** | Check CodeBuild logs. Verify `VITE_CLOUDFRONT_DOMAIN` resolves to ALB URL, not a CloudFront domain. |
-
----
-
-## Security Notes
-
-- ALB security group restricts ingress to port 443 from the VPC CIDR (or specified CIDRs)
-- S3 bucket policy uses `aws:sourceVpce` condition — only requests through the VPC endpoint are allowed
-- ALB enforces TLS 1.3 (`ELBSecurityPolicy-TLS13-1-2-2021-06`)
-- ALB access logs are written to the logging bucket under `alb-access-logs/`
-- All traffic between ALB and S3 traverses the VPC endpoint (no internet path)
-
----
-
-For full details, see [ALB Hosting Guide](./alb-hosting.md) and [Deployment Guide](./deployment.md).
-
----
-
-## Private AppSync API (`AppSyncVisibility=PRIVATE`)
-
-By default the AppSync GraphQL API is internet-facing (`GLOBAL`). For regulated or air-gapped environments you can make it **VPC-private** so it is only reachable from within the VPC.
-
-> **When to use**: Private AppSync mode is for deployments where the AppSync endpoint must never be reachable from the public internet. It is typically combined with `WebUIHosting=ALB` and an internal ALB scheme.
-
-### How it works
-
-```
-VPC
-├── Public/ALB Subnets  ─── ALB (WebUI)
-└── Lambda Subnets      ─── Lambda functions ──▶ VPC Interface Endpoints ──▶ AppSync / Bedrock / DynamoDB / …
-```
-
-All Lambda functions (queue workers, processing pipeline, resolver Lambdas) are placed in your private subnets. They communicate with AppSync and all other AWS services exclusively through **VPC Interface Endpoints** — no traffic leaves the AWS backbone.
-
-### New parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `AppSyncVisibility` | `GLOBAL` \| `PRIVATE` | No (default: `GLOBAL`) | Set to `PRIVATE` to restrict the AppSync API to VPC-only access |
-| `LambdaSubnetIds` | CommaDelimitedList | Yes (when `PRIVATE`) | Private subnet IDs for all Lambda functions |
-
-> **Note**: `AppSyncVisibility` is **immutable** after the AppSync API is created. To change it you must delete and recreate the stack.
-
-### Two-step deployment
-
-Private AppSync requires two CFN stacks — one owned by the application team, one by the networking team.
-
-#### Step 1 — Deploy the IDP stack (app team)
-
-```bash
-aws cloudformation create-stack \
-  --stack-name IDP-PRIVATE \
-  --template-url https://s3.us-east-1.amazonaws.com/<ARTIFACT_BUCKET>/<PREFIX>/idp-main.yaml \
-  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-  --parameters \
-    ParameterKey=AdminEmail,ParameterValue=admin@example.com \
-    ParameterKey=WebUIHosting,ParameterValue=ALB \
-    ParameterKey=ALBVpcId,ParameterValue=vpc-xxxxx \
-    'ParameterKey=ALBSubnetIds,ParameterValue=subnet-pub1\,subnet-pub2' \
-    ParameterKey=ALBCertificateArn,ParameterValue=arn:aws:acm:us-east-1:... \
-    ParameterKey=ALBScheme,ParameterValue=internal \
-    ParameterKey=AppSyncVisibility,ParameterValue=PRIVATE \
-    'ParameterKey=LambdaSubnetIds,ParameterValue=subnet-priv1\,subnet-priv2'
-```
-
-> **Tip**: `ALBSubnetIds` (for the ALB) and `LambdaSubnetIds` (for Lambda) can be the same subnets if you don't have separate private subnets, or different subnets for stricter isolation.
-
-#### Step 2 — Get the Lambda Security Group output
-
-Once the IDP stack is `CREATE_COMPLETE`, retrieve the Lambda SG ID needed by the networking team:
-
-```bash
-aws cloudformation describe-stacks \
-  --stack-name IDP-PRIVATE \
-  --query "Stacks[0].Outputs[?OutputKey=='LambdaVpcSecurityGroupId'].OutputValue" \
-  --output text
-```
-
-#### Step 3 — Deploy VPC endpoints (networking team)
-
-The networking team deploys `scripts/vpc-endpoints.yaml` which creates 12 Interface endpoints + 2 Gateway endpoints in your VPC:
-
-```bash
-aws cloudformation deploy \
-  --stack-name IDP-PRIVATE-VPCEndpoints \
-  --template-file scripts/vpc-endpoints.yaml \
-  --capabilities CAPABILITY_IAM \
-  --parameter-overrides \
-    IDPStackName=IDP-PRIVATE \
-    VpcId=vpc-xxxxx \
-    SubnetIds=subnet-priv1,subnet-priv2 \
-    LambdaSecurityGroupId=<SG-FROM-STEP-2>
-```
-
-The VPC endpoints template creates:
-- **Interface endpoints** (HTTPS, PrivateDNS enabled): `appsync-api`, `appsync`, `sqs`, `states`, `kms`, `logs`, `bedrock-runtime`, `ssm`, `secretsmanager`, `lambda`, `events`, `athena`
-- **Gateway endpoints** (free): `s3`, `dynamodb`
-
----
-
-### Test VPC reference values
-
-The following test VPC is pre-configured for private AppSync testing:
-
-| Resource | Value |
-|----------|-------|
-| VPC ID | `vpc-0f42ddb124c806ba1` |
-| ALB Subnets | `subnet-0ae7c007a67c0a483`, `subnet-00b39e8345d9f0ff2` |
-| Lambda Subnets | Same as ALB subnets (simplified test setup) |
-| ACM Certificate | See `IDP-ALB-TestVPC` stack output `CertificateArn` |
-
-Full deploy command for the test VPC (replace `<CERT_ARN>` with the value from `IDP-ALB-TestVPC` stack outputs):
-
-```bash
-# Get test VPC outputs first
-aws cloudformation describe-stacks \
-  --stack-name IDP-ALB-TestVPC \
-  --query 'Stacks[0].Outputs[*].{Key:OutputKey,Value:OutputValue}' \
-  --output table
-
-# Deploy IDP stack (replace <CERT_ARN> with CertificateArn from above)
-aws cloudformation create-stack \
-  --stack-name IDP-PRIVATE \
-  --template-url https://s3.us-east-1.amazonaws.com/<ARTIFACT_BUCKET>/idp/idp-main.yaml \
-  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-  --parameters \
-    ParameterKey=AdminEmail,ParameterValue=admin@example.com \
-    ParameterKey=WebUIHosting,ParameterValue=ALB \
-    ParameterKey=ALBVpcId,ParameterValue=vpc-0f42ddb124c806ba1 \
-    'ParameterKey=ALBSubnetIds,ParameterValue=subnet-0ae7c007a67c0a483\,subnet-00b39e8345d9f0ff2' \
-    ParameterKey=ALBCertificateArn,ParameterValue=<CERT_ARN> \
-    ParameterKey=ALBScheme,ParameterValue=internal \
-    ParameterKey=AppSyncVisibility,ParameterValue=PRIVATE \
-    'ParameterKey=LambdaSubnetIds,ParameterValue=subnet-0ae7c007a67c0a483\,subnet-00b39e8345d9f0ff2'
-```
-
-Then deploy VPC endpoints after stack is complete:
-
-```bash
-# Get Lambda SG ID
-LAMBDA_SG=$(aws cloudformation describe-stacks \
-  --stack-name IDP-PRIVATE \
-  --query "Stacks[0].Outputs[?OutputKey=='LambdaVpcSecurityGroupId'].OutputValue" \
-  --output text)
-
-# Deploy networking stack
-aws cloudformation deploy \
-  --stack-name IDP-PRIVATE-VPCEndpoints \
-  --template-file scripts/vpc-endpoints.yaml \
-  --capabilities CAPABILITY_IAM \
-  --parameter-overrides \
-    IDPStackName=IDP-PRIVATE \
-    VpcId=vpc-0f42ddb124c806ba1 \
-    SubnetIds=subnet-0ae7c007a67c0a483,subnet-00b39e8345d9f0ff2 \
-    LambdaSecurityGroupId=$LAMBDA_SG
-```
-
----
-
-## Disabling Internet-Facing Features for Private Deployments
-
-When deploying in a fully private/air-gapped environment, disable features that require outbound internet connectivity or public AWS service endpoints:
-
-| Parameter | Value | Why |
-|-----------|-------|-----|
-| `EnableMCP` | `'false'` | Disables AWS Bedrock AgentCore Gateway integration (external MCP agents require public endpoint) |
-| `DocumentKnowledgeBase` | `"DISABLED"` | Disables Bedrock Knowledge Base creation (avoids S3 Vector Store or OpenSearch Serverless which may require additional VPC endpoints) |
-
-> **Code Intelligence** is already disabled by default and requires no parameter change.
-
-### Adding to the deploy command
-
-Include these additional parameters when deploying with `AppSyncVisibility=PRIVATE`:
-
-```bash
-aws cloudformation create-stack \
-  --stack-name IDP-PRIVATE \
-  --template-url https://s3.us-east-1.amazonaws.com/<ARTIFACT_BUCKET>/idp/idp-main.yaml \
-  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-  --parameters \
-    ParameterKey=AdminEmail,ParameterValue=admin@example.com \
-    ParameterKey=WebUIHosting,ParameterValue=ALB \
-    ParameterKey=ALBVpcId,ParameterValue=vpc-xxxxx \
-    'ParameterKey=ALBSubnetIds,ParameterValue=subnet-pub1\,subnet-pub2' \
-    ParameterKey=ALBCertificateArn,ParameterValue=<CERT_ARN> \
-    ParameterKey=ALBScheme,ParameterValue=internal \
-    ParameterKey=AppSyncVisibility,ParameterValue=PRIVATE \
-    'ParameterKey=LambdaSubnetIds,ParameterValue=subnet-priv1\,subnet-priv2' \
-    ParameterKey=EnableMCP,ParameterValue=false \
-    ParameterKey=DocumentKnowledgeBase,ParameterValue=DISABLED
-```
+| **`ModuleNotFoundError: No module named 'boto3'`** | Use conda/venv Python, not system Python 3.9. Run `python publish.py ...` not `python3`. |
+| **`npm error engine Unsupported engine`** | Node.js 22.12+ required. `brew install node@22 && export PATH="/opt/homebrew/opt/node@22/bin:$PATH"` |
+| **Stack fails with `conflicting DNS domain`** | A VPC endpoint already exists for that service. Re-run `check-vpc-endpoints.sh` — it will detect this and set the right `Create*=false` flags. |
+| **UI loads but shows "network error"** | AppSync API is PRIVATE. From outside the VPC you need an SSM tunnel + `/etc/hosts` entry. From inside VPN/VPC it works automatically. |
+| **`aws: error: the following arguments are required: --template-file`** | `aws cloudformation deploy` only supports `--template-file`. Use `create-stack` or `update-stack` with `--template-url`. |
+| **`Invalid type for parameter Parameters[N].ParameterValue`** | Escape commas: `'ParameterKey=ALBSubnetIds,ParameterValue=subnet-a\,subnet-b'` |
+| **403 Forbidden on ALB** | Check ALB target group health checks (expected: 200, 307, 405). Verify S3 bucket policy has the correct VPC endpoint ID. |
+| **Target Group Unhealthy** | VPC endpoint ENIs may be stale. Check the endpoint SG allows HTTPS (443) from the ALB. |
