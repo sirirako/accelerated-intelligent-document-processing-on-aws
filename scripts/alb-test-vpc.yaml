@@ -1,7 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  Test VPC for IDP ALB Hosting - Simulates a customer's private network
-  with 2 private subnets in different AZs. Includes a self-signed ACM certificate.
+  Test VPC for IDP ALB Hosting - Simulates a customer's private network with
+  2 private subnets for the ALB (different AZs) and 1 additional Lambda subnet
+  (separate from ALB subnets, for testing private AppSync VPC config).
+  Includes a self-signed ACM certificate via Lambda custom resource.
 
 Parameters:
   VpcCidr:
@@ -18,6 +20,11 @@ Parameters:
     Type: String
     Default: '10.1.2.0/24'
     Description: CIDR block for private subnet 2
+
+  LambdaSubnetCidr:
+    Type: String
+    Default: '10.1.3.0/24'
+    Description: CIDR block for the Lambda subnet (separate from ALB subnets)
 
   CertificateDomain:
     Type: String
@@ -39,7 +46,7 @@ Resources:
           Value: IDP-ALB-TestVPC
 
   #############################################
-  # Private Subnets (2 AZs)
+  # Private Subnets for ALB (2 AZs required by ALB)
   #############################################
   PrivateSubnet1:
     Type: AWS::EC2::Subnet
@@ -64,6 +71,22 @@ Resources:
           Value: IDP-ALB-PrivateSubnet2
 
   #############################################
+  # Lambda Subnet (separate from ALB subnets —
+  # used to test IDP Lambdas in a different subnet,
+  # e.g. for private AppSync VPC config testing)
+  #############################################
+  LambdaSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref LambdaSubnetCidr
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: IDP-ALB-LambdaSubnet
+
+  #############################################
   # Route Table for Private Subnets
   #############################################
   PrivateRouteTable:
@@ -84,6 +107,12 @@ Resources:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  LambdaSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref LambdaSubnet
       RouteTableId: !Ref PrivateRouteTable
 
   #############################################
@@ -209,6 +238,12 @@ Outputs:
   PrivateSubnet2Id:
     Description: Private Subnet 2 ID
     Value: !Ref PrivateSubnet2
+
+  LambdaSubnetId:
+    Description: Lambda subnet ID — use as LambdaSubnetIds when deploying with private AppSync (feature/private-appsync-api)
+    Value: !Ref LambdaSubnet
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaSubnetId'
 
   CertificateArn:
     Description: ACM Certificate ARN for IDP ALB deployment
