@@ -215,13 +215,3 @@ Outputs:
     Value: !GetAtt SelfSignedCertificate.CertificateArn
     Export:
       Name: !Sub '${AWS::StackName}-CertificateArn'
-
-  IDPDeployCommand:
-    Description: Command to deploy IDP with ALB using these outputs
-    Value: !Sub >-
-      idp-cli deploy
-      --stack-name IDP-ALB
-      --admin-email siriratk@amazon.com
-      --from-code .
-      --parameters "WebUIHosting=ALB,ALBVpcId=${VPC},ALBSubnetIds=${PrivateSubnet1}\\,${PrivateSubnet2},ALBCertificateArn=${SelfSignedCertificate.CertificateArn},ALBScheme=internal"
-      --wait
