@@ -1399,7 +1399,18 @@ Resources:
         # User management (for config-version scoping)
         UsersTableName: !Ref UsersTable
         UsersTableArn: !GetAtt UsersTable.Arn
-        
+
+        # Private AppSync VPC config (req #2) — passed to nested/appsync resolver Lambdas
+        UsePrivateAppSync: !If [UsePrivateAppSync, "true", "false"]
+        LambdaSubnetIds: !If
+          - UsePrivateAppSync
+          - !Join [",", !Ref LambdaSubnetIds]
+          - ""
+        LambdaSecurityGroupId: !If
+          - UsePrivateAppSync
+          - !Ref LambdaVpcSecurityGroup
+          - ""
+
   CustomerManagedEncryptionKey:
     DependsOn:
       - IsStacknameLengthOK
