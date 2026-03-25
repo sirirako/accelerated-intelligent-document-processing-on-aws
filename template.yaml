@@ -386,17 +386,6 @@ Parameters:
       private subnets for stricter network isolation. Minimum 2 subnets in
       different Availability Zones recommended.
 
-  LambdaRouteTableIds:
-    Type: CommaDelimitedList
-    Default: ""
-    Description: >-
-      (Optional when AppSyncVisibility=PRIVATE) Comma-separated route table IDs
-      for the private subnets specified in LambdaSubnetIds. When provided,
-      free S3 and DynamoDB Gateway VPC endpoints are created and associated
-      with these route tables. If left empty, S3/DynamoDB traffic will use
-      the Interface endpoints instead. Gateway endpoints are recommended for
-      cost savings as they have no hourly charge.
-
   CloudFrontPriceClass:
     Type: String
     Default: PriceClass_100
@@ -464,11 +453,6 @@ Conditions:
   UseCloudFrontHosting: !Equals [ !Ref WebUIHosting, "CloudFront" ]
   UseALBHosting: !Equals [ !Ref WebUIHosting, "ALB" ]
   UsePrivateAppSync: !Equals [ !Ref AppSyncVisibility, "PRIVATE" ]
-  # True when PRIVATE mode AND route table IDs are provided (enables free Gateway endpoints)
-  UsePrivateAppSyncWithRouteTables: !And
-    - !Equals [ !Ref AppSyncVisibility, "PRIVATE" ]
-    - !Not
-      - !Equals [ !Join [ "", !Ref LambdaRouteTableIds ], "" ]
 
 Metadata:
   cfn-lint:
@@ -5948,172 +5932,6 @@ Resources:
         - Key: Name
           Value: !Sub "${AWS::StackName}-lambda-sg"
 
-  # ── VPC Endpoints (only created when AppSyncVisibility=PRIVATE) ─────────────
-  # AppSync endpoints so Lambdas in VPC can reach the private AppSync API
-  AppSyncApiVpcEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Condition: UsePrivateAppSync
-    Properties:
-      VpcId: !Ref ALBVpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.appsync-api"
-      VpcEndpointType: Interface
-      SubnetIds: !Ref LambdaSubnetIds
-      SecurityGroupIds:
-        - !Ref LambdaVpcSecurityGroup
-      PrivateDnsEnabled: true
-
-  AppSyncControlVpcEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Condition: UsePrivateAppSync
-    Properties:
-      VpcId: !Ref ALBVpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.appsync"
-      VpcEndpointType: Interface
-      SubnetIds: !Ref LambdaSubnetIds
-      SecurityGroupIds:
-        - !Ref LambdaVpcSecurityGroup
-      PrivateDnsEnabled: true
-
-  # Service endpoints so Lambdas in VPC can reach dependent AWS services
-  SqsVpcEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Condition: UsePrivateAppSync
-    Properties:
-      VpcId: !Ref ALBVpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sqs"
-      VpcEndpointType: Interface
-      SubnetIds: !Ref LambdaSubnetIds
-      SecurityGroupIds:
-        - !Ref LambdaVpcSecurityGroup
-      PrivateDnsEnabled: true
-
-  StatesVpcEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Condition: UsePrivateAppSync
-    Properties:
-      VpcId: !Ref ALBVpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.states"
-      VpcEndpointType: Interface
-      SubnetIds: !Ref LambdaSubnetIds
-      SecurityGroupIds:
-        - !Ref LambdaVpcSecurityGroup
-      PrivateDnsEnabled: true
-
-  KmsVpcEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Condition: UsePrivateAppSync
-    Properties:
-      VpcId: !Ref ALBVpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.kms"
-      VpcEndpointType: Interface
-      SubnetIds: !Ref LambdaSubnetIds
-      SecurityGroupIds:
-        - !Ref LambdaVpcSecurityGroup
-      PrivateDnsEnabled: true
-
-  CloudWatchLogsVpcEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Condition: UsePrivateAppSync
-    Properties:
-      VpcId: !Ref ALBVpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.logs"
-      VpcEndpointType: Interface
-      SubnetIds: !Ref LambdaSubnetIds
-      SecurityGroupIds:
-        - !Ref LambdaVpcSecurityGroup
-      PrivateDnsEnabled: true
-
-  BedrockRuntimeVpcEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Condition: UsePrivateAppSync
-    Properties:
-      VpcId: !Ref ALBVpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.bedrock-runtime"
-      VpcEndpointType: Interface
-      SubnetIds: !Ref LambdaSubnetIds
-      SecurityGroupIds:
-        - !Ref LambdaVpcSecurityGroup
-      PrivateDnsEnabled: true
-
-  SsmVpcEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Condition: UsePrivateAppSync
-    Properties:
-      VpcId: !Ref ALBVpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ssm"
-      VpcEndpointType: Interface
-      SubnetIds: !Ref LambdaSubnetIds
-      SecurityGroupIds:
-        - !Ref LambdaVpcSecurityGroup
-      PrivateDnsEnabled: true
-
-  SecretsManagerVpcEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Condition: UsePrivateAppSync
-    Properties:
-      VpcId: !Ref ALBVpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.secretsmanager"
-      VpcEndpointType: Interface
-      SubnetIds: !Ref LambdaSubnetIds
-      SecurityGroupIds:
-        - !Ref LambdaVpcSecurityGroup
-      PrivateDnsEnabled: true
-
-  LambdaVpcEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Condition: UsePrivateAppSync
-    Properties:
-      VpcId: !Ref ALBVpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.lambda"
-      VpcEndpointType: Interface
-      SubnetIds: !Ref LambdaSubnetIds
-      SecurityGroupIds:
-        - !Ref LambdaVpcSecurityGroup
-      PrivateDnsEnabled: true
-
-  EventsVpcEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Condition: UsePrivateAppSync
-    Properties:
-      VpcId: !Ref ALBVpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.events"
-      VpcEndpointType: Interface
-      SubnetIds: !Ref LambdaSubnetIds
-      SecurityGroupIds:
-        - !Ref LambdaVpcSecurityGroup
-      PrivateDnsEnabled: true
-
-  AthenaVpcEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Condition: UsePrivateAppSync
-    Properties:
-      VpcId: !Ref ALBVpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.athena"
-      VpcEndpointType: Interface
-      SubnetIds: !Ref LambdaSubnetIds
-      SecurityGroupIds:
-        - !Ref LambdaVpcSecurityGroup
-      PrivateDnsEnabled: true
-
-  # S3 and DynamoDB Gateway endpoints (free; require route table association)
-  S3VpcEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Condition: UsePrivateAppSyncWithRouteTables
-    Properties:
-      VpcId: !Ref ALBVpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
-      VpcEndpointType: Gateway
-      RouteTableIds: !Ref LambdaRouteTableIds
-
-  DynamoDbVpcEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Condition: UsePrivateAppSyncWithRouteTables
-    Properties:
-      VpcId: !Ref ALBVpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.dynamodb"
-      VpcEndpointType: Gateway
-      RouteTableIds: !Ref LambdaRouteTableIds
-
   GraphQLApi:
     Type: AWS::AppSync::GraphQLApi
     # checkov:skip=CKV_AWS_194: AppSync has Field-Level logging is determined by LogLevel parameter
@@ -7735,3 +7553,11 @@ Outputs:
   MCPContentBucketConsoleURL:
     Description: MCP server content bucket console URL
     Value: !Sub https://s3.console.aws.amazon.com/s3/buckets/${MCPContentBucket}
+  LambdaVpcSecurityGroupId:
+    Condition: UsePrivateAppSync
+    Description: >-
+      Security Group ID for Lambda functions in private AppSync mode.
+      The networking team must allow inbound HTTPS (port 443) from this
+      security group on all VPC Interface Endpoints they create for this stack.
+      See scripts/vpc-endpoints.yaml for the endpoint template.
+    Value: !GetAtt LambdaVpcSecurityGroup.GroupId

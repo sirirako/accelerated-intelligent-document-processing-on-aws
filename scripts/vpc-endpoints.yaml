@@ -1,0 +1,367 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  VPC Interface and Gateway Endpoints for IDP private AppSync deployment.
+  Deploy this template AFTER the main IDP stack when AppSyncVisibility=PRIVATE.
+
+  OWNERSHIP: This template is intended to be owned and managed by the
+  networking/platform team, separate from the application stack.
+
+  USAGE:
+    aws cloudformation deploy \
+      --stack-name IDP-VPC-Endpoints \
+      --template-file scripts/vpc-endpoints.yaml \
+      --capabilities CAPABILITY_NAMED_IAM \
+      --parameter-overrides \
+        VpcId=vpc-xxxxxxxx \
+        SubnetIds="subnet-aaaa,subnet-bbbb" \
+        LambdaSecurityGroupId=sg-xxxxxxxx \
+        RouteTableIds="rtb-aaaa,rtb-bbbb"
+
+  INPUTS:
+  - VpcId             : The VPC where the IDP stack is deployed
+  - SubnetIds         : Private subnet IDs (same as LambdaSubnetIds in IDP stack)
+  - LambdaSecurityGroupId : From IDP stack Output "LambdaVpcSecurityGroupId"
+  - RouteTableIds     : (Optional) Route table IDs for Gateway endpoints
+
+Parameters:
+  VpcId:
+    Type: String
+    Description: VPC ID where the IDP application is deployed.
+
+  SubnetIds:
+    Type: CommaDelimitedList
+    Description: >-
+      Comma-separated subnet IDs for the VPC Interface Endpoints.
+      Must match the LambdaSubnetIds used in the IDP application stack.
+
+  LambdaSecurityGroupId:
+    Type: String
+    Description: >-
+      Security Group ID exported from the IDP stack Output "LambdaVpcSecurityGroupId".
+      This SG is attached to all Lambda functions; endpoints allow inbound HTTPS from it.
+
+  RouteTableIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: >-
+      (Optional) Comma-separated route table IDs for the private subnets.
+      When provided, free S3 and DynamoDB Gateway endpoints are created.
+      Leave empty to skip Gateway endpoints (Interface endpoints will be used instead).
+
+  IDPStackName:
+    Type: String
+    Description: >-
+      Name of the IDP application CloudFormation stack.
+      Used only for tagging endpoints for easy identification.
+
+  EnvironmentTag:
+    Type: String
+    Default: "private"
+    Description: Value for the Environment tag applied to all resources.
+
+Conditions:
+  CreateGatewayEndpoints: !Not
+    - !Equals [ !Join [ "", !Ref RouteTableIds ], "" ]
+
+Resources:
+
+  ##########################################################################
+  # Endpoint Security Group
+  # Allows inbound HTTPS (443) from the Lambda security group
+  ##########################################################################
+
+  VpcEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "VPC Endpoints for IDP stack ${IDPStackName}"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref LambdaSecurityGroupId
+          Description: !Sub "Allow HTTPS from IDP Lambda functions (${IDPStackName})"
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-vpc-endpoints-sg"
+        - Key: ManagedBy
+          Value: "networking-team"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  ##########################################################################
+  # AppSync Endpoints
+  # Required for Lambda → private AppSync API communication
+  ##########################################################################
+
+  AppSyncApiVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.appsync-api"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-appsync-api"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  AppSyncControlVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.appsync"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-appsync-control"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  ##########################################################################
+  # AWS Service Interface Endpoints
+  # Required for Lambda functions to reach AWS services without internet
+  ##########################################################################
+
+  SqsVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sqs"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-sqs"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  StatesVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.states"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-states"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  KmsVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.kms"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-kms"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  CloudWatchLogsVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.logs"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-logs"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  BedrockRuntimeVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.bedrock-runtime"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-bedrock-runtime"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  SsmVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ssm"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-ssm"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  SecretsManagerVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.secretsmanager"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-secretsmanager"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  LambdaVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.lambda"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-lambda"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  EventsVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.events"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-events"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  AthenaVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.athena"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-athena"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  ##########################################################################
+  # Gateway Endpoints (free — only created when RouteTableIds are provided)
+  # Recommended: avoids Interface endpoint hourly charges for S3/DynamoDB
+  ##########################################################################
+
+  S3VpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateGatewayEndpoints
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      RouteTableIds: !Ref RouteTableIds
+
+  DynamoDbVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateGatewayEndpoints
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.dynamodb"
+      VpcEndpointType: Gateway
+      RouteTableIds: !Ref RouteTableIds
+
+Outputs:
+  VpcEndpointSecurityGroupId:
+    Description: Security Group ID attached to all VPC Interface Endpoints
+    Value: !Ref VpcEndpointSecurityGroup
+
+  AppSyncApiEndpointId:
+    Description: VPC Endpoint ID for AppSync API
+    Value: !Ref AppSyncApiVpcEndpoint
+
+  AppSyncControlEndpointId:
+    Description: VPC Endpoint ID for AppSync control plane
+    Value: !Ref AppSyncControlVpcEndpoint
+
+  S3EndpointId:
+    Condition: CreateGatewayEndpoints
+    Description: VPC Endpoint ID for S3 (Gateway)
+    Value: !Ref S3VpcEndpoint
+
+  DynamoDbEndpointId:
+    Condition: CreateGatewayEndpoints
+    Description: VPC Endpoint ID for DynamoDB (Gateway)
+    Value: !Ref DynamoDbVpcEndpoint
