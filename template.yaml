@@ -1301,6 +1301,17 @@ Resources:
         EnableECRImageScanning: !Ref EnableECRImageScanning
         PreviousIDPPattern: !GetAtt PreviousIDPPatternValue.IDPPattern
 
+        # Private AppSync VPC config (req #2) — puts processing Lambdas in VPC
+        UsePrivateAppSync: !If [UsePrivateAppSync, "true", "false"]
+        LambdaSubnetIds: !If
+          - UsePrivateAppSync
+          - !Join [",", !Ref LambdaSubnetIds]
+          - ""
+        LambdaSecurityGroupId: !If
+          - UsePrivateAppSync
+          - !Ref LambdaVpcSecurityGroup
+          - ""
+
   ##########################################################################
   # Encryption key
   ##########################################################################
