@@ -57,4 +57,3 @@ notebooks/doc-split-metrics-exp/
 samconfig.toml
 ..bfg-report
 .git-rewrite
-pr-description.md
