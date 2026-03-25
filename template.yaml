@@ -362,6 +362,30 @@ Parameters:
       Leave empty to automatically use the VPC CIDR range (recommended for
       internal ALBs). Specify explicit CIDRs to override.
 
+  AppSyncVisibility:
+    Type: String
+    Default: GLOBAL
+    AllowedValues:
+      - GLOBAL
+      - PRIVATE
+    Description: >-
+      Controls AppSync API accessibility. GLOBAL (default) is the standard
+      internet-facing mode. Set to PRIVATE for private network deployments
+      where the API must only be accessible from within the VPC via VPC
+      endpoints. Requires WebUIHosting=ALB and LambdaSubnetIds to be set.
+      All Lambda functions will be deployed in VPC when PRIVATE.
+
+  LambdaSubnetIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: >-
+      (Required when AppSyncVisibility=PRIVATE) Comma-separated private subnet
+      IDs for Lambda functions. Should be private subnets with no direct
+      internet route — Lambda traffic reaches AWS services via VPC endpoints.
+      Can be the same as ALBSubnetIds for simpler deployments, or different
+      private subnets for stricter network isolation. Minimum 2 subnets in
+      different Availability Zones recommended.
+
   CloudFrontPriceClass:
     Type: String
     Default: PriceClass_100
@@ -428,6 +452,7 @@ Conditions:
   CreateExternalAppClient: !Equals [ !Ref EnableMCP, "true" ]
   UseCloudFrontHosting: !Equals [ !Ref WebUIHosting, "CloudFront" ]
   UseALBHosting: !Equals [ !Ref WebUIHosting, "ALB" ]
+  UsePrivateAppSync: !Equals [ !Ref AppSyncVisibility, "PRIVATE" ]
 
 Metadata:
   cfn-lint:
