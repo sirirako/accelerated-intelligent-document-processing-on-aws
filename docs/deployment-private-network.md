@@ -124,57 +124,50 @@ aws cloudformation describe-stacks --stack-name IDP-PRIVATE --region <region> \
 
 Lambda functions need VPC Interface Endpoints to reach AWS services (AppSync, Bedrock, SQS, etc.) without leaving the AWS backbone.
 
-**Your VPC may already have some of these endpoints** (e.g. SSM for EC2 access). The helper script detects what's already there and prints the exact deploy command for only the missing ones.
-
-### 3a. Check existing endpoints
+Run the deployment script — it automatically detects which of the 12 required endpoints already exist in your VPC and deploys only the missing ones:
 
 ```bash
-./scripts/check-vpc-endpoints.sh \
+python scripts/deploy-vpc-endpoints.py \
   --vpc-id <vpc-id> \
   --stack-name IDP-PRIVATE \
   --region <region>
 ```
 
+**Windows (PowerShell):**
+```powershell
+python scripts/deploy-vpc-endpoints.py `
+  --vpc-id <vpc-id> `
+  --stack-name IDP-PRIVATE `
+  --region <region>
+```
+
+The script:
+1. Reads `LambdaSubnetIds` and `LambdaVpcSecurityGroupId` from the IDP stack automatically
+2. Checks each of the 12 required endpoints against the VPC
+3. Deploys only the missing ones (skips any that already exist to avoid DNS conflicts)
+4. Waits for `CREATE_COMPLETE` and reports the result
+
 Example output:
 ```
-🔍 Checking IDP stack outputs from: IDP-PRIVATE
+🔍 Reading IDP stack outputs from: IDP-PRIVATE
    Lambda SG: sg-0e7f3764a5b908021
-   Subnets: subnet-0ae7c007a67c0a483
+   Subnets:   subnet-0ae7c007a67c0a483,subnet-00b39e8345d9f0ff2
 
-🔍 Checking existing VPC endpoints in vpc-0f42ddb124c806ba1...
+🔍 Checking existing VPC endpoints in vpc-0f42ddb124c806ba1 (region: us-east-1)...
 
-   com.amazonaws.<region>.appsync-api      ➕ missing — will create
-   com.amazonaws.<region>.appsync          ➕ missing — will create
-   com.amazonaws.<region>.ssm              ✅ already exists — will skip
-   com.amazonaws.<region>.sqs              ➕ missing — will create
+   ✅ com.amazonaws.us-east-1.ssm              already exists — will skip
+   ➕ com.amazonaws.us-east-1.appsync-api      missing — will create
+   ➕ com.amazonaws.us-east-1.sqs              missing — will create
    ...
 
 📊 Summary: 11 to create, 1 already exist
 
-📋 Run this command to deploy the missing endpoints:
-
-aws cloudformation deploy \
-  --stack-name IDP-PRIVATE-VPCEndpoints \
-  --template-file scripts/vpc-endpoints.yaml \
-  --capabilities CAPABILITY_IAM \
-  --region us-east-1 \
-  --parameter-overrides \
-    IDPStackName=IDP-PRIVATE \
-    VpcId=vpc-0f42ddb124c806ba1 \
-    SubnetIds=subnet-0ae7c007a67c0a483,subnet-00b39e8345d9f0ff2 \
-    LambdaSecurityGroupId=sg-0e7f3764a5b908021 \
-    CreateSsmEndpoint=false
+🚀 Deploying VPC endpoints stack: IDP-PRIVATE-VPCEndpoints
+⏳ Waiting for stack 'IDP-PRIVATE-VPCEndpoints' to reach CREATE_COMPLETE...
+✅ VPC endpoints deployed successfully!
 ```
 
-### 3b. Run the printed command
-
-Copy the `aws cloudformation deploy` command from the script output and run it. The stack deploys 12 Interface endpoints (skipping any that already exist) plus optional S3/DynamoDB Gateway endpoints.
-
-Wait for `CREATE_COMPLETE`:
-```bash
-aws cloudformation describe-stacks --stack-name IDP-PRIVATE-VPCEndpoints --region <region> \
-  --query 'Stacks[0].StackStatus' --output text
-```
+> **Optional `--dry-run`**: add `--dry-run` to see what would be deployed without making any changes.
 
 ---
 
