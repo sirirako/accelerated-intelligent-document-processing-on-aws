@@ -700,7 +700,9 @@ STDERR:
                         #      aws:PrincipalAccount so the StringNotEquals would always
                         #      match and block legitimate same-account service calls.
                         "Condition": {
-                            "StringNotEquals": {"aws:PrincipalAccount": self.account_id},
+                            "StringNotEquals": {
+                                "aws:PrincipalAccount": self.account_id
+                            },
                             "Bool": {"aws:PrincipalIsAWSService": "false"},
                         },
                     },
