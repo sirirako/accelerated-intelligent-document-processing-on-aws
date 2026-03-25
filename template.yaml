@@ -5875,11 +5875,33 @@ Resources:
   # AppSync GraphQL API
   ##########################################################################
 
+  ##########################################################################
+  # Lambda Security Group (conditional on UsePrivateAppSync)
+  # Used by Lambda functions in VPC to reach AppSync + AWS service endpoints
+  ##########################################################################
+
+  LambdaVpcSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: UsePrivateAppSync
+    Properties:
+      GroupDescription: !Sub "Security group for ${AWS::StackName} Lambda functions in VPC (private AppSync mode)"
+      VpcId: !Ref ALBVpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: "Allow HTTPS to VPC endpoints"
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-lambda-sg"
+
   GraphQLApi:
     Type: AWS::AppSync::GraphQLApi
     # checkov:skip=CKV_AWS_194: AppSync has Field-Level logging is determined by LogLevel parameter
     Properties:
       Name: !Sub ${AWS::StackName}-api
+      Visibility: !If [UsePrivateAppSync, PRIVATE, GLOBAL]
       AuthenticationType: AMAZON_COGNITO_USER_POOLS
       UserPoolConfig:
         UserPoolId: !Ref UserPool
