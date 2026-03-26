@@ -7,6 +7,8 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **MLflow Experiment Tracking Integration** — Optional integration with Amazon SageMaker MLflow for automated test run logging. When enabled (`EnableMLflow=true`), every Test Studio run automatically logs metrics (accuracy, cost, field-level scores), configuration parameters (model IDs, temperatures, inference settings), and artifacts (full config snapshots, class definitions, cost breakdowns) to an MLflow tracking server. Fire-and-forget async invocation — never blocks or delays test results. Zero resources created when disabled. See `docs/mlflow-integration.md`.
+
 - **idp_common API Reference & Documentation** — Added `docs/idpcommon-api-reference.md` covering all 22 modules, created 6 missing module READMEs (discovery, schema, image, s3, utils, metrics), updated core data model docs to match current code, fixed `IDPConfig` lazy-loading bug in `__init__.py`, and integrated into docs-site sidebar.
 
 - **Consolidated publish and headless deploy into `idp-cli`** — All build/publish/deploy functionality now available through the CLI, deprecating standalone scripts:
