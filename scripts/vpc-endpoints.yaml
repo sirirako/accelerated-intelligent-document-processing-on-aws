@@ -41,8 +41,23 @@ Parameters:
     Default: "private"
     Description: Value for the Environment tag applied to all resources.
 
-  # Per-endpoint creation flags — set to "false" if the endpoint already exists in the VPC.
+  # ──────────────────────────────────────────────────────────
+  # Per-endpoint creation flags
+  #
+  # REQUIRED by the IDP application (12 endpoints):
+  #   appsync-api, appsync, sqs, states, kms, logs,
+  #   bedrock-runtime, ssm (Lambda→SSM Parameter Store calls),
+  #   secretsmanager, lambda, events, athena
+  #
+  # REQUIRED only for SSM Session Manager testing bastion (2 endpoints):
+  #   ssmmessages  — SSM Session Manager port-forwarding channel
+  #   ec2messages  — SSM agent ↔ SSM service communication
+  #   (If you are accessing the UI via VPN/Direct Connect in production,
+  #    you do NOT need ssmmessages or ec2messages.)
+  #
+  # Set any flag to "false" if the endpoint already exists in the VPC.
   # Use scripts/check-vpc-endpoints.sh to auto-detect and generate the correct deploy command.
+  # ──────────────────────────────────────────────────────────
 
   CreateAppSyncApiEndpoint:
     Type: String

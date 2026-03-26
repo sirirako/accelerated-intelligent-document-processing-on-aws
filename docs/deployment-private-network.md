@@ -71,6 +71,23 @@ python publish.py <bucket-basename> idp <region>
 
 The script creates an S3 bucket (`<bucket-basename>-<region>`) if needed, builds all Lambda layers and templates, and uploads artifacts. When done, it prints the **Template URL** to use in Step 2.
 
+### Enterprise artifact bucket hardening (optional)
+
+For enterprise environments, harden the artifact bucket with KMS encryption, a restrictive bucket policy, and cost-allocation tags:
+
+```bash
+python publish.py <bucket-basename> idp <region> \
+  --kms-key-arn arn:aws:kms:<region>:<account-id>:key/<key-id> \
+  --enterprise-bucket-policy \
+  --tags CostCenter=<cost-center>,Project=IDP,Environment=production
+```
+
+| Flag | Description |
+|------|-------------|
+| `--kms-key-arn` | Enables SSE-KMS encryption on the artifact bucket using the specified CMK |
+| `--enterprise-bucket-policy` | Adds SSL-only (`aws:SecureTransport`) and account-restricted access to the bucket policy |
+| `--tags` | Applies cost-allocation and governance tags to the artifact bucket (`Key=Value,...`) |
+
 ---
 
 ## Step 2: Deploy the IDP Stack
@@ -124,7 +141,7 @@ aws cloudformation describe-stacks --stack-name IDP-PRIVATE --region <region> \
 
 Lambda functions need VPC Interface Endpoints to reach AWS services (AppSync, Bedrock, SQS, etc.) without leaving the AWS backbone.
 
-Run the deployment script — it automatically detects which of the 12 required endpoints already exist in your VPC and deploys only the missing ones:
+Run the deployment script — it automatically detects which of the **12 endpoints required by the IDP app** (plus 2 optional endpoints for SSM testing) already exist in your VPC and deploys only the missing ones:
 
 ```bash
 python scripts/deploy-vpc-endpoints.py \
@@ -243,7 +260,7 @@ Connect to the VPC through your organization's VPN or Direct Connect — the ALB
      --output text)
    # The AppSync hostname is shown in the browser network tab when you open the UI
 
-   sudo aws ssm start-session \
+   sudo -E aws ssm start-session \
      --target <ec2-instance-id> \
      --document-name AWS-StartPortForwardingSessionToRemoteHost \
      --parameters "{\"host\":[\"$APPSYNC_VPCE\"],\"portNumber\":[\"443\"],\"localPortNumber\":[\"443\"]}"

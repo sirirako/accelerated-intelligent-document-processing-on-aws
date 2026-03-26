@@ -129,7 +129,13 @@ fi
 echo "   Subnets: $SUBNET_IDS" >&2
 
 # ──────────────────────────────────────────────────────────
-# The 12 Interface endpoint services IDP requires
+# Interface endpoint services
+#   12 required by the IDP application:
+#     appsync-api, appsync, sqs, states, kms, logs,
+#     bedrock-runtime, ssm (Lambda→SSM Parameter Store),
+#     secretsmanager, lambda, events, athena
+#   2 required only for SSM Session Manager testing bastion:
+#     ssmmessages, ec2messages
 # ──────────────────────────────────────────────────────────
 declare -A ENDPOINTS=(
   [CreateAppSyncApiEndpoint]="appsync-api"
@@ -140,6 +146,8 @@ declare -A ENDPOINTS=(
   [CreateLogsEndpoint]="logs"
   [CreateBedrockRuntimeEndpoint]="bedrock-runtime"
   [CreateSsmEndpoint]="ssm"
+  [CreateSsmMessagesEndpoint]="ssmmessages"
+  [CreateEc2MessagesEndpoint]="ec2messages"
   [CreateSecretsManagerEndpoint]="secretsmanager"
   [CreateLambdaEndpoint]="lambda"
   [CreateEventsEndpoint]="events"
