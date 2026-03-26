@@ -2673,6 +2673,8 @@ Resources:
             QueueName: !Ref DocumentQueueName
         - S3ReadPolicy:
             BucketName: !Ref InputBucketName
+        - S3CrudPolicy:
+            BucketName: !Ref OutputBucketName
         - Statement:
             - Effect: Allow
               Action:
