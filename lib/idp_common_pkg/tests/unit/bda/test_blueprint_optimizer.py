@@ -171,8 +171,8 @@ class TestCreateBlueprintForClass:
     def test_sanitize_called_before_transform(self, optimizer, mock_blueprint_service):
         """Verify _sanitize_property_names is called before _transform."""
         call_order = []
-        mock_blueprint_service._sanitize_property_names.side_effect = (
-            lambda s: call_order.append("sanitize")
+        mock_blueprint_service._sanitize_property_names.side_effect = lambda s: (
+            call_order.append("sanitize")
         )
         mock_blueprint_service._transform_json_schema_to_bedrock_blueprint.side_effect = (
             lambda s: call_order.append("transform") or {"bda": "schema"}
