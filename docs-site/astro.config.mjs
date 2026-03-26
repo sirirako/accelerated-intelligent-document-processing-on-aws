@@ -98,6 +98,7 @@ export default defineConfig({
               slug: "evaluation-enhanced-reporting",
             },
             { label: "Test Studio", slug: "test-studio" },
+            { label: "MLflow Experiment Tracking", slug: "mlflow-integration" },
           ],
         },
         {
