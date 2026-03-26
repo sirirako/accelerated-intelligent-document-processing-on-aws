@@ -143,7 +143,10 @@ class TestExtractCostMetrics:
         }
         result = mlflow_logger._extract_cost_metrics(cost_breakdown)
         assert len(result) == 2
-        assert "cost.classification.bedrock_us.amazon.nova_2_lite_v1_0_inputtokens" in result
+        assert (
+            "cost.classification.bedrock_us.amazon.nova_2_lite_v1_0_inputtokens"
+            in result
+        )
 
     def test_skips_non_dict_entries(self):
         cost_breakdown = {"OCR": "not_a_dict"}
@@ -151,11 +154,7 @@ class TestExtractCostMetrics:
         assert result == {}
 
     def test_skips_missing_estimated_cost(self):
-        cost_breakdown = {
-            "OCR": {
-                "some_entry": {"unit": "pages", "value": 5}
-            }
-        }
+        cost_breakdown = {"OCR": {"some_entry": {"unit": "pages", "value": 5}}}
         result = mlflow_logger._extract_cost_metrics(cost_breakdown)
         assert result == {}
 
@@ -197,9 +196,7 @@ class TestExtractFieldMetrics:
         assert result["FieldB.cm_recall"] == 0.8
 
     def test_skips_non_numeric(self):
-        field_metrics = {
-            "Field": {"cm_recall": "not_a_number"}
-        }
+        field_metrics = {"Field": {"cm_recall": "not_a_number"}}
         result = mlflow_logger._extract_field_metrics(field_metrics)
         assert result == {}
 
@@ -247,9 +244,7 @@ class TestExtractConfigParams:
         assert params["summarization.top_k"] == "5"
 
     def test_evaluation_model(self):
-        config = {
-            "evaluation": {"llm_method": {"model": "eval-model"}}
-        }
+        config = {"evaluation": {"llm_method": {"model": "eval-model"}}}
         params, _, _ = mlflow_logger._extract_config_params(config)
         assert params["evaluation.model"] == "eval-model"
 
@@ -265,7 +260,9 @@ class TestExtractConfigParams:
 
     def test_classification_method(self):
         config = {
-            "classification": {"classificationMethod": "multimodalPageLevelClassification"}
+            "classification": {
+                "classificationMethod": "multimodalPageLevelClassification"
+            }
         }
         params, _, _ = mlflow_logger._extract_config_params(config)
         assert params["classification.method"] == "multimodalPageLevelClassification"
@@ -344,8 +341,17 @@ class TestHandler:
         event.update(overrides)
         return event
 
-    @patch.dict(os.environ, {"MLFLOW_TRACKING_URI": "arn:aws:sagemaker:us-west-2:123456789:mlflow-tracking-server/test"})
-    @patch.object(mlflow_logger, "MLFLOW_TRACKING_URI", "arn:aws:sagemaker:us-west-2:123456789:mlflow-tracking-server/test")
+    @patch.dict(
+        os.environ,
+        {
+            "MLFLOW_TRACKING_URI": "arn:aws:sagemaker:us-west-2:123456789:mlflow-tracking-server/test"
+        },
+    )
+    @patch.object(
+        mlflow_logger,
+        "MLFLOW_TRACKING_URI",
+        "arn:aws:sagemaker:us-west-2:123456789:mlflow-tracking-server/test",
+    )
     @patch.object(mlflow_logger, "mlflow")
     def test_handler_returns_200(self, mock_ml):
         mock_ml.active_run.return_value.info.run_id = "run-abc"
@@ -358,8 +364,17 @@ class TestHandler:
         assert body["run_id"] == "run-abc"
         assert body["metrics_logged"] == 3
 
-    @patch.dict(os.environ, {"MLFLOW_TRACKING_URI": "arn:aws:sagemaker:us-west-2:123456789:mlflow-tracking-server/test"})
-    @patch.object(mlflow_logger, "MLFLOW_TRACKING_URI", "arn:aws:sagemaker:us-west-2:123456789:mlflow-tracking-server/test")
+    @patch.dict(
+        os.environ,
+        {
+            "MLFLOW_TRACKING_URI": "arn:aws:sagemaker:us-west-2:123456789:mlflow-tracking-server/test"
+        },
+    )
+    @patch.object(
+        mlflow_logger,
+        "MLFLOW_TRACKING_URI",
+        "arn:aws:sagemaker:us-west-2:123456789:mlflow-tracking-server/test",
+    )
     @patch.object(mlflow_logger, "mlflow")
     def test_handler_logs_config_params(self, mock_ml):
         mock_ml.active_run.return_value.info.run_id = "run-abc"
@@ -379,8 +394,17 @@ class TestHandler:
         # test_run_id + classification.model + classification.temperature + use_bda
         assert body["params_logged"] == 4
 
-    @patch.dict(os.environ, {"MLFLOW_TRACKING_URI": "arn:aws:sagemaker:us-west-2:123456789:mlflow-tracking-server/test"})
-    @patch.object(mlflow_logger, "MLFLOW_TRACKING_URI", "arn:aws:sagemaker:us-west-2:123456789:mlflow-tracking-server/test")
+    @patch.dict(
+        os.environ,
+        {
+            "MLFLOW_TRACKING_URI": "arn:aws:sagemaker:us-west-2:123456789:mlflow-tracking-server/test"
+        },
+    )
+    @patch.object(
+        mlflow_logger,
+        "MLFLOW_TRACKING_URI",
+        "arn:aws:sagemaker:us-west-2:123456789:mlflow-tracking-server/test",
+    )
     @patch.object(mlflow_logger, "mlflow")
     def test_handler_separates_artifacts(self, mock_ml):
         mock_ml.active_run.return_value.info.run_id = "run-abc"
@@ -401,8 +425,17 @@ class TestHandler:
         assert "field_metrics" in body["artifacts_logged"]
         assert "weighted_overall_scores" in body["artifacts_logged"]
 
-    @patch.dict(os.environ, {"MLFLOW_TRACKING_URI": "arn:aws:sagemaker:us-west-2:123456789:mlflow-tracking-server/test"})
-    @patch.object(mlflow_logger, "MLFLOW_TRACKING_URI", "arn:aws:sagemaker:us-west-2:123456789:mlflow-tracking-server/test")
+    @patch.dict(
+        os.environ,
+        {
+            "MLFLOW_TRACKING_URI": "arn:aws:sagemaker:us-west-2:123456789:mlflow-tracking-server/test"
+        },
+    )
+    @patch.object(
+        mlflow_logger,
+        "MLFLOW_TRACKING_URI",
+        "arn:aws:sagemaker:us-west-2:123456789:mlflow-tracking-server/test",
+    )
     @patch.object(mlflow_logger, "mlflow")
     def test_handler_no_config(self, mock_ml):
         mock_ml.active_run.return_value.info.run_id = "run-abc"
