@@ -189,7 +189,38 @@ Connect to the VPC through your organization's VPN or Direct Connect — the ALB
 
 ### Accessing via SSM port forwarding (testing)
 
-1. Ensure there is an EC2 instance in the VPC with `AmazonSSMManagedInstanceCore` role.
+1. Create a small EC2 instance in the VPC for SSM tunneling:
+
+   ```bash
+   # Create an IAM role and instance profile for SSM access
+   aws iam create-role --role-name IDP-SSMInstanceRole \
+     --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
+   aws iam attach-role-policy --role-name IDP-SSMInstanceRole \
+     --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+   aws iam create-instance-profile --instance-profile-name IDP-SSMInstanceProfile
+   aws iam add-role-to-instance-profile \
+     --instance-profile-name IDP-SSMInstanceProfile \
+     --role-name IDP-SSMInstanceRole
+
+   # Launch a t3.nano in the private subnet (no public IP needed)
+   INSTANCE_ID=$(aws ec2 run-instances \
+     --image-id resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
+     --instance-type t3.nano \
+     --subnet-id <subnet-id> \
+     --iam-instance-profile Name=IDP-SSMInstanceProfile \
+     --no-associate-public-ip-address \
+     --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=IDP-SSM-Bastion}]' \
+     --query 'Instances[0].InstanceId' --output text)
+   echo "Instance ID: $INSTANCE_ID"
+
+   # Wait ~60 seconds for the SSM agent to register, then verify
+   aws ssm describe-instance-information \
+     --filters "Key=InstanceIds,Values=$INSTANCE_ID" \
+     --query 'InstanceInformationList[0].PingStatus' --output text
+   # Should return: Online
+   ```
+
+   > **Note**: The SSM endpoints (`ssm`, `ssmmessages`, `ec2messages`) must be present in the VPC — these were deployed by `scripts/deploy-vpc-endpoints.py` in Step 3.
 
 2. In **Terminal 1** — forward the ALB:
    ```bash
