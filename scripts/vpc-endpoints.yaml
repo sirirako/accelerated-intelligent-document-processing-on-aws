@@ -92,6 +92,18 @@ Parameters:
     AllowedValues: ["true", "false"]
     Description: Create the ssm Interface endpoint. Set to "false" if already exists.
 
+  CreateSsmMessagesEndpoint:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Create the ssmmessages Interface endpoint. Required for SSM Session Manager port forwarding. Set to "false" if already exists.
+
+  CreateEc2MessagesEndpoint:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Create the ec2messages Interface endpoint. Required for SSM Session Manager. Set to "false" if already exists.
+
   CreateSecretsManagerEndpoint:
     Type: String
     Default: "true"
@@ -127,6 +139,8 @@ Conditions:
   ShouldCreateLogsEndpoint: !Equals [ !Ref CreateLogsEndpoint, "true" ]
   ShouldCreateBedrockRuntimeEndpoint: !Equals [ !Ref CreateBedrockRuntimeEndpoint, "true" ]
   ShouldCreateSsmEndpoint: !Equals [ !Ref CreateSsmEndpoint, "true" ]
+  ShouldCreateSsmMessagesEndpoint: !Equals [ !Ref CreateSsmMessagesEndpoint, "true" ]
+  ShouldCreateEc2MessagesEndpoint: !Equals [ !Ref CreateEc2MessagesEndpoint, "true" ]
   ShouldCreateSecretsManagerEndpoint: !Equals [ !Ref CreateSecretsManagerEndpoint, "true" ]
   ShouldCreateLambdaEndpoint: !Equals [ !Ref CreateLambdaEndpoint, "true" ]
   ShouldCreateEventsEndpoint: !Equals [ !Ref CreateEventsEndpoint, "true" ]
@@ -315,6 +329,44 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "${IDPStackName}-ssm"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  SsmMessagesVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: ShouldCreateSsmMessagesEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ssmmessages"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-ssmmessages"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  Ec2MessagesVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: ShouldCreateEc2MessagesEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ec2messages"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-ec2messages"
         - Key: IDPStack
           Value: !Ref IDPStackName
         - Key: Environment

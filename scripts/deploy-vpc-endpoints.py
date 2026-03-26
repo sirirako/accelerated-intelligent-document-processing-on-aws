@@ -31,7 +31,7 @@ import time
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
 
-# The 12 Interface endpoint services IDP requires
+# The 14 Interface endpoint services IDP requires
 # Maps CFN parameter name → AWS service suffix
 REQUIRED_ENDPOINTS = {
     "CreateAppSyncApiEndpoint":      "appsync-api",
@@ -42,6 +42,8 @@ REQUIRED_ENDPOINTS = {
     "CreateLogsEndpoint":            "logs",
     "CreateBedrockRuntimeEndpoint":  "bedrock-runtime",
     "CreateSsmEndpoint":             "ssm",
+    "CreateSsmMessagesEndpoint":     "ssmmessages",
+    "CreateEc2MessagesEndpoint":     "ec2messages",
     "CreateSecretsManagerEndpoint":  "secretsmanager",
     "CreateLambdaEndpoint":          "lambda",
     "CreateEventsEndpoint":          "events",
