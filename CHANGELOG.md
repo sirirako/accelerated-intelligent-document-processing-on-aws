@@ -5,6 +5,8 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.5.4]
+
 ### Added
 
 - **MLflow Experiment Tracking Integration** — Optional integration with Amazon SageMaker MLflow for automated test run logging. When enabled (`EnableMLflow=true`), every Test Studio run automatically logs metrics (accuracy, cost, field-level scores), configuration parameters (model IDs, temperatures, inference settings), and artifacts (full config snapshots, class definitions, cost breakdowns) to an MLflow tracking server. Fire-and-forget async invocation — never blocks or delays test results. Zero resources created when disabled. See `docs/mlflow-integration.md`.
@@ -27,6 +29,14 @@ SPDX-License-Identifier: MIT-0
 
 - **Full document reprocess not re-running OCR** — Fixed bug where clicking "Reprocess" in the UI reused stale OCR results from the previous run instead of re-executing OCR with the current configuration. The reprocess resolver now deletes previous output data from S3 before queuing, preventing the OCR function's retry-safe recovery from reinstalling old results.
 
+- **Agentic extraction timeout on long documents** — Fixed repeated Lambda timeouts when agentic extraction exceeds the 15-minute limit on large documents (e.g., 25-page brokerage statements with 600+ holdings). Added incremental S3 checkpointing that saves extraction state after each tool call — covers both the extraction tools path (`extraction_tool`, `apply_json_patches`, `make_buffer_data_final_extraction`) and the buffer tools path (`patch_buffer_data`) that the agent uses for very large batched extractions. The checkpoint format tracks which state was saved (`current_extraction` vs `intermediate_extraction` buffer) so the correct resume path is used. On Step Function retry, the Lambda loads the checkpoint and the agent resumes from where it left off rather than restarting from scratch. No CloudFormation or Step Function changes required — the existing `Sandbox.Timedout` retry mechanism now makes incremental progress. Only active when agentic extraction is enabled; standard extraction is unaffected.
+
+- **Agentic extraction fails on Bedrock InternalServerException without retrying** — Fixed `InternalServerException` errors (transient Bedrock server-side errors) causing immediate Lambda failure after only botocore's fast 7 retries, bypassing the application-level retry decorator (50 retries with 5s→1800s exponential backoff). Root cause: `InternalServerException` and `InternalServerError` were missing from all three retry layers — the `async_exponential_backoff_retry` decorator's `DEFAULT_RETRYABLE_ERRORS` set (`bedrock_utils.py`), the `BedrockClient._invoke_with_retry()` retryable errors list (`bedrock/client.py`), and the Step Functions ExtractionStep Retry `ErrorEquals` list (`workflow.asl.json`). All three layers now include these transient errors, providing proper exponential backoff retry at the application level and Lambda-level retry via Step Functions as a safety net.
+
+### Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.5.4.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.5.4.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.5.4.yaml`
 
 ## [0.5.3]
 
