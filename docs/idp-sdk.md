@@ -10,9 +10,11 @@ The IDP SDK provides programmatic Python access to all IDP Accelerator capabilit
 
 ```bash
 # Install from local development
-pip install -e ./lib/idp_sdk
+# Recommended: install everything at once
+make setup-venv
+source .venv/bin/activate
 
-# Or with uv
+# Or install just the SDK with pip/uv
 uv pip install -e ./lib/idp_sdk
 ```
 

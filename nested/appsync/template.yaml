@@ -29,6 +29,11 @@ Parameters:
     Type: String
     Default: ""
     Description: ARN of the TestExecutionAggregationFunction from pattern stack (optional)
+
+  MLflowLoggerFunctionArn:
+    Type: String
+    Default: ""
+    Description: ARN of the MLflowLoggerFunction from pattern stack (optional)
   
   # DynamoDB Tables
   TrackingTableName:
@@ -210,6 +215,7 @@ Conditions:
   ShouldCreateEvaluationBaselineBucket: !Equals [!Ref ShouldCreateEvaluationBaselineBucket, "true"]
   ShouldCreateReportingBucket: !Equals [!Ref ShouldCreateReportingBucket, "true"]
   HasTestExecutionAggregationFunction: !Not [!Equals [!Ref TestExecutionAggregationFunctionArn, ""]]
+  HasMLflowLoggerFunction: !Not [!Equals [!Ref MLflowLoggerFunctionArn, ""]]
 
 Resources:
 
@@ -1806,9 +1812,9 @@ Resources:
       DataSourceName: !GetAtt DiscoveryTableDataSource.Name
       RequestMappingTemplate: |-
         ## Validate status is one of the allowed values
-        #set($validStatuses = ["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED"])
+        #set($validStatuses = ["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED", "OPTIMIZATION_IN_PROGRESS", "OPTIMIZATION_COMPLETED", "OPTIMIZATION_FAILED"])
         #if(!$validStatuses.contains($ctx.args.status))
-          $util.error("Invalid status value. Status must be one of: PENDING, IN_PROGRESS, COMPLETED, FAILED", "ValidationException")
+          $util.error("Invalid status value. Status must be one of: PENDING, IN_PROGRESS, COMPLETED, FAILED, OPTIMIZATION_IN_PROGRESS, OPTIMIZATION_COMPLETED, OPTIMIZATION_FAILED", "ValidationException")
         #end
 
         #set($expNames = {})
@@ -1845,8 +1851,8 @@ Resources:
         $util.qr($expValues.put(":updatedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
         #set($updateExpression = "${updateExpression}, #updatedAt = :updatedAt")
 
-        ## Set completedAt when status is COMPLETED or FAILED
-        #if($ctx.args.status == "COMPLETED" || $ctx.args.status == "FAILED")
+        ## Set completedAt when status is COMPLETED, FAILED, or optimization terminal states
+        #if($ctx.args.status == "COMPLETED" || $ctx.args.status == "FAILED" || $ctx.args.status == "OPTIMIZATION_COMPLETED" || $ctx.args.status == "OPTIMIZATION_FAILED")
           $util.qr($expNames.put("#completedAt", "completedAt"))
           $util.qr($expValues.put(":completedAt", $util.dynamodb.toDynamoDB($util.time.nowISO8601())))
           #set($updateExpression = "${updateExpression}, #completedAt = :completedAt")
@@ -2667,6 +2673,8 @@ Resources:
             QueueName: !Ref DocumentQueueName
         - S3ReadPolicy:
             BucketName: !Ref InputBucketName
+        - S3CrudPolicy:
+            BucketName: !Ref OutputBucketName
         - Statement:
             - Effect: Allow
               Action:
@@ -2884,6 +2892,7 @@ Resources:
                 - !Ref ReportingBucketName
                 - !Ref ReportingBucketName
           TEST_EXECUTION_AGGREGATION_FUNCTION_ARN: !Ref TestExecutionAggregationFunctionArn
+          MLFLOW_LOGGER_FUNCTION_ARN: !If [HasMLflowLoggerFunction, !Ref MLflowLoggerFunctionArn, ""]
       Events:
         SQSEvent:
           Type: SQS
@@ -2949,6 +2958,14 @@ Resources:
                 Action:
                   - lambda:InvokeFunction
                 Resource: !Ref TestExecutionAggregationFunctionArn
+          - !Ref AWS::NoValue
+        - !If
+          - HasMLflowLoggerFunction
+          - Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Ref MLflowLoggerFunctionArn
           - !Ref AWS::NoValue
 
 

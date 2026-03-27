@@ -91,6 +91,15 @@ class AgenticConfig(BaseModel):
         default=None,
         description="Model used for reviewing and correcting extraction work",
     )
+    max_concurrent_batches: int = Field(
+        default=1,
+        ge=1,
+        le=10,
+        description="Max concurrent page-batch agents for parallel extraction. "
+        "1 = sequential (default). >1 splits pages into N batches and runs N agents "
+        "concurrently. Reduces wall-clock time but increases Bedrock RPM. "
+        "Tune based on your Bedrock quota.",
+    )
 
 
 class ExtractionConfig(BaseModel):
@@ -1090,6 +1099,14 @@ class IDPConfig(BaseModel):
         "When true, BDA handles OCR, classification, and extraction as a single managed service. "
         "When false (default), uses the step-by-step pipeline with configurable OCR, classification, "
         "extraction, and assessment stages.",
+    )
+
+    enable_blueprint_optimization: bool = Field(
+        default=False,
+        description="Enable BDA blueprint optimization during discovery. "
+        "When true and a ground truth file is provided, discovery will automatically "
+        "optimize the BDA blueprint using the InvokeBlueprintOptimizationAsync API "
+        "to improve extraction accuracy. Defaults to false.",
     )
 
     managed: bool = Field(

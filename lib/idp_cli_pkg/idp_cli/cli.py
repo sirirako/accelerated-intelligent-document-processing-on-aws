@@ -9,19 +9,44 @@ Command-line tool for batch document processing with the IDP Accelerator.
 
 import logging
 import os
-import subprocess
 import sys
 import time
 from typing import Optional
 
-import boto3
-import click
-from idp_sdk import IDPClient
-from rich.console import Console
-from rich.live import Live
-from rich.table import Table
+_SETUP_HELP = """\
+Error: Required packages not found.
 
-from . import display
+idp-cli requires idp-sdk, idp_common, and their dependencies to be installed.
+
+To fix this, run one of:
+  make setup          Install into your current Python environment
+  make setup-venv     Create a .venv and install into it
+
+If you already ran 'make setup-venv', activate it first:
+  source .venv/bin/activate
+
+See docs/idp-cli.md for details.
+"""
+
+try:
+    import boto3
+    import click
+    from idp_sdk import IDPClient
+    from rich.console import Console
+    from rich.live import Live
+    from rich.table import Table
+
+    from . import display
+except ImportError:
+    # Dependencies not installed — main() will print a helpful message and exit.
+    # Define minimal stubs so the module can still be imported for entry point resolution.
+    click = None  # type: ignore
+    IDPClient = None  # type: ignore
+    Console = None  # type: ignore
+    Live = None  # type: ignore
+    Table = None  # type: ignore
+    display = None  # type: ignore
+    boto3 = None  # type: ignore
 
 # Configure logging
 logging.basicConfig(
@@ -29,105 +54,97 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-console = Console()
+console = Console() if Console is not None else None
 
 
-def _build_from_local_code(from_code_dir: str, region: str, stack_name: str) -> tuple:
+def _build_from_local_code(
+    from_code_dir: str,
+    region: str,
+    stack_name: str,
+    *,
+    headless: bool = False,
+    bucket_basename: Optional[str] = None,
+    prefix: Optional[str] = None,
+    public: bool = False,
+    max_workers: Optional[int] = None,
+    clean_build: bool = False,
+    no_validate: bool = False,
+    verbose: bool = False,
+    lint: bool = True,
+) -> tuple:
     """
-    Build project from local code using publish.py
+    Build project from local code using the SDK publish operation.
 
     Args:
         from_code_dir: Path to project root directory
         region: AWS region
         stack_name: CloudFormation stack name (unused but kept for signature compatibility)
+        headless: If True, also generate a headless template variant.
+        bucket: S3 bucket basename for artifacts (auto-generated if not provided).
+        prefix: S3 key prefix for artifacts (default: idp-cli).
+        public: If True, make artifacts publicly readable.
+        max_workers: Max concurrent build workers.
+        clean_build: Force full rebuild.
+        no_validate: Skip CloudFormation template validation.
+        verbose: Enable verbose output.
+        lint: Enable linting (default: True).
 
     Returns:
-        Tuple of (template_path, None) on success
+        Tuple of (template_path, template_url) on success.
+        If headless, returns the headless template path/url instead.
 
     Raises:
         SystemExit: On build failure
     """
-    # Verify publish.py exists
-    publish_script = os.path.join(from_code_dir, "publish.py")
-    if not os.path.isfile(publish_script):
-        console.print(f"[red]✗ Error: publish.py not found in {from_code_dir}[/red]")
-        console.print(
-            "[yellow]Tip: --from-code should point to the project root directory[/yellow]"
-        )
-        sys.exit(1)
-
-    # Get AWS account ID
-    try:
-        sts = boto3.client("sts", region_name=region)
-        account_id = sts.get_caller_identity()["Account"]
-    except Exception as e:
-        console.print(f"[red]✗ Error: Failed to get AWS account ID: {e}[/red]")
-        sys.exit(1)
-
-    # Set parameters for publish.py
-    cfn_bucket_basename = f"idp-accelerator-artifacts-{account_id}"
-    cfn_prefix = "idp-cli"
-
     console.print("[bold cyan]Building project from source...[/bold cyan]")
-    console.print(f"[dim]Bucket: {cfn_bucket_basename}[/dim]")
-    console.print(f"[dim]Prefix: {cfn_prefix}[/dim]")
+    console.print(f"[dim]Source: {from_code_dir}[/dim]")
     console.print(f"[dim]Region: {region}[/dim]")
+    if headless:
+        console.print("[dim]Mode: headless[/dim]")
+    if bucket_basename:
+        console.print(f"[dim]Bucket: {bucket_basename}[/dim]")
+    if prefix:
+        console.print(f"[dim]Prefix: {prefix}[/dim]")
     console.print()
 
-    # Build command
-    cmd = [
-        sys.executable,  # Use same Python interpreter
-        publish_script,
-        cfn_bucket_basename,
-        cfn_prefix,
-        region,
-    ]
-
-    console.print(f"[dim]Running: {' '.join(cmd)}[/dim]")
-    console.print()
-
-    # Run with streaming output
     try:
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            cwd=from_code_dir,
+        client = IDPClient(region=region)
+        result = client.publish.build(
+            source_dir=from_code_dir,
+            bucket=bucket_basename,
+            prefix=prefix,
+            region=region,
+            headless=headless,
+            public=public,
+            max_workers=max_workers,
+            clean_build=clean_build,
+            no_validate=no_validate,
+            verbose=verbose,
+            lint=lint,
         )
 
-        # Stream output line by line
-        for line in process.stdout or []:  # type: ignore
-            # Print each line immediately (preserve formatting from publish.py)
-            print(line, end="")
-
-        process.wait()
-
-        if process.returncode != 0:
-            console.print("[red]✗ Build failed. See output above for details.[/red]")
+        if not result.success:
+            console.print(f"[red]✗ Build failed: {result.error}[/red]")
             sys.exit(1)
 
+        console.print()
+
+        # Return headless template if headless mode
+        if headless and result.headless_template_path:
+            console.print(
+                f"[green]✓ Build complete (headless). Template: {result.headless_template_path}[/green]"
+            )
+            return result.headless_template_path, result.headless_template_url
+
+        console.print(
+            f"[green]✓ Build complete. Template: {result.template_path}[/green]"
+        )
+        console.print()
+        return result.template_path, result.template_url
+
     except Exception as e:
-        console.print(f"[red]✗ Error running publish.py: {e}[/red]")
+        console.print(f"[red]✗ Error during build: {e}[/red]")
         sys.exit(1)
-
-    # Verify template was created
-    template_path = os.path.join(from_code_dir, ".aws-sam", "idp-main.yaml")
-    if not os.path.isfile(template_path):
-        console.print(
-            f"[red]✗ Error: Built template not found at {template_path}[/red]"
-        )
-        console.print(
-            "[yellow]The build may have failed or the template was not generated.[/yellow]"
-        )
-        sys.exit(1)
-
-    console.print()
-    console.print(f"[green]✓ Build complete. Using template: {template_path}[/green]")
-    console.print()
-
-    return template_path, None
 
 
 def _display_deployment_failure(client, stack_name: str, result):
@@ -208,7 +225,7 @@ TEMPLATE_URLS = {
 
 
 @click.group()
-@click.version_option(version="0.5.3")
+@click.version_option(version="0.5.4")
 def cli():
     """
     IDP CLI - Batch document processing for IDP Accelerator
@@ -243,6 +260,11 @@ def cli():
     help="URL to CloudFormation template in S3 (default: auto-selected based on region)",
 )
 @click.option(
+    "--template-file",
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to a local CloudFormation template file (e.g., .aws-sam/idp-main.yaml from a previous publish)",
+)
+@click.option(
     "--max-concurrent",
     default=100,
     type=int,
@@ -271,11 +293,48 @@ def cli():
 )
 @click.option("--region", help="AWS region (optional)")
 @click.option("--role-arn", help="CloudFormation service role ARN")
+@click.option(
+    "--headless",
+    is_flag=True,
+    help="Deploy headless (no UI/AppSync/Cognito/WAF) — for API-only or GovCloud deployments",
+)
+@click.option(
+    "--bucket-basename",
+    default=None,
+    help="S3 bucket basename for artifacts — region is appended automatically (auto-generated if not provided, used with --from-code)",
+)
+@click.option(
+    "--prefix",
+    default=None,
+    help="S3 key prefix for artifacts (default: idp-cli, used with --from-code)",
+)
+@click.option(
+    "--public",
+    is_flag=True,
+    help="Make S3 artifacts publicly readable (used with --from-code)",
+)
+@click.option(
+    "--build-max-workers",
+    type=int,
+    default=None,
+    help="Concurrent build workers (used with --from-code)",
+)
+@click.option(
+    "--clean-build",
+    is_flag=True,
+    help="Force full rebuild by deleting checksums (used with --from-code)",
+)
+@click.option(
+    "--no-validate-template",
+    is_flag=True,
+    help="Skip CloudFormation template validation (used with --from-code)",
+)
 def deploy(
     stack_name: str,
     admin_email: str,
     from_code: Optional[str],
     template_url: str,
+    template_file: Optional[str],
     max_concurrent: int,
     log_level: str,
     enable_hitl: str,
@@ -285,12 +344,24 @@ def deploy(
     no_rollback: bool,
     region: Optional[str],
     role_arn: Optional[str],
+    headless: bool,
+    bucket_basename: Optional[str],
+    prefix: Optional[str],
+    public: bool,
+    build_max_workers: Optional[int],
+    clean_build: bool,
+    no_validate_template: bool,
 ):
     """
     Deploy or update IDP stack from command line
     
     For new stacks, --admin-email is required.
     For existing stacks, only specify parameters you want to update.
+    
+    Headless mode (--headless) deploys without UI, AppSync, Cognito, WAF,
+    Agents, HITL, and Knowledge Base — suitable for API-only or GovCloud use.
+    
+    To build templates without deploying, use 'idp-cli publish' instead.
     
     Examples:
     
@@ -300,14 +371,14 @@ def deploy(
       # Deploy from local code
       idp-cli deploy --stack-name my-idp --from-code . --admin-email user@example.com --wait
       
-      # Update existing stack with local config file
-      idp-cli deploy --stack-name my-idp --custom-config ./my-config.yaml
+      # Deploy headless from local code
+      idp-cli deploy --stack-name my-idp --from-code . --headless --wait
       
-      # Update existing stack from local code
-      idp-cli deploy --stack-name my-idp --from-code . --wait
+      # Deploy headless from pre-built template
+      idp-cli deploy --stack-name my-idp --headless --wait
       
-      # Update existing stack with custom settings
-      idp-cli deploy --stack-name my-idp --max-concurrent 200 --wait
+      # Deploy from code with custom bucket/prefix
+      idp-cli deploy --stack-name my-idp --from-code . --bucket my-artifacts --prefix v1 --wait
       
       # Create with additional parameters
       idp-cli deploy --stack-name my-idp \\
@@ -316,9 +387,10 @@ def deploy(
     """
     try:
         # Validate mutually exclusive options
-        if from_code and template_url:
+        exclusive_count = sum(1 for x in [from_code, template_url, template_file] if x)
+        if exclusive_count > 1:
             console.print(
-                "[red]✗ Error: Cannot specify both --from-code and --template-url[/red]"
+                "[red]✗ Error: Cannot specify more than one of --from-code, --template-url, --template-file[/red]"
             )
             sys.exit(1)
 
@@ -337,8 +409,86 @@ def deploy(
         template_path = None
         if from_code:
             template_path, template_url = _build_from_local_code(
-                from_code, region, stack_name
+                from_code,
+                region,
+                stack_name,
+                headless=headless,
+                bucket_basename=bucket_basename,
+                prefix=prefix,
+                public=public,
+                max_workers=build_max_workers,
+                clean_build=clean_build,
+                no_validate=no_validate_template,
             )
+
+        # Handle local template file (from a previous publish)
+        elif template_file:
+            template_path = os.path.abspath(template_file)
+            console.print(f"[bold]Using local template: {template_path}[/bold]")
+
+        # Handle headless mode for pre-built templates (no --from-code)
+        elif headless and not template_url:
+            # Download default template, transform to headless, upload to temp bucket
+            console.print("[bold cyan]Generating headless template...[/bold cyan]")
+            if region in TEMPLATE_URLS:
+                source_url = TEMPLATE_URLS[region]
+            else:
+                supported_regions = ", ".join(TEMPLATE_URLS.keys())
+                raise ValueError(
+                    f"Region '{region}' is not supported for headless mode. "
+                    f"Supported regions: {supported_regions}. "
+                    f"Please use --from-code or --template-url explicitly."
+                )
+
+            # Download template, transform, upload
+            import tempfile
+
+            import boto3 as _boto3
+            import requests
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                # Download
+                local_template = os.path.join(tmpdir, "idp-main.yaml")
+                console.print(f"[dim]Downloading template from {source_url}...[/dim]")
+                resp = requests.get(source_url, timeout=60)
+                resp.raise_for_status()
+                with open(local_template, "wb") as f:
+                    f.write(resp.content)
+
+                # Transform
+                headless_template = os.path.join(tmpdir, "idp-headless.yaml")
+                client_tmp = IDPClient(region=region)
+                transform_result = client_tmp.publish.transform_template_headless(
+                    source_template=local_template,
+                    output_path=headless_template,
+                    update_govcloud_config=True,
+                )
+                if not transform_result.success:
+                    console.print(
+                        f"[red]✗ Headless transformation failed: {transform_result.error}[/red]"
+                    )
+                    sys.exit(1)
+
+                # Upload to per-account bucket
+                sts = _boto3.client("sts", region_name=region)
+                account_id = sts.get_caller_identity()["Account"]
+                bucket_name = f"idp-accelerator-artifacts-{account_id}-{region}"
+                s3 = _boto3.client("s3", region_name=region)
+                s3_key = "idp-cli/idp-headless.yaml"
+                s3.upload_file(
+                    headless_template,
+                    bucket_name,
+                    s3_key,
+                    ExtraArgs={"ContentType": "text/yaml"},
+                )
+                template_url = (
+                    f"https://s3.{region}.amazonaws.com/{bucket_name}/{s3_key}"
+                )
+                # Note: template_path left as None — the temp file will be deleted
+                # when this `with` block exits. Deploy will use template_url instead.
+                console.print(
+                    f"[green]✓ Headless template uploaded: {template_url}[/green]"
+                )
 
         # Determine template URL (user-provided takes precedence)
         elif not template_url:
@@ -2826,8 +2976,6 @@ def _invoke_test_set_resolver(
     """Invoke test set resolver lambda for auto-detection"""
     import json
 
-    import boto3
-
     lambda_client = boto3.client("lambda", region_name=region)
 
     # Handle pagination to get all functions - EXACT same logic as test runner
@@ -2886,8 +3034,6 @@ def _invoke_test_runner(
 ):
     """Invoke test runner lambda to start test set processing"""
     import json
-
-    import boto3
 
     # Find test runner function by name pattern
     lambda_client = boto3.client("lambda", region_name=region)
@@ -2959,7 +3105,6 @@ def _get_test_set_document_ids(
     resources: dict,
 ):
     """Get document IDs from test set for monitoring"""
-    import boto3
 
     # Get test set bucket from resources
     test_set_bucket = resources.get("TestSetBucket")
@@ -3019,7 +3164,6 @@ def _create_test_set_from_manifest(
     """Create test set structure from manifest files"""
     import os
 
-    import boto3
     import pandas as pd
 
     # Get test set bucket
@@ -4680,8 +4824,131 @@ def _write_discover_output(output, all_schemas, console, is_batch=True):
             )
 
 
+@cli.command()
+@click.option(
+    "--source-dir",
+    default=".",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    help="Path to IDP project root directory",
+)
+@click.option(
+    "--bucket-basename",
+    default=None,
+    help="S3 bucket basename for artifacts — region is appended automatically (auto-generated if not provided)",
+)
+@click.option(
+    "--prefix", default=None, help="S3 key prefix for artifacts (default: idp-cli)"
+)
+@click.option("--region", required=True, help="AWS region for deployment")
+@click.option(
+    "--headless", is_flag=True, help="Also generate a headless (no-UI) template variant"
+)
+@click.option("--public", is_flag=True, help="Make S3 artifacts publicly readable")
+@click.option(
+    "--max-workers",
+    type=int,
+    default=None,
+    help="Maximum concurrent build workers (default: auto-detect)",
+)
+@click.option(
+    "--clean-build",
+    is_flag=True,
+    help="Delete all checksum files to force full rebuild",
+)
+@click.option(
+    "--no-validate", is_flag=True, help="Skip CloudFormation template validation"
+)
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose build output")
+@click.option(
+    "--lint/--no-lint",
+    default=True,
+    help="Enable/disable ruff linting and cfn-lint (default: enabled)",
+)
+def publish(
+    source_dir: str,
+    bucket_basename: Optional[str],
+    prefix: Optional[str],
+    region: str,
+    headless: bool,
+    public: bool,
+    max_workers: Optional[int],
+    clean_build: bool,
+    no_validate: bool,
+    verbose: bool,
+    lint: bool,
+):
+    """
+    Build, package, and publish IDP CloudFormation artifacts to S3
+
+    This command is the CLI equivalent of publish.py. It builds all Lambda
+    functions, Lambda layers, SAM templates, packages the UI, and uploads
+    everything to S3. Optionally generates a headless template variant.
+
+    Examples:
+
+      # Standard build and publish
+      idp-cli publish --source-dir . --region us-east-1
+
+      # With custom bucket and prefix
+      idp-cli publish --source-dir . --bucket my-artifacts --prefix v1 --region us-east-1
+
+      # Build with headless template
+      idp-cli publish --source-dir . --region us-east-1 --headless
+
+      # Public artifacts (for shared deployments)
+      idp-cli publish --source-dir . --region us-east-1 --public
+
+      # Full rebuild with verbose output
+      idp-cli publish --source-dir . --region us-east-1 --clean-build --verbose
+
+      # Skip validation
+      idp-cli publish --source-dir . --region us-east-1 --no-validate
+    """
+    try:
+        client = IDPClient(region=region)
+        result = client.publish.build(
+            source_dir=source_dir,
+            bucket=bucket_basename,
+            prefix=prefix,
+            region=region,
+            headless=headless,
+            public=public,
+            max_workers=max_workers,
+            clean_build=clean_build,
+            no_validate=no_validate,
+            verbose=verbose,
+            lint=lint,
+        )
+
+        if not result.success:
+            console.print(f"[red]✗ Publish failed: {result.error}[/red]")
+            sys.exit(1)
+
+        # Print deployment URLs
+        console.print()
+        client.publish.print_deployment_urls(
+            template_url=result.template_url or "",
+            region=region,
+            headless_template_url=result.headless_template_url,
+        )
+        console.print()
+        console.print("[bold green]✅ Publish complete![/bold green]")
+
+    except Exception as e:
+        logger.error(f"Error during publish: {e}", exc_info=True)
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
+
+
 def main():
     """Main entry point for the CLI"""
+    # Pre-flight check: verify core dependencies are importable
+    try:
+        import idp_sdk  # noqa: F401
+    except ImportError:
+        print(_SETUP_HELP, file=sys.stderr)
+        sys.exit(1)
+
     # Parse --profile from anywhere in sys.argv before Click processes arguments
     args = sys.argv[1:]  # Skip script name
     profile = None
