@@ -827,6 +827,91 @@ classes:
               evaluation_method: NUMERIC_EXACT
 ```
 
+## Private Network Deployment (feature/private-appsync-api — March 2026)
+
+This feature adds support for fully private / air-gapped deployments where the AppSync API and all Lambda→AWS service traffic stays on the AWS backbone inside a VPC.
+
+### New Parameters Added to `template.yaml`
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `AppSyncVisibility` | String | `GLOBAL` | `GLOBAL` or `PRIVATE` — controls AppSync API accessibility |
+| `LambdaSubnetIds` | CommaDelimitedList | `""` | Private subnet IDs for Lambda VPC placement |
+
+### New Condition
+```yaml
+UsePrivateAppSync: !Equals [ !Ref AppSyncVisibility, "PRIVATE" ]
+```
+
+### New Resources in `template.yaml`
+- `LambdaVpcSecurityGroup` — conditional `AWS::EC2::SecurityGroup` (HTTPS egress only) created when `AppSyncVisibility=PRIVATE`
+- `LambdaVpcSecurityGroupId` Output — exported for the networking team to use when deploying VPC endpoints
+
+### Templates Updated (VpcConfig added)
+| Template | Functions Updated | Count |
+|----------|------------------|-------|
+| `template.yaml` | QueueSender, QueueProcessor, WorkflowTracker, SaveReportingDataFunctionV2, AgentChatProcessorFunction, AgentProcessorFunction, DiscoveryProcessorFunction | 7 |
+| `nested/appsync/template.yaml` | AbortWorkflowResolverFunction, CopyToBaselineResolverFunction, ProcessChangesResolverFunction, ReprocessDocumentResolverFunction | 4 |
+| `patterns/unified/template.yaml` | BDAProcessResultsFunction, OCRFunction, ClassificationFunction, ExtractionFunction, AssessmentFunction, ProcessResultsFunction, SummarizationFunction, EvaluationFunction, RuleValidationFunction, RuleValidationOrchestrationFunction | 10 |
+
+**Total: 21 Lambda functions placed in VPC when `AppSyncVisibility=PRIVATE`**
+
+### New Scripts and Documents
+
+```
+scripts/
+├── vpc-endpoints.yaml          # CFN template: 14 VPC Interface Endpoints (networking team owns)
+│                               #   - 12 required by IDP app: appsync-api, appsync, sqs, states,
+│                               #     kms, logs, bedrock-runtime, ssm, secretsmanager, lambda,
+│                               #     events, athena
+│                               #   - 2 for SSM testing bastion only: ssmmessages, ec2messages
+│                               #   - 2 Gateway endpoints (optional, free): s3, dynamodb
+│                               #   - VpcEndpointSecurityGroup (inbound 443 from Lambda SG)
+│                               #   - Per-endpoint Create* flags to skip pre-existing endpoints
+├── check-vpc-endpoints.sh      # Detects existing endpoints in a VPC and generates the exact
+│                               #   aws cloudformation deploy command for missing ones
+├── deploy-vpc-endpoints.py     # Cross-platform (Windows/macOS/Linux) Python deployer:
+│                               #   reads LambdaSubnetIds + LambdaVpcSecurityGroupId from IDP
+│                               #   stack automatically, checks existing endpoints, deploys only
+│                               #   missing ones
+└── alb-test-vpc.yaml           # Test VPC CloudFormation template:
+                                #   creates VPC with 3 subnets (2 for ALB + 1 for Lambda)
+                                #   + KMS CMK for artifact bucket encryption
+                                #   NOTE: does NOT create ACM cert — use
+                                #   scripts/generate_self_signed_cert.sh (2-step process)
+
+docs/
+└── deployment-private-network.md   # Full private network deployment runbook covering:
+                                    #   - Step 1: Build & publish artifacts (+ enterprise bucket
+                                    #     hardening: --kms-key-arn, --enterprise-bucket-policy,
+                                    #     --tags)
+                                    #   - Step 2: Deploy IDP stack with private AppSync params
+                                    #   - Step 3: Deploy VPC endpoints (14 interface endpoints)
+                                    #   - Step 4: Access via VPN/Direct Connect or SSM tunnel
+```
+
+### Enterprise Artifact Bucket Hardening (publish.py)
+Three new flags added to `publish.py`:
+```bash
+python publish.py <bucket> idp <region> \
+  --kms-key-arn <arn>             # SSE-KMS encryption on artifact bucket
+  --enterprise-bucket-policy      # DenyInsecureTransport + DenyExternalAccess policy
+  --tags Key=Value,...            # Cost-allocation and governance tags
+```
+
+### Deploy Architecture
+```
+App team:
+  aws cloudformation create-stack ... AppSyncVisibility=PRIVATE LambdaSubnetIds=...
+  → exports LambdaVpcSecurityGroupId
+
+Networking team:
+  python scripts/deploy-vpc-endpoints.py --vpc-id <vpc> --stack-name <idp-stack>
+  → reads LambdaSubnetIds + LambdaVpcSecurityGroupId automatically
+  → deploys scripts/vpc-endpoints.yaml with only missing endpoints
+```
+
+---
+
 ## Development Best Practices
 
 ### Module Development

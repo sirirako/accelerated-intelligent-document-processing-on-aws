@@ -33,23 +33,50 @@ You need an existing VPC with:
 >   --capabilities CAPABILITY_IAM \
 >   --region us-east-1
 >
-> # Get outputs (VpcId, SubnetIds, CertificateArn)
+> # Get outputs (VpcId, SubnetIds, LambdaSubnetId, ArtifactBucketKeyArn)
 > aws cloudformation describe-stacks \
 >   --stack-name IDP-TestVPC \
 >   --query 'Stacks[0].Outputs[*].{Key:OutputKey,Value:OutputValue}' \
 >   --output table
 > ```
+> **Note**: The TestVPC template does **not** create an ACM certificate. Use `scripts/generate_self_signed_cert.sh` as described in the next section.
 
 ### 3. ACM Certificate
 
 An ACM certificate is required for the ALB HTTPS listener:
 
 - **ACM-issued** (production): request via ACM console with DNS/email validation
-- **Imported**: import your organization's CA-signed cert into ACM
-- **Self-signed** (testing only):
-  ```bash
-  CERT_ARN=$(./scripts/generate_self_signed_cert.sh --region us-east-1 --domain myapp.internal)
-  ```
+- **Imported**: import your organization's CA-signed cert into ACM — **the cert's domain (CN/SAN) must match the hostname users will use in their browser**
+- **Self-signed** (testing only): use the 2-step process below
+
+#### Self-signed certificate — 2-step process
+
+The ELB hostname (`internal-<stack>-webui-alb-<id>.<region>.elb.amazonaws.com`) is only known **after** the stack is deployed, so generating a cert that matches it requires two steps:
+
+**Step A**: Generate a placeholder cert and deploy the stack:
+```bash
+CERT_ARN=$(./scripts/generate_self_signed_cert.sh --region us-east-1 --domain idp-alb.internal)
+# Use $CERT_ARN as ALBCertificateArn in the stack deploy
+```
+
+**Step B**: After the stack is deployed, get the ALB hostname and reimport the cert with the correct SAN:
+```bash
+# Get the actual ALB DNS name from the stack output
+ALB_DNS=$(aws cloudformation describe-stacks --stack-name IDP-PRIVATE \
+  --query 'Stacks[0].Outputs[?OutputKey==`ApplicationWebURL`].OutputValue' \
+  --output text | sed 's|https://||')
+
+# Reimport the cert with the ELB hostname as SAN (same ARN — no stack update needed)
+./scripts/generate_self_signed_cert.sh \
+  --region us-east-1 \
+  --domain "$ALB_DNS" \
+  --cert-arn "$CERT_ARN"
+# The ALB serves the updated cert within ~30 seconds.
+```
+
+> **Why this matters**: browsers block background JavaScript requests (AppSync GraphQL, Cognito token exchange) to hosts with a mismatched TLS cert — even if the user clicked through the initial page-level cert warning. The cert domain must exactly match the hostname in the browser's address bar.
+
+> **Production**: this isn't a concern when using DNS + a CA-signed cert. For example, if users access `https://idp.internal.company.com` and the cert covers that domain, everything works seamlessly.
 
 ### 4. Network Connectivity
 
@@ -309,3 +336,5 @@ When `WebUIHosting=ALB` and `AppSyncVisibility=PRIVATE`, the following are handl
 | **`Invalid type for parameter Parameters[N].ParameterValue`** | Escape commas: `'ParameterKey=ALBSubnetIds,ParameterValue=subnet-a\,subnet-b'` |
 | **403 Forbidden on ALB** | Check ALB target group health checks (expected: 200, 307, 405). Verify S3 bucket policy has the correct VPC endpoint ID. |
 | **Target Group Unhealthy** | VPC endpoint ENIs may be stale. Check the endpoint SG allows HTTPS (443) from the ALB. |
+| **App spins after login (stuck loading)** | TLS cert domain mismatch. The ALB cert must include the ELB DNS hostname as a SAN. Run `scripts/generate_self_signed_cert.sh` with `--cert-arn` and `--domain` set to the ALB DNS name to reimport the cert. See Prerequisites §3. |
+| **Login hangs on `cognito-idp.amazonaws.com`** | Browser (WorkSpaces, bastion) needs internet access to reach Cognito IDP — there is no VPC endpoint for Cognito IDP. Ensure a NAT Gateway exists in a **public subnet** (with `0.0.0.0/0 → IGW` route) and private subnets route internet traffic through it. |
