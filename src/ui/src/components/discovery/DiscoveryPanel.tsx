@@ -783,8 +783,9 @@ const DiscoveryPanel = (): React.JSX.Element => {
     <SpaceBetween size="l">
       <Container header={<Header variant="h2">Discovery</Header>}>
         <Alert type="warning" header="Important Notice">
-          Use this feature in non-production environments to discover documents and images. Fine-tune and test the
-          generated custom class configuration before exporting it to production.
+          Use this feature in non-production environments to discover class models from documents and images. 
+          This feature creates a starting point, not a final class model config. Be sure to inspect, test and 
+          refine the generated custom class configuration before exporting it to production.
         </Alert>
 
         {error && (
