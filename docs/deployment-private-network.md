@@ -231,6 +231,43 @@ The URL will look like `https://internal-IDP-PRIVATE-webui-alb-<id>.<region>.elb
 
 Connect to the VPC through your organization's VPN or Direct Connect — the ALB DNS name resolves and routes automatically.
 
+### Accessing via Amazon WorkSpaces (testing)
+
+Amazon WorkSpaces provides a Windows desktop running **inside the VPC**, giving the browser direct access to the internal ALB and VPC endpoints — no port forwarding or `/etc/hosts` entries needed.
+
+**Requirements:**
+- AWS Directory Service (Simple AD) registered with WorkSpaces in the same VPC
+- WorkSpaces directory with **internet access enabled** (`EnableInternetAccess=true`)
+- A **dedicated public subnet** with a NAT Gateway (required for Cognito IDP — the browser calls `cognito-idp.<region>.amazonaws.com` which has no VPC Interface Endpoint)
+
+**Key setup notes:**
+1. **NAT Gateway placement**: the NAT GW must be in a **separate public subnet** (with `0.0.0.0/0 → IGW` route). It cannot provide egress for traffic originating in the same subnet it lives in. Private subnets route `0.0.0.0/0 → NAT GW`.
+2. **Enable internet access before launching**: set `EnableInternetAccess=true` on the WorkSpaces directory. If the WorkSpace is already running without it, you must rebuild it (~25 min) for the setting to take effect.
+3. **Reimport the cert**: after the IDP stack is deployed, run the 2-step cert process (see Prerequisites §3) so the TLS cert covers the actual ELB hostname. Browsers silently block background API calls to cert-mismatched domains.
+
+**Verifying the deployment:**
+
+Once connected to WorkSpaces, open the browser and navigate to the ALB URL (`ApplicationWebURL` stack output). Accept the self-signed cert warning, then:
+
+- ✅ Login succeeds and the app loads
+- ✅ Upload a document (e.g. `samples/lending_package.pdf`) — the status should update live in the document list without refreshing: `QUEUED → OCR → CLASSIFICATION → EXTRACTION → ...`
+- ✅ Open browser **DevTools → Network → WS** tab — confirm an active WebSocket connection to `*.appsync-realtime-api.<region>.amazonaws.com`
+
+The live status updates confirm that **AppSync WebSocket subscriptions work through the `appsync-api` VPC Interface Endpoint**. There is no separate `appsync-realtime-api` endpoint — the `appsync-api` endpoint handles both HTTPS (queries/mutations) and WSS (subscriptions/realtime).
+
+**If WebSocket subscriptions are not working** (document status does not update live), the following features are degraded (queries and mutations still work):
+
+| Feature | Impact |
+|---------|--------|
+| Document list auto-refresh | ❌ Does not update after upload — must reload manually |
+| Processing status live updates | ❌ Status stays frozen — must reload to see progress |
+| Agent chat streaming | ❌ Messages don't appear in real time |
+| Discovery job live status | ❌ Does not update automatically |
+
+To diagnose: check that the `appsync-api` VPC endpoint is `available` and its security group allows inbound HTTPS (443) from the WorkSpace subnet CIDR.
+
+> **Cost estimate**: WorkSpaces AutoStop bundle ~$7.25/mo + NAT Gateway ~$0.045/hr while active. Clean up WorkSpace, directory, NAT Gateway, and Internet Gateway when testing is complete.
+
 ### Accessing via SSM port forwarding (testing)
 
 1. Create a small EC2 instance in the VPC for SSM tunneling:
