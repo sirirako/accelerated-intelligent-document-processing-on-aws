@@ -5,6 +5,10 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **Prompt Preview** — New "Prompt Preview" tab in the Configuration page lets you preview the actual prompts sent to the LLM for each processing step (Classification, Extraction, Assessment, Summarization). Config-derived placeholders are filled in with real values (class names, cleaned JSON Schema), while document-specific placeholders are shown as highlighted markers. Includes token estimates, copy-to-clipboard, and a substitution details panel showing the exact schema sent to the LLM. Helps optimize document class schemas and prompt templates.
+
 ## [0.5.4]
 
 ### Added
