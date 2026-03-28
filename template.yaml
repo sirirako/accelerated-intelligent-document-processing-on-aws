@@ -442,6 +442,17 @@ Parameters:
     AllowedPattern: '^([0-9]{1,3}\.){3}[0-9]{1,3}\/[0-9]{1,2}(,\s*([0-9]{1,3}\.){3}[0-9]{1,3}\/[0-9]{1,2})*$'
     ConstraintDescription: Must be valid comma-separated list of IPv4 CIDR ranges
 
+  ArtifactsBucketKmsKeyArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) ARN of a KMS CMK used to encrypt the artifacts S3 bucket (created by
+      idp-cli publish --artifacts-bucket-kms-key-arn). When provided, the CodeBuild
+      role that builds the Web UI receives kms:Decrypt permission so it can read
+      source artifacts from the encrypted bucket.
+    AllowedPattern: "^(|arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/.+)$"
+    ConstraintDescription: Must be empty or a valid KMS key ARN
+
 Rules:
   MLflowTrackingURIRequired:
     RuleCondition: !Equals [ !Ref EnableMLflow, "true" ]
@@ -481,6 +492,7 @@ Conditions:
   UseALBHosting: !Equals [ !Ref WebUIHosting, "ALB" ]
   UsePrivateAppSync: !Equals [ !Ref AppSyncVisibility, "PRIVATE" ]
   IsMLflowEnabled: !Equals [ !Ref EnableMLflow, "true" ]
+  HasArtifactsBucketKmsKey: !Not [ !Equals [ !Ref ArtifactsBucketKmsKeyArn, "" ] ]
 
 Metadata:
   cfn-lint:
@@ -7018,6 +7030,17 @@ Resources:
                     - cloudfront:CreateInvalidation
                   Resource:
                     - !Sub "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+                - !Ref AWS::NoValue
+              # Grant kms:Decrypt on the artifacts bucket KMS key when provided
+              # This allows CodeBuild to read source artifacts from a KMS-encrypted bucket
+              - !If
+                - HasArtifactsBucketKmsKey
+                - Effect: Allow
+                  Action:
+                    - kms:Decrypt
+                    - kms:GenerateDataKey*
+                    - kms:DescribeKey
+                  Resource: !Ref ArtifactsBucketKmsKeyArn
                 - !Ref AWS::NoValue
 
   UICodeBuildProject:
