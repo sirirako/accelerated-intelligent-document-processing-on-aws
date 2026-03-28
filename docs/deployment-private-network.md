@@ -86,33 +86,37 @@ Users must reach the internal ALB via VPN, Direct Connect, WorkSpaces, or SSM po
 
 ## Step 1: Build and Publish Artifacts
 
-> **Node.js 22.12+ must be in your PATH** before running publish.py.
+> **Node.js 22.12+ must be in your PATH** before running `idp-cli publish`.
 
 ```bash
 export PATH="/opt/homebrew/opt/node@22/bin:$PATH"  # macOS with brew node@22
 node --version  # must be v22.x or later
 
-python publish.py <bucket-basename> idp <region>
-# Example: python publish.py idp-<account-id> idp us-east-1
+idp-cli publish --source-dir . --bucket-basename <bucket-basename> --prefix idp --region <region>
+# Example: idp-cli publish --source-dir . --bucket-basename idp-<account-id> --prefix idp --region us-east-1
 ```
 
-The script creates an S3 bucket (`<bucket-basename>-<region>`) if needed, builds all Lambda layers and templates, and uploads artifacts. When done, it prints the **Template URL** to use in Step 2.
+The command creates an S3 bucket (`<bucket-basename>-<region>`) if needed, builds all Lambda layers and templates, and uploads artifacts. When done, it prints the **Template URL** to use in Step 2.
+
+> **Note:** `publish.py` is deprecated — use `idp-cli publish` instead.
 
 ### Enterprise artifact bucket hardening (optional)
 
-For enterprise environments, harden the artifact bucket with KMS encryption, a restrictive bucket policy, and cost-allocation tags:
+For enterprise environments, harden the artifact bucket with KMS encryption and cost-allocation tags:
 
 ```bash
-python publish.py <bucket-basename> idp <region> \
-  --kms-key-arn arn:aws:kms:<region>:<account-id>:key/<key-id> \
-  --enterprise-bucket-policy \
-  --tags CostCenter=<cost-center>,Project=IDP,Environment=production
+idp-cli publish \
+  --source-dir . \
+  --bucket-basename <bucket-basename> \
+  --prefix idp \
+  --region <region> \
+  --artifacts-bucket-kms-key-arn arn:aws:kms:<region>:<account-id>:key/<key-id> \
+  --artifacts-bucket-tags CostCenter=<cost-center>,Project=IDP,Environment=production
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--kms-key-arn` | Enables SSE-KMS encryption on the artifact bucket using the specified CMK |
-| `--enterprise-bucket-policy` | Adds SSL-only (`aws:SecureTransport`) and account-restricted access to the bucket policy |
+| `--artifacts-bucket-kms-key-arn` | Enables SSE-KMS encryption on the artifact bucket using the specified CMK |
 | `--tags` | Applies cost-allocation and governance tags to the artifact bucket (`Key=Value,...`) |
 
 ---
@@ -365,7 +369,7 @@ When `WebUIHosting=ALB` and `AppSyncVisibility=PRIVATE`, the following are handl
 
 | Issue | Resolution |
 |-------|------------|
-| **`ModuleNotFoundError: No module named 'boto3'`** | Use conda/venv Python, not system Python 3.9. Run `python publish.py ...` not `python3`. |
+| **`ModuleNotFoundError: No module named 'boto3'`** | Use conda/venv Python, not system Python 3.9. Run `idp-cli publish ...` (requires `make setup` first). |
 | **`npm error engine Unsupported engine`** | Node.js 22.12+ required. `brew install node@22 && export PATH="/opt/homebrew/opt/node@22/bin:$PATH"` |
 | **Stack fails with `conflicting DNS domain`** | A VPC endpoint already exists for that service. Re-run `check-vpc-endpoints.sh` — it will detect this and set the right `Create*=false` flags. |
 | **UI loads but shows "network error"** | AppSync API is PRIVATE. From outside the VPC you need an SSM tunnel + `/etc/hosts` entry. From inside VPN/VPC it works automatically. |
