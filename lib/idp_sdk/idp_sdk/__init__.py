@@ -92,6 +92,8 @@ from .models import (
     OrphanedResourceCleanupResult,
     # Enums
     Pattern,
+    # Publish models
+    PublishResult,
     RerunStep,
     # Search models
     SearchCitation,
@@ -102,9 +104,10 @@ from .models import (
     StackResources,
     StackState,
     StopWorkflowsResult,
+    TemplateTransformResult,
 )
 
-__version__ = "0.5.3"
+__version__ = "0.5.4"
 
 __all__ = [
     # Client
@@ -122,6 +125,9 @@ __all__ = [
     "DocumentState",
     "Pattern",
     "RerunStep",
+    # Publish models
+    "PublishResult",
+    "TemplateTransformResult",
     # Stack models
     "StackDeploymentResult",
     "StackDeletionResult",

@@ -688,6 +688,8 @@ class BedrockClient:
                 "TooManyRequestsException",
                 "ServiceUnavailableException",
                 "ModelErrorException",
+                "InternalServerException",
+                "InternalServerError",
                 "RequestTimeout",
                 "RequestTimeoutException",
             ]
@@ -933,6 +935,8 @@ class BedrockClient:
                 "RequestLimitExceeded",
                 "TooManyRequestsException",
                 "ServiceUnavailableException",
+                "InternalServerException",
+                "InternalServerError",
                 "RequestTimeout",
                 "ReadTimeout",
                 "TimeoutError",

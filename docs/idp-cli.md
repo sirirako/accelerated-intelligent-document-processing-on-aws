@@ -74,8 +74,8 @@ https://github.com/user-attachments/assets/3d448a74-ba5b-4a4a-96ad-ec03ac0b4d7d
 ### Install from source
 
 ```bash
-cd lib/idp_cli_pkg
-pip install -e .
+make setup-venv
+source .venv/bin/activate
 ```
 
 ### Install with test dependencies
@@ -156,7 +156,7 @@ idp-cli deploy [OPTIONS]
 - `--admin-email`: Admin user email
 
 **Optional Parameters:**
-- `--from-code`: Deploy from local code by building with publish.py (path to project root)
+- `--from-code`: Deploy from local code by building and publishing artifacts (path to project root)
 - `--template-url`: URL to CloudFormation template in S3 (optional, auto-selected based on region)
 - `--custom-config`: Path to local config file or S3 URI
 - `--max-concurrent`: Maximum concurrent workflows (default: 100)

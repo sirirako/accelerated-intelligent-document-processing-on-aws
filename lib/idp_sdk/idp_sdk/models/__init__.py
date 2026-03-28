@@ -60,6 +60,7 @@ from .evaluation import (
     FieldComparison,
 )
 from .manifest import ManifestDocument, ManifestResult, ManifestValidationResult
+from .publish import PublishResult, TemplateTransformResult
 from .search import SearchCitation, SearchDocumentReference, SearchResult
 from .stack import (
     BucketInfo,
@@ -155,6 +156,9 @@ __all__ = [
     "FieldComparison",
     "EvaluationMetrics",
     "DeleteResult",
+    # Publish models
+    "PublishResult",
+    "TemplateTransformResult",
     # Assessment models
     "AssessmentConfidenceResult",
     "AssessmentFieldConfidence",
