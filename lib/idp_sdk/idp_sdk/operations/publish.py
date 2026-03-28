@@ -50,6 +50,8 @@ class PublishOperation:
         no_validate: bool = False,
         verbose: bool = False,
         lint: bool = True,
+        artifacts_bucket_kms_key_arn: Optional[str] = None,
+        artifacts_bucket_tags: Optional[str] = None,
     ) -> PublishResult:
         """Build and publish IDP CloudFormation artifacts to S3.
 
@@ -70,6 +72,12 @@ class PublishOperation:
             no_validate: If True, skip CloudFormation template validation.
             verbose: If True, enable verbose build output.
             lint: If True, enable ruff linting and cfn-lint. Default: True.
+            artifacts_bucket_kms_key_arn: Optional KMS CMK ARN for SSE-KMS encryption
+                on the artifact bucket. When set, applies server-side encryption using
+                the specified customer-managed key instead of the default SSE-S3.
+            artifacts_bucket_tags: Optional tags for the artifact bucket as a
+                comma-separated ``Key=Value`` string (e.g.
+                ``"CostCenter=123,Project=IDP,Environment=production"``).
 
         Returns:
             PublishResult with template paths, URLs, and status.
@@ -114,7 +122,6 @@ class PublishOperation:
             publish_args.append("--clean-build")
         if not lint:
             publish_args.extend(["--lint", "off"])
-
         try:
             # Run IDPPublisher directly from the SDK's _core module
             from idp_sdk._core.publish import IDPPublisher
@@ -192,6 +199,35 @@ class PublishOperation:
                                 version=version,
                                 error=f"Headless template validation failed: {e}",
                             )
+
+            # Apply enterprise bucket hardening (after build, before returning)
+            s3_client = boto3.client("s3", region_name=region)
+
+            if artifacts_bucket_kms_key_arn:
+                s3_client.put_bucket_encryption(
+                    Bucket=bucket_full,
+                    ServerSideEncryptionConfiguration={
+                        "Rules": [
+                            {
+                                "ApplyServerSideEncryptionByDefault": {
+                                    "SSEAlgorithm": "aws:kms",
+                                    "KMSMasterKeyID": artifacts_bucket_kms_key_arn,
+                                },
+                                "BucketKeyEnabled": True,
+                            }
+                        ]
+                    },
+                )
+
+            if artifacts_bucket_tags:
+                tag_set = []
+                for pair in artifacts_bucket_tags.split(","):
+                    key, value = pair.strip().split("=", 1)
+                    tag_set.append({"Key": key.strip(), "Value": value.strip()})
+                s3_client.put_bucket_tagging(
+                    Bucket=bucket_full,
+                    Tagging={"TagSet": tag_set},
+                )
 
             return PublishResult(
                 success=True,
