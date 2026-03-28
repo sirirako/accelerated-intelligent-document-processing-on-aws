@@ -143,10 +143,14 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+/** Delimiters used to mark config-substituted values for highlighting */
+const CONFIG_START = '\u00AB'; // «
+const CONFIG_END = '\u00BB'; // »
+
 /**
  * Fill config-derived placeholders in a prompt template and mark document-specific ones.
  *
- * Config-derived placeholders (filled with actual values):
+ * Config-derived placeholders (filled with actual values and wrapped in « » markers):
  *   - {CLASS_NAMES_AND_DESCRIPTIONS} → formatted class list
  *   - {ATTRIBUTE_NAMES_AND_DESCRIPTIONS} → cleaned JSON schema
  *   - {DOCUMENT_CLASS} → selected class name
@@ -161,9 +165,9 @@ function renderPrompt(template: string, configSubstitutions: Record<string, stri
 
   let result = template;
 
-  // Fill config-derived placeholders
+  // Fill config-derived placeholders, wrapping substituted values in markers for highlighting
   for (const [key, value] of Object.entries(configSubstitutions)) {
-    result = result.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
+    result = result.replace(new RegExp(`\\{${key}\\}`, 'g'), `${CONFIG_START}${value}${CONFIG_END}`);
   }
 
   // Replace document-specific placeholders with descriptive markers
@@ -250,35 +254,46 @@ const HighlightedPrompt = ({ text }: { text: string }): React.JSX.Element => {
     );
   }
 
-  // Split text into segments: plain text, runtime placeholders, and config values
+  // Parse text into segments: plain text, runtime placeholders (yellow), and config values (green)
+  // Config values are wrapped in « » markers by renderPrompt()
+  // Runtime placeholders start with emoji prefixes (📄, 🖼️, etc.)
   const segments: React.ReactNode[] = [];
-  let remaining = text;
   let keyCounter = 0;
 
-  // Match runtime placeholder markers (📄, 🖼️, 📊, 🔍, ✅, 📝, 📚 prefixed)
-  const placeholderRegex = /([📄🖼️📊🔍✅📝📚]\s*\[.*?\])/g;
+  // Combined regex: match either config-value markers «...» or runtime placeholder markers
+  const combinedRegex = /(\u00AB[\s\S]*?\u00BB)|([📄🖼️📊🔍✅📝📚]\s*\[.*?\])/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
 
-  while (remaining.length > 0) {
-    const match = placeholderRegex.exec(remaining);
-    if (!match) {
-      segments.push(remaining);
-      break;
+  while ((match = combinedRegex.exec(text)) !== null) {
+    // Add plain text before this match
+    if (match.index > lastIndex) {
+      segments.push(text.substring(lastIndex, match.index));
     }
 
-    // Add text before the match
-    if (match.index > 0) {
-      segments.push(remaining.substring(0, match.index));
+    if (match[1]) {
+      // Config-substituted value (green) — strip the « » delimiters
+      const configContent = match[1].substring(1, match[1].length - 1);
+      segments.push(
+        <span key={`cv-${keyCounter++}`} className="config-value">
+          {configContent}
+        </span>,
+      );
+    } else if (match[2]) {
+      // Runtime placeholder (yellow)
+      segments.push(
+        <span key={`ph-${keyCounter++}`} className="runtime-placeholder">
+          {match[2]}
+        </span>,
+      );
     }
 
-    // Add the highlighted placeholder
-    segments.push(
-      <span key={`ph-${keyCounter++}`} className="runtime-placeholder">
-        {match[1]}
-      </span>,
-    );
+    lastIndex = match.index + match[0].length;
+  }
 
-    remaining = remaining.substring(match.index + match[0].length);
-    placeholderRegex.lastIndex = 0; // Reset regex
+  // Add any remaining plain text after the last match
+  if (lastIndex < text.length) {
+    segments.push(text.substring(lastIndex));
   }
 
   return <div className="prompt-preview-content">{segments}</div>;
@@ -457,12 +472,15 @@ const PromptPreview = ({ formValues }: PromptPreviewProps): React.JSX.Element =>
       <Alert type="info" header="About Prompt Preview">
         <SpaceBetween size="xxs">
           <span>
-            This preview shows the actual prompts sent to the LLM with <strong>configuration-derived values filled in</strong> (class names,
-            attribute schemas).
-            <span style={{ backgroundColor: '#fff3cd', padding: '1px 4px', borderRadius: '3px', marginLeft: '4px' }}>
+            This preview shows the actual prompts sent to the LLM.{' '}
+            <span style={{ backgroundColor: '#d4edda', border: '1px solid #28a745', padding: '1px 4px', borderRadius: '3px' }}>
+              Green highlighted text
+            </span>{' '}
+            shows configuration-derived values (class names, attribute schemas) substituted from your config.{' '}
+            <span style={{ backgroundColor: '#fff3cd', border: '1px solid #ffc107', padding: '1px 4px', borderRadius: '3px' }}>
               Yellow highlighted text
             </span>{' '}
-            indicates runtime placeholders that are filled with actual document content during processing.
+            indicates runtime placeholders filled with actual document content during processing.
           </span>
         </SpaceBetween>
       </Alert>
