@@ -821,6 +821,17 @@ Resources:
                 - kms:GenerateDataKey*
                 - kms:DescribeKey
               Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+            # Grant kms:Decrypt on the artifacts bucket KMS key when provided
+            # This allows ConfigurationCopyFunction to read config files from a KMS-encrypted artifact bucket
+            - !If
+              - HasArtifactsBucketKmsKey
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:GenerateDataKey*
+                  - kms:DescribeKey
+                Resource: !Ref ArtifactsBucketKmsKeyArn
+              - !Ref AWS::NoValue
 
   ConfigurationCopyFunctionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -1344,6 +1355,7 @@ Resources:
         ImageVersion: "<UNIFIED_IMAGE_VERSION>"
         ArtifactBucket: "<ARTIFACT_BUCKET_TOKEN>"
         ArtifactPrefix: "<ARTIFACT_PREFIX_TOKEN>"
+        ArtifactsBucketKmsKeyArn: !Ref ArtifactsBucketKmsKeyArn
         SourceZipfile: "<UNIFIED_SOURCE_ZIPFILE_TOKEN>"
         CustomClassificationModelARN: !Ref Pattern2CustomClassificationModelARN
         CustomExtractionModelARN: !Ref Pattern2CustomExtractionModelARN

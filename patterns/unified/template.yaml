@@ -117,6 +117,14 @@ Parameters:
     Type: String
     Description: "S3 bucket containing deployment artifacts"
 
+  ArtifactsBucketKmsKeyArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) KMS CMK ARN used to encrypt the artifacts bucket. When provided,
+      the DockerBuildRole and other CodeBuild roles receive kms:Decrypt permission.
+    AllowedPattern: "^(|arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/.+)$"
+
   ArtifactPrefix:
     Type: String
     Description: "S3 prefix for deployment artifacts"
@@ -201,6 +209,7 @@ Conditions:
   IsECRImageScanningEnabled: !Equals [!Ref EnableECRImageScanning, "true"]
   IsPrivateAppSync: !Equals [!Ref UsePrivateAppSync, "true"]
   IsMLflowEnabled: !Equals [!Ref EnableMLflow, "true"]
+  HasArtifactsBucketKmsKey: !Not [!Equals [!Ref ArtifactsBucketKmsKeyArn, ""]]
 
 Resources:
 
@@ -1923,6 +1932,17 @@ Resources:
                 Action:
                   - kms:Decrypt
                   - kms:CreateGrant
+              # Grant kms:Decrypt on the artifacts bucket KMS key when provided
+              # This allows DockerBuildRole to download source code from a KMS-encrypted artifact bucket
+              - !If
+                - HasArtifactsBucketKmsKey
+                - Effect: Allow
+                  Action:
+                    - kms:Decrypt
+                    - kms:GenerateDataKey*
+                    - kms:DescribeKey
+                  Resource: !Ref ArtifactsBucketKmsKeyArn
+                - !Ref AWS::NoValue
 
   DockerBuildProject:
     Type: AWS::CodeBuild::Project

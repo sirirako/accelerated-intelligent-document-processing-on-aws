@@ -15,7 +15,9 @@ This runbook deploys the GenAI IDP Accelerator in a **fully private / air-gapped
 
 ### 1. Build Tools
 
-See [Deployment Guide → Dependencies](./deployment.md#dependencies) for the full list of required build tools and installation instructions (AWS CLI, SAM CLI, Python 3.12+, Docker, Node.js 22+).
+See [Deployment Guide → Dependencies](./deployment.md#dependencies) for the full list of required build tools and installation instructions (AWS CLI, SAM CLI, Python 3.12+, Node.js 22+).
+
+> **Note:** `idp-cli publish` does **not** build Docker images locally — they are built in AWS by CodeBuild during stack deployment. Docker is **not required** on your workstation.
 
 ### 2. VPC Requirements
 
@@ -126,23 +128,16 @@ idp-cli publish \
 Replace the placeholder values and run:
 
 ```bash
-aws cloudformation create-stack \
+idp-cli deploy \
   --stack-name IDP-PRIVATE \
   --template-url https://s3.<region>.amazonaws.com/<bucket>/idp/idp-main.yaml \
-  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+  --admin-email admin@example.com \
   --region <region> \
-  --parameters \
-    ParameterKey=AdminEmail,ParameterValue=admin@example.com \
-    ParameterKey=WebUIHosting,ParameterValue=ALB \
-    ParameterKey=ALBVpcId,ParameterValue=<vpc-id> \
-    'ParameterKey=ALBSubnetIds,ParameterValue=<subnet-1>\,<subnet-2>' \
-    ParameterKey=ALBCertificateArn,ParameterValue=<cert-arn> \
-    ParameterKey=ALBScheme,ParameterValue=internal \
-    ParameterKey=AppSyncVisibility,ParameterValue=PRIVATE \
-    'ParameterKey=LambdaSubnetIds,ParameterValue=<subnet-1>\,<subnet-2>' \
-    ParameterKey=EnableMCP,ParameterValue=false \
-    ParameterKey=DocumentKnowledgeBase,ParameterValue=DISABLED
+  --wait \
+  --parameters "WebUIHosting=ALB,ALBVpcId=<vpc-id>,ALBSubnetIds=<subnet-1>,<subnet-2>,ALBCertificateArn=<cert-arn>,ALBScheme=internal,AppSyncVisibility=PRIVATE,LambdaSubnetIds=<subnet-1>,<subnet-2>,EnableMCP=false,DocumentKnowledgeBase=DISABLED"
 ```
+
+> **`--wait`** streams stack events and exits with a non-zero code on failure — useful for CI/CD pipelines.
 
 **Key parameters:**
 
@@ -157,13 +152,18 @@ aws cloudformation create-stack \
 
 > **`AppSyncVisibility` is immutable** — it cannot be changed after the stack is created. To switch between GLOBAL and PRIVATE, delete and recreate the stack.
 
-> **Comma escaping**: always escape commas in `ALBSubnetIds` and `LambdaSubnetIds` with a backslash inside single quotes: `'ParameterKey=...,ParameterValue=subnet-a\,subnet-b'`
+### Enterprise: deploying with a KMS-encrypted artifact bucket
 
-Wait for the stack to reach `CREATE_COMPLETE` (~15 minutes):
+If you published with `--artifacts-bucket-kms-key-arn` in Step 1, you **must** pass the same KMS key ARN as a parameter when deploying — otherwise CodeBuild (`DockerBuildRole`) and the configuration copy Lambda (`ConfigurationCopyFunction`) will fail with `AccessDenied: kms:Decrypt` when trying to read from the encrypted bucket:
 
 ```bash
-aws cloudformation describe-stacks --stack-name IDP-PRIVATE --region <region> \
-  --query 'Stacks[0].StackStatus' --output text
+idp-cli deploy \
+  --stack-name IDP-PRIVATE \
+  --template-url https://s3.<region>.amazonaws.com/<bucket>/idp/idp-main.yaml \
+  --admin-email admin@example.com \
+  --region <region> \
+  --wait \
+  --parameters "WebUIHosting=ALB,ALBVpcId=<vpc-id>,ALBSubnetIds=<subnet-1>,<subnet-2>,ALBCertificateArn=<cert-arn>,ALBScheme=internal,AppSyncVisibility=PRIVATE,LambdaSubnetIds=<subnet-1>,<subnet-2>,EnableMCP=false,DocumentKnowledgeBase=DISABLED,ArtifactsBucketKmsKeyArn=arn:aws:kms:<region>:<account-id>:key/<key-id>"
 ```
 
 ---
@@ -369,12 +369,12 @@ When `WebUIHosting=ALB` and `AppSyncVisibility=PRIVATE`, the following are handl
 
 | Issue | Resolution |
 |-------|------------|
-| **`ModuleNotFoundError: No module named 'boto3'`** | Use conda/venv Python, not system Python 3.9. Run `idp-cli publish ...` (requires `make setup` first). |
+| **`ModuleNotFoundError: No module named 'boto3'`** | Use a venv Python, not system Python. Run `make setup && source .venv/bin/activate` then retry `idp-cli publish ...`. |
 | **`npm error engine Unsupported engine`** | Node.js 22.12+ required. `brew install node@22 && export PATH="/opt/homebrew/opt/node@22/bin:$PATH"` |
 | **Stack fails with `conflicting DNS domain`** | A VPC endpoint already exists for that service. Re-run `check-vpc-endpoints.sh` — it will detect this and set the right `Create*=false` flags. |
 | **UI loads but shows "network error"** | AppSync API is PRIVATE. From outside the VPC you need an SSM tunnel + `/etc/hosts` entry. From inside VPN/VPC it works automatically. |
-| **`aws: error: the following arguments are required: --template-file`** | `aws cloudformation deploy` only supports `--template-file`. Use `create-stack` or `update-stack` with `--template-url`. |
-| **`Invalid type for parameter Parameters[N].ParameterValue`** | Escape commas: `'ParameterKey=ALBSubnetIds,ParameterValue=subnet-a\,subnet-b'` |
+| **CodeBuild fails: `AccessDenied: kms:Decrypt`** | The artifact bucket is KMS-encrypted but `ArtifactsBucketKmsKeyArn` was not passed to the deploy command. Redeploy with `--parameters "...ArtifactsBucketKmsKeyArn=<key-arn>"`. |
+| **`UpdateDefaultConfig` custom resource fails with `NoSuchKey`** | Same root cause as above — `ConfigurationCopyFunction` silently skipped copying config files due to missing `kms:Decrypt`. Pass `ArtifactsBucketKmsKeyArn` and redeploy. |
 | **403 Forbidden on ALB** | Check ALB target group health checks (expected: 200, 307, 405). Verify S3 bucket policy has the correct VPC endpoint ID. |
 | **Target Group Unhealthy** | VPC endpoint ENIs may be stale. Check the endpoint SG allows HTTPS (443) from the ALB. |
 | **App spins after login (stuck loading)** | TLS cert domain mismatch. The ALB cert must include the ELB DNS hostname as a SAN. Run `scripts/generate_self_signed_cert.sh` with `--cert-arn` and `--domain` set to the ALB DNS name to reimport the cert. See Prerequisites §3. |
