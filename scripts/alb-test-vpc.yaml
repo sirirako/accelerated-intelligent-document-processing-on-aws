@@ -38,6 +38,7 @@ Resources:
   #############################################
   VPC:
     Type: AWS::EC2::VPC
+    # checkov:skip=CKV_AWS_178: "VPC flow logs are not required for this test-only template. Enable flow logs in production VPCs."
     Properties:
       CidrBlock: !Ref VpcCidr
       EnableDnsSupport: true
@@ -125,6 +126,12 @@ Resources:
     Type: AWS::KMS::Key
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W79
+            reason: "KMS key policy grants kms:* to the account root principal — standard administrative access pattern for CMKs. This test key is intentionally managed outside the IDP stack so deleting the IDP stack does not schedule key deletion."
+    # checkov:skip=CKV_AWS_7: "Key rotation is already enabled via EnableKeyRotation: true"
     Properties:
       Description: !Sub 'CMK for IDP artifact bucket encryption — managed by ${AWS::StackName}'
       EnableKeyRotation: true
