@@ -14,6 +14,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
+# ---------------------------------------------------------------------------
+# Module-level constants
+# ---------------------------------------------------------------------------
+
+# Explicit set of status values that represent an actively running document.
+# Using an allowlist (rather than excluding terminal states) ensures that
+# unrecognised values such as "UNKNOWN" or "" are never treated as in-progress.
+_IN_PROGRESS_STATUSES: frozenset[str] = frozenset({"IN_PROGRESS", "RUNNING", "STARTED"})
+
 
 @dataclass
 class TimeRange:
@@ -52,11 +61,16 @@ class TimeRange:
         )
 
     def to_datetimes(self) -> tuple[datetime, datetime]:
-        """Return (start, end) as timezone-aware datetime objects."""
-        fmt = "%Y-%m-%dT%H:%M:%S.%fZ"
-        start = datetime.strptime(self.start_time, fmt).replace(tzinfo=timezone.utc)
-        end = datetime.strptime(self.end_time, fmt).replace(tzinfo=timezone.utc)
-        return start, end
+        """Return (start, end) as timezone-aware datetime objects.
+
+        Accepts timestamps with or without microseconds (e.g. both
+        ``"2026-03-25T12:00:00Z"`` and ``"2026-03-25T12:00:00.123456Z"``).
+        """
+
+        def _parse(ts: str) -> datetime:
+            return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+        return _parse(self.start_time), _parse(self.end_time)
 
     def duration_hours(self) -> float:
         """Return the duration of this time range in hours."""
@@ -192,8 +206,13 @@ class DocumentRecord:
         return self.status == "COMPLETED"
 
     def is_in_progress(self) -> bool:
-        """Return True if the document is currently being processed."""
-        return self.status not in ("COMPLETED", "FAILED", "ABORTED")
+        """Return True if the document is currently being processed.
+
+        Uses an explicit allowlist rather than an exclusion list so that
+        unrecognised or default status values (e.g. ``"UNKNOWN"``, ``""``)
+        are not mistakenly treated as active.
+        """
+        return self.status in _IN_PROGRESS_STATUSES
 
 
 @dataclass
