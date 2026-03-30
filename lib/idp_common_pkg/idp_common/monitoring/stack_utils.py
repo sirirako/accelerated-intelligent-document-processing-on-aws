@@ -34,6 +34,20 @@ import boto3
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Module-level lazy boto3 client cache (M-1: avoids creating a new client per call)
+# ---------------------------------------------------------------------------
+_cf_client: Optional[Any] = None
+
+
+def _get_cf_client() -> Any:
+    """Return (and lazily create) a module-level CloudFormation boto3 client."""
+    global _cf_client
+    if _cf_client is None:
+        _cf_client = boto3.client("cloudformation")
+    return _cf_client
+
+
+# ---------------------------------------------------------------------------
 # Known state machine name suffixes used by the IDP stack
 # ---------------------------------------------------------------------------
 _STATE_MACHINE_SUFFIXES: List[str] = [
@@ -155,7 +169,7 @@ def get_stack_resources(stack_name: str) -> List[Dict[str, Any]]:
         Returns an empty list if the stack is not found or the call fails.
     """
     try:
-        cf = boto3.client("cloudformation")
+        cf = _get_cf_client()
         paginator = cf.get_paginator("list_stack_resources")
         resources: List[Dict[str, Any]] = []
         for page in paginator.paginate(StackName=stack_name):

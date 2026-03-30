@@ -7,6 +7,7 @@ Unit tests for idp_common.monitoring.stack_utils
 
 from unittest.mock import MagicMock, patch
 
+import idp_common.monitoring.stack_utils as stack_module
 import pytest
 from idp_common.monitoring.stack_utils import (
     extract_stack_name_from_arn,
@@ -15,6 +16,18 @@ from idp_common.monitoring.stack_utils import (
     get_stack_resources,
     get_state_machine_arn,
 )
+
+
+# ---------------------------------------------------------------------------
+# Reset module-level boto3 client cache between tests (M-1 fix)
+# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def reset_cf_client():
+    """Reset the module-level _cf_client singleton before every test."""
+    stack_module._cf_client = None
+    yield
+    stack_module._cf_client = None
+
 
 # ---------------------------------------------------------------------------
 # extract_stack_name_from_arn

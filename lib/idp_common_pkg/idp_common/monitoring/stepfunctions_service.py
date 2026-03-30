@@ -38,6 +38,20 @@ import boto3
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Module-level lazy boto3 client cache (M-1: avoids creating a new client per call)
+# ---------------------------------------------------------------------------
+_sf_client: Optional[Any] = None
+
+
+def _get_sf_client(region: Optional[str] = None) -> Any:
+    """Return (and lazily create) a module-level Step Functions boto3 client."""
+    global _sf_client
+    if _sf_client is None:
+        _sf_client = boto3.client("stepfunctions", region_name=region)
+    return _sf_client
+
+
+# ---------------------------------------------------------------------------
 # Event types that indicate a failure in the execution
 # ---------------------------------------------------------------------------
 _FAILURE_EVENT_TYPES: Set[str] = {
@@ -119,7 +133,7 @@ def get_execution_data(
             "input": str,       # Execution input JSON string
         }``
     """
-    sf = boto3.client("stepfunctions", region_name=region)
+    sf = _get_sf_client(region)
     result: Dict[str, Any] = {
         "execution_arn": execution_arn,
         "status": "UNKNOWN",
@@ -225,7 +239,6 @@ def analyze_execution_timeline(
 
         elif event_type in (
             "TaskStateExited",
-            "TaskSucceeded",
             "TaskFailed",
             "TaskTimedOut",
             "ExecutionFailed",

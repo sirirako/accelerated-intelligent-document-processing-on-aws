@@ -116,8 +116,15 @@ class SettingsCache:
                 param_name,
                 exc,
             )
-            # Keep the stale cache rather than crashing callers
-            self._cache_time = time.monotonic()  # reset timer to avoid tight retry loop
+            # Keep the stale cache rather than crashing callers.
+            # If data was already cached (stale), defer the next retry for a full TTL
+            # to avoid hammering SSM.  If the cache is still empty (first-ever load),
+            # use a much shorter retry window (30 s) so callers don't silently run
+            # with no settings for the full TTL period.
+            if self._cache:
+                self._cache_time = time.monotonic()  # stale data available — full TTL
+            else:
+                self._cache_time = time.monotonic() - self._ttl + 30  # retry in 30 s
 
     # ------------------------------------------------------------------
     # Public API

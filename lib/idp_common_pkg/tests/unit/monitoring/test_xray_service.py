@@ -8,12 +8,27 @@ Unit tests for idp_common.monitoring.xray_service
 import json
 from unittest.mock import MagicMock, patch
 
+import idp_common.monitoring.xray_service as xray_module
 import pytest
 from idp_common.monitoring.xray_service import (
     analyze_trace,
     get_subsegment_details,
     get_trace_for_document,
 )
+
+
+# ---------------------------------------------------------------------------
+# Reset module-level boto3 client cache between tests (M-1 fix)
+# Each test that patches boto3 needs a clean slate so the cached client
+# from a previous test doesn't leak through.
+# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def reset_xray_client():
+    """Reset the module-level _xray_client singleton before every test."""
+    xray_module._xray_client = None
+    yield
+    xray_module._xray_client = None
+
 
 # ---------------------------------------------------------------------------
 # Shared test data helpers

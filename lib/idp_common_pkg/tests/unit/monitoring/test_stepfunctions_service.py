@@ -8,6 +8,7 @@ Unit tests for idp_common.monitoring.stepfunctions_service
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
+import idp_common.monitoring.stepfunctions_service as sf_module
 import pytest
 from idp_common.monitoring.stepfunctions_service import (
     analyze_execution_timeline,
@@ -15,6 +16,18 @@ from idp_common.monitoring.stepfunctions_service import (
     get_execution_arn_from_document,
     get_execution_data,
 )
+
+
+# ---------------------------------------------------------------------------
+# Reset module-level boto3 client cache between tests (M-1 fix)
+# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def reset_sf_client():
+    """Reset the module-level _sf_client singleton before every test."""
+    sf_module._sf_client = None
+    yield
+    sf_module._sf_client = None
+
 
 # ---------------------------------------------------------------------------
 # Shared test data helpers

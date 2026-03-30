@@ -42,6 +42,19 @@ logger = logging.getLogger(__name__)
 # Default look-back window for X-Ray annotation queries
 _DEFAULT_XRAY_LOOKBACK_HOURS: int = 24
 
+# ---------------------------------------------------------------------------
+# Module-level lazy boto3 client cache (M-1: avoids creating a new client per call)
+# ---------------------------------------------------------------------------
+_xray_client: Optional[Any] = None
+
+
+def _get_xray_client() -> Any:
+    """Return (and lazily create) a module-level X-Ray boto3 client."""
+    global _xray_client
+    if _xray_client is None:
+        _xray_client = boto3.client("xray")
+    return _xray_client
+
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -199,7 +212,7 @@ def extract_lambda_request_ids(xray_trace_id: str) -> Dict[str, str]:
         ``{function_name: request_id}`` dict.  Empty if no trace found.
     """
     logger.info("Extracting Lambda request IDs from X-Ray trace %s", xray_trace_id)
-    xray_client = boto3.client("xray")
+    xray_client = _get_xray_client()
 
     try:
         response = xray_client.batch_get_traces(TraceIds=[xray_trace_id])
@@ -268,7 +281,7 @@ def _get_trace_id_from_xray_annotations(
     """Query X-Ray annotations to find a trace for the document."""
     logger.info("Searching X-Ray annotations for document_id '%s'", document_id)
     try:
-        xray_client = boto3.client("xray")
+        xray_client = _get_xray_client()
         end_time = datetime.now(timezone.utc)
         start_time = end_time - timedelta(hours=lookback_hours)
 
@@ -279,7 +292,14 @@ def _get_trace_id_from_xray_annotations(
         )
         traces = response.get("TraceSummaries", [])
         if traces:
-            trace_id = traces[0].get("Id")
+            # M-3: Sort by ResponseTime descending to get the most recent trace
+            # (covers the case where a document has been reprocessed/retried)
+            traces_sorted = sorted(
+                traces,
+                key=lambda t: t.get("ResponseTime", 0),
+                reverse=True,
+            )
+            trace_id = traces_sorted[0].get("Id")
             logger.info(
                 "Found trace %s via X-Ray annotation for %s", trace_id, document_id
             )
@@ -293,7 +313,7 @@ def _get_trace_id_from_xray_annotations(
 def _get_trace_segments(trace_id: str) -> List[Dict[str, Any]]:
     """Fetch raw segment dicts for a trace from X-Ray."""
     try:
-        xray_client = boto3.client("xray")
+        xray_client = _get_xray_client()
         response = xray_client.batch_get_traces(TraceIds=[trace_id])
         traces = response.get("Traces", [])
         if not traces:
@@ -442,7 +462,7 @@ def _parse_segment_for_lambda(
     """
     results: List[Dict[str, Any]] = []
 
-    if segment.get("origin") == "AWS::Lambda":
+    if segment.get("origin") in ("AWS::Lambda", "AWS::Lambda::Function"):
         aws_info = segment.get("aws", {})
         function_name = segment.get("name", "Unknown")
         # The ARN-based name is more precise when available
