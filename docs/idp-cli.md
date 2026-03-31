@@ -932,10 +932,11 @@ idp-cli delete-documents [OPTIONS]
 **Document Selection (choose ONE):**
 - `--document-ids`: Comma-separated list of document IDs (S3 object keys) to delete
 - `--batch-id`: Delete all documents in this batch
+- `--pattern`: Wildcard pattern to match document keys (e.g. `"batch-123/*.pdf"`, `"*invoice*"`)
 
 **Options:**
 - `--stack-name` (required): CloudFormation stack name
-- `--status-filter`: Only delete documents with this status (use with --batch-id)
+- `--status-filter`: Only delete documents with this status (use with --batch-id or --pattern)
   - Options: `FAILED`, `COMPLETED`, `PROCESSING`, `QUEUED`
 - `--dry-run`: Show what would be deleted without actually deleting
 - `--force`, `-y`: Skip confirmation prompt
@@ -970,6 +971,23 @@ idp-cli delete-documents \
 idp-cli delete-documents \
     --stack-name my-stack \
     --batch-id cli-batch-20250123 \
+    --dry-run
+
+# Delete documents matching a wildcard pattern
+idp-cli delete-documents \
+    --stack-name my-stack \
+    --pattern "batch-123/*.pdf"
+
+# Delete all failed invoice documents across batches
+idp-cli delete-documents \
+    --stack-name my-stack \
+    --pattern "*invoice*" \
+    --status-filter FAILED
+
+# Dry run with pattern to preview matches
+idp-cli delete-documents \
+    --stack-name my-stack \
+    --pattern "*2024*" \
     --dry-run
 
 # Force delete without confirmation

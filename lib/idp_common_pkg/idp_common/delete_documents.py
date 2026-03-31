@@ -10,6 +10,7 @@ This module provides robust document deletion functions that handle:
 - List entry cleanup with timestamp-aware shard handling
 """
 
+import fnmatch
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -464,6 +465,38 @@ def delete_documents(
     }
 
 
+def _scan_all_document_keys(
+    tracking_table, status_filter: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Scan all document items from the tracking table.
+
+    Args:
+        tracking_table: DynamoDB table resource
+        status_filter: Optional status filter ('COMPLETED', 'FAILED', 'PROCESSING', etc.)
+
+    Returns:
+        List of DynamoDB items with PK starting with 'doc#'
+    """
+    from boto3.dynamodb.conditions import Attr
+
+    items: List[Dict[str, Any]] = []
+    filter_expr = Attr("PK").begins_with("doc#")
+    if status_filter:
+        filter_expr = filter_expr & Attr("Status").eq(status_filter)
+
+    scan_kwargs: Dict[str, Any] = {"FilterExpression": filter_expr}
+
+    while True:
+        response = tracking_table.scan(**scan_kwargs)
+        items.extend(response.get("Items", []))
+        if "LastEvaluatedKey" not in response:
+            break
+        scan_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+
+    return items
+
+
 def get_documents_by_batch(
     tracking_table, batch_id: str, status_filter: Optional[str] = None
 ) -> List[str]:
@@ -478,29 +511,50 @@ def get_documents_by_batch(
     Returns:
         List of object keys
     """
-    from boto3.dynamodb.conditions import Attr
-
     object_keys = []
 
     try:
-        filter_expr = Attr("PK").begins_with("doc#")
-        if status_filter:
-            filter_expr = filter_expr & Attr("Status").eq(status_filter)
-
-        scan_kwargs: Dict[str, Any] = {"FilterExpression": filter_expr}
-
-        while True:
-            response = tracking_table.scan(**scan_kwargs)
-            for item in response.get("Items", []):
-                object_key = item.get("ObjectKey", "")
-                if batch_id in object_key:
-                    object_keys.append(object_key)
-
-            if "LastEvaluatedKey" not in response:
-                break
-            scan_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
-
+        items = _scan_all_document_keys(tracking_table, status_filter)
+        for item in items:
+            object_key = item.get("ObjectKey", "")
+            if batch_id in object_key:
+                object_keys.append(object_key)
     except Exception as e:
         logger.error(f"Error getting documents for batch {batch_id}: {str(e)}")
+
+    return object_keys
+
+
+def get_documents_by_pattern(
+    tracking_table, pattern: str, status_filter: Optional[str] = None
+) -> List[str]:
+    """
+    Get all document object keys matching a wildcard pattern.
+
+    Uses fnmatch-style patterns (*, ?, [seq], [!seq]).
+
+    Examples:
+        - ``"batch-123/*"`` — all docs in batch-123
+        - ``"*/invoice*.pdf"`` — any invoice PDF in any batch
+        - ``"*2025*"`` — any doc with 2025 in the key
+
+    Args:
+        tracking_table: DynamoDB table resource
+        pattern: Wildcard pattern to match against object keys
+        status_filter: Optional status filter ('COMPLETED', 'FAILED', 'PROCESSING', etc.)
+
+    Returns:
+        List of matching object keys
+    """
+    object_keys = []
+
+    try:
+        items = _scan_all_document_keys(tracking_table, status_filter)
+        for item in items:
+            object_key = item.get("ObjectKey", "")
+            if fnmatch.fnmatch(object_key, pattern):
+                object_keys.append(object_key)
+    except Exception as e:
+        logger.error(f"Error getting documents for pattern {pattern}: {str(e)}")
 
     return object_keys

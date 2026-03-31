@@ -1093,9 +1093,13 @@ def delete(
     help="Delete all documents in this batch (alternative to --document-ids)",
 )
 @click.option(
+    "--pattern",
+    help='Wildcard pattern to match document keys (e.g. "batch-123/*.pdf", "*invoice*")',
+)
+@click.option(
     "--status-filter",
     type=click.Choice(["FAILED", "COMPLETED", "PROCESSING", "QUEUED"]),
-    help="Only delete documents with this status (use with --batch-id)",
+    help="Only delete documents with this status (use with --batch-id or --pattern)",
 )
 @click.option(
     "--dry-run",
@@ -1113,6 +1117,7 @@ def delete_documents_cmd(
     stack_name: str,
     document_ids: Optional[str],
     batch_id: Optional[str],
+    pattern: Optional[str],
     status_filter: Optional[str],
     dry_run: bool,
     force: bool,
@@ -1141,6 +1146,12 @@ def delete_documents_cmd(
       # Delete only failed documents in a batch
       idp-cli delete-documents --stack-name my-stack --batch-id cli-batch-20250123 --status-filter FAILED
 
+      # Delete documents matching a wildcard pattern
+      idp-cli delete-documents --stack-name my-stack --pattern "batch-123/*.pdf"
+
+      # Delete all failed invoice documents
+      idp-cli delete-documents --stack-name my-stack --pattern "*invoice*" --status-filter FAILED
+
       # Dry run to see what would be deleted
       idp-cli delete-documents --stack-name my-stack --batch-id cli-batch-20250123 --dry-run
 
@@ -1149,19 +1160,24 @@ def delete_documents_cmd(
     """
     try:
         import boto3
-        from idp_common.delete_documents import delete_documents, get_documents_by_batch
+        from idp_common.delete_documents import (
+            delete_documents,
+            get_documents_by_batch,
+            get_documents_by_pattern,
+        )
         from idp_sdk import IDPClient
 
-        # Validate input
-        if not document_ids and not batch_id:
+        # Validate input - exactly one of document_ids, batch_id, or pattern required
+        selector_count = sum(1 for x in [document_ids, batch_id, pattern] if x)
+        if selector_count == 0:
             console.print(
-                "[red]✗ Error: Must specify either --document-ids or --batch-id[/red]"
+                "[red]✗ Error: Must specify one of --document-ids, --batch-id, or --pattern[/red]"
             )
             sys.exit(1)
 
-        if document_ids and batch_id:
+        if selector_count > 1:
             console.print(
-                "[red]✗ Error: Cannot specify both --document-ids and --batch-id[/red]"
+                "[red]✗ Error: Cannot specify more than one of --document-ids, --batch-id, --pattern[/red]"
             )
             sys.exit(1)
 
@@ -1190,6 +1206,27 @@ def delete_documents_cmd(
         if document_ids:
             doc_list = [d.strip() for d in document_ids.split(",")]
             console.print(f"Selected {len(doc_list)} document(s) for deletion")
+        elif pattern:
+            console.print(
+                f"[bold blue]Finding documents matching pattern: {pattern}[/bold blue]"
+            )
+            doc_list = get_documents_by_pattern(
+                tracking_table=tracking_table,
+                pattern=pattern,
+                status_filter=status_filter,
+            )
+            if not doc_list:
+                console.print(
+                    f"[yellow]No documents found matching pattern: {pattern}[/yellow]"
+                )
+                if status_filter:
+                    console.print(
+                        f"[yellow]  (with status filter: {status_filter})[/yellow]"
+                    )
+                sys.exit(0)
+            console.print(f"Found {len(doc_list)} document(s) matching pattern")
+            if status_filter:
+                console.print(f"  (filtered by status: {status_filter})")
         else:
             console.print(
                 f"[bold blue]Getting documents for batch: {batch_id}[/bold blue]"
