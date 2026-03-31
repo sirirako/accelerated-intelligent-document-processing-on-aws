@@ -478,30 +478,27 @@ def get_documents_by_batch(
     Returns:
         List of object keys
     """
+    from boto3.dynamodb.conditions import Attr
+
     object_keys = []
 
     try:
-        # Query the GSI for batch documents (if available) or scan with filter
-        # For now, we'll use a prefix-based query on the tracking table
-        paginator = tracking_table.meta.client.get_paginator("scan")
-
-        filter_expression = "begins_with(PK, :pk_prefix)"
-        expression_values = {":pk_prefix": {"S": "doc#"}}
-
+        filter_expr = Attr("PK").begins_with("doc#")
         if status_filter:
-            filter_expression += " AND #status = :status"
-            expression_values[":status"] = {"S": status_filter}
+            filter_expr = filter_expr & Attr("Status").eq(status_filter)
 
-        for page in paginator.paginate(
-            TableName=tracking_table.table_name,
-            FilterExpression=filter_expression,
-            ExpressionAttributeValues=expression_values,
-            ExpressionAttributeNames={"#status": "Status"} if status_filter else {},
-        ):
-            for item in page.get("Items", []):
-                object_key = item.get("ObjectKey", {}).get("S", "")
+        scan_kwargs: Dict[str, Any] = {"FilterExpression": filter_expr}
+
+        while True:
+            response = tracking_table.scan(**scan_kwargs)
+            for item in response.get("Items", []):
+                object_key = item.get("ObjectKey", "")
                 if batch_id in object_key:
                     object_keys.append(object_key)
+
+            if "LastEvaluatedKey" not in response:
+                break
+            scan_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
 
     except Exception as e:
         logger.error(f"Error getting documents for batch {batch_id}: {str(e)}")
