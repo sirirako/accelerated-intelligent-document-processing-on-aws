@@ -5,8 +5,8 @@ generate lockfiles for all python and node dependencies in the IDP repo.
 python: scans requirements.txt and lib/ pyproject.toml files, converts them to
 temporary pyproject.toml projects, runs `uv lock`, and saves lockfiles.
 
-node: finds all package.json files, runs `npm install --package-lock-only` in
-temp dirs, and saves the resulting package-lock.json files.
+node: finds all package.json files, runs `pnpm install --lockfile-only` in
+temp dirs, and saves the resulting pnpm-lock.yaml files.
 
 usage:
     python scripts/generate_lockfiles.py [--repo-dir PATH] [--output-dir PATH]
@@ -25,7 +25,10 @@ from pathlib import Path
 PYTHON_REQUIRES = ">=3.12,<3.14"
 
 # internal packages that won't resolve from PyPI
-INTERNAL_PACKAGES = {"idp_common", "idp-common", "idp_sdk", "idp-sdk", "idp_cli", "idp-cli"}
+INTERNAL_PACKAGES = {
+    "idp_common", "idp-common", "idp_sdk", "idp-sdk",
+    "idp_cli", "idp-cli", "idp_mcp_connector", "idp-mcp-connector",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -333,6 +336,13 @@ def generate_master_from_lockfiles(output_dir: Path) -> tuple[bool, str]:
     # filter out synthetic project entries (generated pyproject.toml placeholders)
     seen = {k: v for k, v in seen.items() if k[1] != "0.0.0"}
 
+    # filter out internal packages that aren't on PyPI
+    internal_normalized = {p.lower().replace("_", "-") for p in INTERNAL_PACKAGES}
+    seen = {
+        k: v for k, v in seen.items()
+        if k[0].lower().replace("_", "-") not in internal_normalized
+    }
+
     # sort by (name, version) for deterministic output
     sorted_packages = sorted(seen.items(), key=lambda kv: (kv[0][0].lower(), kv[0][1]))
 
@@ -354,11 +364,11 @@ def generate_master_from_lockfiles(output_dir: Path) -> tuple[bool, str]:
     return True, f"{unique_pkgs} packages ({unique_names} unique names) from {len(lockfiles)} lockfiles"
 
 
-def run_npm_lock(workdir: Path) -> tuple[bool, str]:
-    """run `npm install --package-lock-only` in the given directory."""
+def run_pnpm_lock(workdir: Path) -> tuple[bool, str]:
+    """run `pnpm install --lockfile-only` in the given directory."""
     try:
         result = subprocess.run(
-            ["npm", "install", "--package-lock-only"],
+            ["pnpm", "install", "--lockfile-only"],
             cwd=workdir,
             capture_output=True,
             text=True,
@@ -369,6 +379,8 @@ def run_npm_lock(workdir: Path) -> tuple[bool, str]:
         return False, f"exit {result.returncode}: {result.stderr.strip()}"
     except subprocess.TimeoutExpired:
         return False, "timeout after 120s"
+    except FileNotFoundError:
+        return False, "pnpm is not installed or not on PATH"
     except Exception as e:
         return False, str(e)
 
@@ -393,82 +405,103 @@ def process_package_json(
         tmp = Path(tmpdir)
         shutil.copy2(pkg_file, tmp / "package.json")
 
-        # copy .npmrc if it exists (for registry config)
+        # copy .npmrc if it exists (pnpm reads it for registry config)
         npmrc = pkg_file.parent / ".npmrc"
         if npmrc.exists():
             shutil.copy2(npmrc, tmp / ".npmrc")
 
-        success, msg = run_npm_lock(tmp)
+        success, msg = run_pnpm_lock(tmp)
 
         if success:
-            lock_file = tmp / "package-lock.json"
+            lock_file = tmp / "pnpm-lock.yaml"
             if lock_file.exists():
                 dest = output_dir / dir_name
                 dest.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(lock_file, dest / "package-lock.json")
+                shutil.copy2(lock_file, dest / "pnpm-lock.yaml")
                 shutil.copy2(tmp / "package.json", dest / "package.json")
                 return dir_name, True, f"locked ({total_deps} deps)"
-            return dir_name, False, "npm succeeded but no package-lock.json generated"
+            return dir_name, False, "pnpm succeeded but no pnpm-lock.yaml generated"
         return dir_name, False, msg
 
 
-def parse_package_lock_packages(lockfile: Path) -> dict[str, list[dict[str, str]]]:
-    """parse resolved packages from a package-lock.json (lockfileVersion 3).
+def parse_pnpm_lock_packages(lockfile: Path) -> dict[str, list[dict[str, str]]]:
+    """parse resolved packages from a pnpm-lock.yaml.
 
-    returns {package_name: [{version, resolved, integrity}, ...]}
+    extracts entries from the `packages:` section where keys are `name@version:`.
+    returns {package_name: [{version, integrity}, ...]}
     """
-    data = json.loads(lockfile.read_text())
+    content = lockfile.read_text()
     packages: dict[str, list[dict[str, str]]] = {}
 
-    for path, info in data.get("packages", {}).items():
-        # skip the root entry (empty string key)
-        if not path:
-            continue
-        # extract package name from path (node_modules/@scope/name or node_modules/name)
-        parts = path.split("node_modules/")
-        if not parts:
-            continue
-        pkg_name = parts[-1]
-        version = info.get("version", "")
-        resolved = info.get("resolved", "")
-        integrity = info.get("integrity", "")
+    in_packages = False
+    # regex for package entries: optional quotes, name@version, colon
+    # handles scoped (@scope/name) and unscoped (name) packages
+    pkg_re = re.compile(r"^  ['\"]?(@?[^@'\"\s]+)@([^'\":\s]+)['\"]?:\s*$")
+    integrity_re = re.compile(r"integrity:\s+(sha\S+)")
 
-        if not version:
+    current_name = ""
+    current_version = ""
+
+    for line in content.splitlines():
+        # detect section boundaries
+        if line == "packages:":
+            in_packages = True
+            continue
+        if in_packages and line and not line.startswith(" "):
+            # hit next top-level section (e.g. snapshots:)
+            break
+        if not in_packages:
             continue
 
-        entry = {"version": version, "resolved": resolved, "integrity": integrity}
-        if pkg_name not in packages:
-            packages[pkg_name] = []
-        # avoid duplicate (name, version) pairs
-        if not any(e["version"] == version for e in packages[pkg_name]):
-            packages[pkg_name].append(entry)
+        match = pkg_re.match(line)
+        if match:
+            current_name = match.group(1)
+            current_version = match.group(2)
+            if current_name not in packages:
+                packages[current_name] = []
+            if not any(e["version"] == current_version for e in packages[current_name]):
+                packages[current_name].append({
+                    "version": current_version,
+                    "integrity": "",
+                })
+            continue
+
+        # grab integrity hash for current package
+        if current_name and "integrity:" in line:
+            integrity_match = integrity_re.search(line)
+            if integrity_match:
+                for entry in packages.get(current_name, []):
+                    if entry["version"] == current_version and not entry["integrity"]:
+                        entry["integrity"] = integrity_match.group(1)
 
     return packages
 
 
 def generate_node_master_from_lockfiles(output_dir: Path) -> tuple[bool, str]:
-    """merge all resolved package-lock.json files into one master manifest.
+    """merge all resolved pnpm-lock.yaml files into one master manifest.
 
     combines every unique (name, version) pair from all individual lockfiles.
     """
     lockfiles = sorted(
-        p for p in output_dir.rglob("package-lock.json")
+        p for p in output_dir.rglob("pnpm-lock.yaml")
         if p.parent.name != "master"
     )
 
     if not lockfiles:
         return False, "no lockfiles to consolidate"
 
-    # collect all unique (name, version) -> {resolved, integrity}
+    # collect all unique (name, version) -> {integrity}
     all_packages: dict[str, dict[str, dict[str, str]]] = {}
 
     for lockfile in lockfiles:
-        for pkg_name, entries in parse_package_lock_packages(lockfile).items():
+        for pkg_name, entries in parse_pnpm_lock_packages(lockfile).items():
             if pkg_name not in all_packages:
                 all_packages[pkg_name] = {}
             for entry in entries:
                 version = entry["version"]
-                if version not in all_packages[pkg_name]:
+                existing = all_packages[pkg_name].get(version)
+                # prefer entries that have integrity hashes
+                if not existing or (not existing.get("integrity") and entry.get("integrity")):
                     all_packages[pkg_name][version] = entry
 
     if not all_packages:
@@ -588,7 +621,7 @@ def run_node_lockfiles(repo_dir: Path, output_dir: Path) -> None:
     status = "OK" if success else "FAIL"
     print(f"  [{status}] master: {msg}")
 
-    total_lockfiles = len(list(node_output.rglob("package-lock.json")))
+    total_lockfiles = len(list(node_output.rglob("pnpm-lock.yaml")))
     print(f"\n  node: {total_lockfiles} lockfiles in {node_output}")
 
 
