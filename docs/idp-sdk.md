@@ -547,14 +547,17 @@ print(f"Downloaded {result.files_downloaded} source files")
 
 ### batch.delete_documents()
 
-Permanently delete all documents in a batch and their associated data from InputBucket, OutputBucket, and DynamoDB.
+Permanently delete documents and their associated data from InputBucket, OutputBucket, and DynamoDB. Select documents by batch ID or wildcard pattern.
 
 **Parameters:**
-- `batch_id` (str, required): Batch identifier
+- `batch_id` (str, optional): Batch identifier (selects all docs containing this string)
+- `pattern` (str, optional): Wildcard pattern to match document keys (e.g., `"batch-123/*.pdf"`, `"*invoice*"`)
 - `status_filter` (str, optional): Filter by document status (e.g., "FAILED", "COMPLETED")
 - `stack_name` (str, optional): Stack name override
 - `dry_run` (bool, optional): If True, simulate deletion without actually deleting (default: False)
 - `continue_on_error` (bool, optional): Continue deleting if one document fails (default: True)
+
+**Note:** Must specify either `batch_id` or `pattern` (not both).
 
 **Returns:** `BatchDeletionResult` with `success`, `deleted_count`, `failed_count`, `total_count`, `dry_run`, and `results` (list of DocumentDeletionResult)
 
@@ -565,6 +568,17 @@ result = client.batch.delete_documents(batch_id="batch-123")
 # Delete with status filter
 result = client.batch.delete_documents(
     batch_id="batch-123",
+    status_filter="FAILED"
+)
+
+# Delete by wildcard pattern
+result = client.batch.delete_documents(
+    pattern="batch-123/*.pdf"
+)
+
+# Delete all failed invoices across batches
+result = client.batch.delete_documents(
+    pattern="*invoice*",
     status_filter="FAILED"
 )
 
