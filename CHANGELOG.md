@@ -8,20 +8,10 @@ SPDX-License-Identifier: MIT-0
 ### Added
 
 - **Multi-Document Discovery** — New capability to automatically discover document classes from a collection of documents. Instead of manually defining document schemas one at a time, users point to a folder of mixed documents and the system automatically identifies document types, clusters similar documents, generates JSON Schemas with field definitions for each type, and saves them to a configuration version — ready for immediate use in the processing pipeline.
-  - **Pipeline Architecture**: Five-step Step Functions workflow (Prepare → Embed → Cluster → Analyze → Save) running as container-based Lambda functions (Docker images via ECR/CodeBuild) for heavy ML dependencies (sentence-transformers, scikit-learn, UMAP).
-    - **Prepare**: Validates input, extracts zip uploads, lists S3 documents
-    - **Embed**: Generates multi-modal embeddings (text + image) using Amazon Bedrock Titan Embed models
-    - **Cluster**: Applies UMAP dimensionality reduction + HDBSCAN clustering to group similar documents
-    - **Analyze**: Parallel Map state invokes Bedrock LLM per cluster to generate class names and JSON Schemas
-    - **Save**: Merges discovered classes into the target configuration version with a quality review (reflection) report
   - **Two Input Modes**: S3 path (select bucket + prefix) or zip upload (presigned URL upload flow)
   - **Dedicated UI Tab**: New "Multi-Document" tab on the Discovery page with job submission form (config version selector, bucket selector, S3 prefix input, zip upload), jobs table with search/filter/sort/pagination, and detailed job results page
   - **Job Details Page**: Shows pipeline progress indicators, discovered classes with expandable JSON schemas, "View in Configuration →" deep-links to the Document Schema tab for the correct config version, and a Quality Review Report rendered as formatted markdown (GFM)
-  - **Real-Time Status Updates**: Each pipeline step pushes live status to the UI via AppSync GraphQL subscriptions (not polling). Lambda handlers call the `updateDiscoveryJobStatus` mutation using SigV4 IAM auth, triggering `onDiscoveryJobStatusChange` subscriptions for instant UI updates. New shared utility `appsync_status.py` handles signed AppSync calls with graceful error handling (failures don't block the pipeline).
   - **Configuration Integration**: Discovered classes are saved directly to the selected config version's `classes` array in DynamoDB, immediately available for document processing without manual schema creation
-  - **Publish Pipeline**: Automated Docker image builds via CodeBuild with content-hash-based rebuild triggers, source zip packaging for multi-doc discovery Lambda code
-  - **Security**: `updateDiscoveryJobStatus` mutation is `@aws_iam` only (backend Lambda IAM auth), each Lambda function has scoped `appsync:GraphQL` IAM permissions, SigV4-signed requests with no hardcoded credentials
-  - See `docs/discovery.md` for full documentation
 
 ### Fixed
 
