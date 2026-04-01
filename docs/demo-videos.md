@@ -184,7 +184,15 @@ https://github.com/user-attachments/assets/a1e9ce1a-1b2e-4e98-a387-d2e48d7e557d
 ### Discovery Module
 Intelligent document analysis that automatically identifies structures and creates processing blueprints, including pattern-neutral discovery and pattern-specific implementations.
 
+#### Multi-Document Collection Discovery
+**Duration**: ~4 minutes
+
 https://github.com/user-attachments/assets/9c3923fb-f4ff-43cd-a563-44c7c6132921
+
+#### Single Document Discovery
+**Duration**: ~4 minutes
+
+https://github.com/user-attachments/assets/b0bc5df0-cd8f-472c-98c6-299ac3a9bd43
 
 **Related Documentation**: [Discovery Module Documentation](./discovery.md)
 
