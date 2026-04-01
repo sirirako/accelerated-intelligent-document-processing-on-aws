@@ -7,10 +7,11 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
-- **Multi-Document Discovery** — New capability to automatically discover document classes from a collection of documents. Instead of manually defining document schemas one at a time, users point to a folder of mixed documents and the system automatically identifies document types, clusters similar documents, generates JSON Schemas with field definitions for each type, and saves them to a configuration version — ready for immediate use in the processing pipeline.
-  - **Two Input Modes**: S3 path (select bucket + prefix) or zip upload (presigned URL upload flow)
-  - **Dedicated UI Tab**: New "Multi-Document" tab on the Discovery page with job submission form (config version selector, bucket selector, S3 prefix input, zip upload), jobs table with search/filter/sort/pagination, and detailed job results page
-  - **Job Details Page**: Shows pipeline progress indicators, discovered classes with expandable JSON schemas, "View in Configuration →" deep-links to the Document Schema tab for the correct config version, and a Quality Review Report rendered as formatted markdown (GFM)
+- **Multi-Document Discovery** — New capability to automatically discover document classes from a collection of documents. Instead of manually defining document schemas one at a time, users point to a folder of mixed documents and the system automatically identifies document types, clusters similar documents, generates JSON Schemas with field definitions for each type, and saves them to a configuration version — ready for immediate use in the processing pipeline. Available from the Web UI, CLI (`idp-cli discover-multidoc`), and SDK (`client.discovery.run_multi_doc()`).
+  - **Web UI**: New "Multi-Document" tab on the Discovery page with job submission form (config version selector, bucket selector, S3 prefix input, zip upload), jobs table with search/filter/sort/pagination, and detailed job results page with pipeline progress, expandable JSON schemas, config deep-links, and Quality Review Report
+  - **CLI**: `idp-cli discover-multidoc --dir ./samples/ -o ./schemas/` with Rich progress bars, results table, and reflection report
+  - **SDK**: `client.discovery.run_multi_doc(document_dir="./samples/")` with typed `MultiDocDiscoveryResult` response model
+  - **Two Input Modes**: S3 path (select bucket + prefix), zip upload (presigned URL), or local directory (CLI/SDK)
   - **Configuration Integration**: Discovered classes are saved directly to the selected config version's `classes` array in DynamoDB, immediately available for document processing without manual schema creation
 
 ### Fixed

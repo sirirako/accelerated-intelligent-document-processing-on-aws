@@ -40,6 +40,7 @@ https://github.com/user-attachments/assets/3d448a74-ba5b-4a4a-96ad-ec03ac0b4d7d
   - [stop-workflows](#stop-workflows)
   - [load-test](#load-test)
   - [discover](#discover)
+  - [discover-multidoc](#discover-multidoc)
   - [remove-deleted-stack-resources](#remove-deleted-stack-resources)
   - [config-create](#config-create)
   - [config-validate](#config-validate)
@@ -2122,6 +2123,66 @@ idp-cli discover --stack-name my-stack -d ./invoice.pdf --config-version v2
 | `--auto-detect` | Auto-detect document section boundaries using AI, then discover each section. |
 | `--detect-only` | Only detect section boundaries (use with `--auto-detect`). Prints boundaries without running discovery. |
 | `--region` | AWS region |
+
+---
+
+### `discover-multidoc`
+
+Discover document classes from a collection of documents using embedding-based clustering and agentic analysis.
+
+Unlike `discover` (which analyzes one document at a time), `discover-multidoc` analyzes a directory of mixed documents to automatically identify document types, cluster similar documents, and generate JSON Schemas for each discovered class.
+
+**Requires:** `pip install idp-common[multi_document_discovery]` (scikit-learn, scipy, numpy, strands-agents)
+
+**Usage:**
+```bash
+idp-cli discover-multidoc [OPTIONS]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--dir` | Directory containing documents to analyze (recursive scan) |
+| `-d, --document` | Individual document files (repeatable: `-d doc1.pdf -d doc2.png`) |
+| `--embedding-model` | Bedrock embedding model ID (default: `us.cohere.embed-v4:0`) |
+| `--analysis-model` | Bedrock LLM for cluster analysis (default: `us.anthropic.claude-sonnet-4-6`) |
+| `-o, --output` | Output directory for discovered JSON schemas |
+| `--stack-name` | CloudFormation stack name (required for `--save-to-config`) |
+| `--config-version` | Configuration version to save schemas to |
+| `--save-to-config` | Save discovered schemas to the stack's configuration |
+| `--region` | AWS region |
+
+**Examples:**
+
+```bash
+# Discover from a directory of documents
+idp-cli discover-multidoc --dir ./samples/
+
+# Discover with explicit files
+idp-cli discover-multidoc -d doc1.pdf -d doc2.png -d doc3.jpg
+
+# Save schemas to output directory
+idp-cli discover-multidoc --dir ./samples/ -o ./schemas/
+
+# Save to stack configuration
+idp-cli discover-multidoc --dir ./samples/ --save-to-config \
+    --stack-name IDP --config-version v2
+
+# Use custom models
+idp-cli discover-multidoc --dir ./samples/ \
+    --embedding-model us.amazon.titan-embed-image-v1 \
+    --analysis-model us.anthropic.claude-sonnet-4-6
+```
+
+**Pipeline stages** (shown in Rich progress output):
+1. **Document scan** — Finds PDF, PNG, JPG, TIFF files in the directory
+2. **Embedding** — Generates image embeddings via Bedrock (Cohere Embed v4)
+3. **Clustering** — KMeans + silhouette analysis to find optimal number of clusters
+4. **Analysis** — Strands agent analyzes each cluster to identify the document class and generate a JSON Schema
+5. **Reflection** — Agent generates a summary report of all discovered classes
+
+**Output:** Results table showing cluster ID, classification, document count, field count, and status. Optionally writes individual JSON schema files and a reflection report.
 
 ---
 

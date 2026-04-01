@@ -36,8 +36,10 @@ from .config import (
 from .discovery import (
     AutoDetectResult,
     AutoDetectSection,
+    DiscoveredClassResult,
     DiscoveryBatchResult,
     DiscoveryResult,
+    MultiDocDiscoveryResult,
 )
 from .document import (
     DocumentDeletionResult,
@@ -135,6 +137,8 @@ __all__ = [
     "DiscoveryBatchResult",
     "AutoDetectResult",
     "AutoDetectSection",
+    "DiscoveredClassResult",
+    "MultiDocDiscoveryResult",
     # Manifest models
     "ManifestDocument",
     "ManifestResult",

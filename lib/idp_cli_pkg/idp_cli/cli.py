@@ -4861,6 +4861,290 @@ def _write_discover_output(output, all_schemas, console, is_batch=True):
             )
 
 
+@cli.command(name="discover-multidoc")
+@click.option(
+    "--dir",
+    "document_dir",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    help="Directory containing documents to analyze (recursive scan)",
+)
+@click.option(
+    "--document",
+    "-d",
+    "documents",
+    multiple=True,
+    type=click.Path(exists=True),
+    help="Individual document files (repeatable: -d doc1.pdf -d doc2.png)",
+)
+@click.option(
+    "--embedding-model",
+    default=None,
+    help="Bedrock embedding model ID (default: us.cohere.embed-v4:0)",
+)
+@click.option(
+    "--analysis-model",
+    default=None,
+    help="Bedrock LLM for cluster analysis (default: us.anthropic.claude-sonnet-4-6)",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    help="Output directory for discovered JSON schemas",
+)
+@click.option(
+    "--stack-name",
+    default=None,
+    help="CloudFormation stack name (required for --save-to-config)",
+)
+@click.option(
+    "--config-version",
+    default=None,
+    help="Configuration version to save schemas to",
+)
+@click.option(
+    "--save-to-config",
+    is_flag=True,
+    default=False,
+    help="Save discovered schemas to the stack's configuration",
+)
+@click.option("--region", default=None, help="AWS region")
+def multi_discover(
+    document_dir,
+    documents,
+    embedding_model,
+    analysis_model,
+    output,
+    stack_name,
+    config_version,
+    save_to_config,
+    region,
+):
+    """Discover document classes from a collection of documents.
+
+    Analyzes a directory of documents using embedding-based clustering and
+    agentic analysis to automatically discover document classes and generate
+    JSON Schemas.
+
+    Requires: make setup (or: pip install idp-common[multi_document_discovery])
+
+    \b
+    Examples:
+      # Discover from a directory of documents
+      idp-cli discover-multidoc --dir ./samples/
+
+      # Discover with explicit files
+      idp-cli discover-multidoc -d doc1.pdf -d doc2.png -d doc3.jpg
+
+      # Save schemas to output directory
+      idp-cli discover-multidoc --dir ./samples/ -o ./schemas/
+
+      # Save to stack configuration
+      idp-cli discover-multidoc --dir ./samples/ --save-to-config \\
+          --stack-name IDP --config-version v2
+    """
+    import json
+
+    from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+    from rich.table import Table
+
+    console = Console()
+
+    if not document_dir and not documents:
+        console.print(
+            "[red]Error: Either --dir or --document/-d must be provided[/red]"
+        )
+        sys.exit(1)
+
+    if save_to_config and not stack_name:
+        console.print(
+            "[red]Error: --stack-name is required when using --save-to-config[/red]"
+        )
+        sys.exit(1)
+
+    if save_to_config and not config_version:
+        console.print(
+            "[red]Error: --config-version is required when using --save-to-config[/red]"
+        )
+        sys.exit(1)
+
+    try:
+        from idp_sdk import IDPClient
+    except ImportError:
+        console.print("[red]Error: idp-sdk is required. pip install idp-sdk[/red]")
+        sys.exit(1)
+
+    client = IDPClient(stack_name=stack_name, region=region)
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        transient=False,
+    ) as progress:
+        task = progress.add_task("Starting multi-document discovery...", total=None)
+
+        def _progress_callback(step: str, data=None):
+            data = data or {}
+            if step == "documents_found":
+                progress.update(
+                    task,
+                    description=f"Found {data.get('count', '?')} documents",
+                )
+            elif step == "generating_embeddings":
+                progress.update(
+                    task,
+                    description=(
+                        f"Generating embeddings for {data.get('total', '?')} documents..."
+                    ),
+                )
+            elif step == "embedding_progress":
+                done = data.get("done", 0)
+                total = data.get("total", 0)
+                progress.update(
+                    task,
+                    description=f"Embedding documents... {done}/{total}",
+                )
+            elif step == "clustering":
+                progress.update(
+                    task,
+                    description=(
+                        f"Clustering {data.get('num_documents', '?')} documents..."
+                    ),
+                )
+            elif step == "clustering_complete":
+                progress.update(
+                    task,
+                    description=(f"Found {data.get('num_clusters', '?')} clusters"),
+                )
+            elif step == "analyzing_clusters":
+                progress.update(
+                    task,
+                    description=(
+                        f"Analyzing {data.get('total', '?')} clusters with AI agent..."
+                    ),
+                )
+            elif step == "cluster_analysis_progress":
+                done = data.get("done", 0)
+                total = data.get("total", 0)
+                cls = data.get("classification", "")
+                label = f" → {cls}" if cls else ""
+                progress.update(
+                    task,
+                    description=f"Analyzing clusters... {done}/{total}{label}",
+                )
+            elif step == "reflecting":
+                progress.update(task, description="Generating reflection report...")
+            elif step == "saving_to_config":
+                progress.update(
+                    task,
+                    description=(
+                        f"Saving to config version '{data.get('version', '?')}'..."
+                    ),
+                )
+            elif step == "pipeline_complete":
+                progress.update(task, description="Pipeline complete ✓")
+
+        result = client.discovery.run_multi_doc(
+            document_dir=document_dir,
+            document_paths=list(documents) if documents else None,
+            embedding_model_id=embedding_model,
+            analysis_model_id=analysis_model,
+            save_to_config=save_to_config,
+            config_version=config_version,
+            output_dir=output,
+            progress_callback=_progress_callback,
+            region=region,
+        )
+
+    # Display results
+    console.print()
+
+    if result.status == "FAILED":
+        console.print(f"[red]✗ Discovery failed: {result.error}[/red]")
+        sys.exit(1)
+
+    # Summary table
+    table = Table(title="Multi-Document Discovery Results", show_lines=True)
+    table.add_column("Cluster", style="cyan", justify="center")
+    table.add_column("Classification", style="bold green")
+    table.add_column("Documents", style="yellow", justify="center")
+    table.add_column("Fields", style="magenta", justify="center")
+    table.add_column("Status", justify="center")
+
+    for dc in result.discovered_classes:
+        if dc.error:
+            table.add_row(
+                str(dc.cluster_id),
+                "—",
+                str(dc.document_count),
+                "—",
+                "[red]✗ Error[/red]",
+            )
+        else:
+            num_fields = (
+                len(dc.json_schema.get("properties", {})) if dc.json_schema else 0
+            )
+            table.add_row(
+                str(dc.cluster_id),
+                dc.classification or "Unknown",
+                str(dc.document_count),
+                str(num_fields),
+                "[green]✓[/green]",
+            )
+
+    console.print(table)
+    console.print()
+
+    # Stats line
+    console.print(
+        f"[bold]Summary:[/bold] {result.total_documents} documents → "
+        f"{result.total_clusters} clusters → "
+        f"{len([c for c in result.discovered_classes if not c.error])} schemas"
+    )
+
+    if result.noise_documents > 0:
+        console.print(
+            f"[yellow]⚠ {result.noise_documents} documents failed embedding[/yellow]"
+        )
+
+    if result.config_version:
+        console.print(
+            f"[green]✓ Schemas saved to config version: {result.config_version}[/green]"
+        )
+
+    if output:
+        console.print(f"[green]✓ Schemas written to: {output}[/green]")
+
+    # Print schemas to stdout if no output specified
+    if not output and not save_to_config:
+        all_schemas = [
+            dc.json_schema
+            for dc in result.discovered_classes
+            if dc.json_schema and not dc.error
+        ]
+        if all_schemas:
+            console.print()
+            console.print("[bold]Discovered schemas:[/bold]")
+            console.print(json.dumps(all_schemas, indent=2))
+
+    # Print reflection report if available
+    if result.reflection_report:
+        console.print()
+        console.print("[bold]Reflection Report:[/bold]")
+        from rich.markdown import Markdown
+
+        console.print(Markdown(result.reflection_report))
+
+    if result.status == "PARTIAL":
+        console.print(
+            "\n[yellow]⚠ Some clusters failed analysis. "
+            "Check the errors above.[/yellow]"
+        )
+        sys.exit(1)
+
+
 @cli.command()
 @click.option(
     "--source-dir",

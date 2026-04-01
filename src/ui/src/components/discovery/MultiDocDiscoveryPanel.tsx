@@ -31,6 +31,7 @@ import {
   Badge,
   Link,
   Tiles,
+  TextContent,
   TextFilter,
   Pagination,
   CollectionPreferences,
@@ -743,6 +744,20 @@ const MultiDocDiscoveryPanel = () => {
           {error}
         </Alert>
       )}
+
+      <Alert type="warning" header="Important Notice">
+        Use the Discovery feature in non-production environments to discover class models from documents and images. Discovery creates a
+        starting point, not a final class model config. Be sure to inspect, test and refine the generated custom class configuration before
+        exporting it to production.
+      </Alert>
+
+      <TextContent>
+        <p>
+          Upload a collection of single-class documents (PDF, PNG, JPG, TIFF) — each document should contain only one document type (not
+          multi-section packets). The system will use AI to automatically identify document types by clustering similar documents together,
+          then generate a JSON Schema for each discovered class. You can provide documents via an S3 path or upload a zip file.
+        </p>
+      </TextContent>
 
       {/* Start New Discovery */}
       <Container

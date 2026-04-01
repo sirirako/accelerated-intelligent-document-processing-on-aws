@@ -9,11 +9,16 @@ of documents: embed → cluster → analyze → generate schemas → reflect.
 
 This module provides both a high-level orchestrator for direct usage and
 individual step methods suitable for Step Functions Lambda handlers.
+
+Supports two document source modes:
+- **S3 mode**: documents in an S3 bucket (used by Lambda handlers)
+- **Local mode**: documents on local filesystem (used by CLI/SDK)
 """
 
 import logging
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 import boto3
@@ -450,13 +455,291 @@ class MultiDocumentDiscovery:
         _update("pipeline_complete", result.to_dict())
         return result
 
+    # ---- Local file operations ----
+
+    def list_local_documents(
+        self,
+        document_dir: Optional[str] = None,
+        document_paths: Optional[List[str]] = None,
+        max_documents: Optional[int] = None,
+    ) -> List[str]:
+        """
+        List document files from a local directory or explicit paths.
+
+        Args:
+            document_dir: Directory to scan for documents (recursive)
+            document_paths: Explicit list of file paths
+            max_documents: Maximum documents to return (safety limit)
+
+        Returns:
+            List of absolute file paths for supported documents
+
+        Raises:
+            ValueError: If no supported documents found, or neither dir/paths given
+        """
+        max_docs = max_documents or self.max_documents
+        paths: List[str] = []
+
+        if document_paths:
+            for p in document_paths:
+                fp = Path(p).resolve()
+                if not fp.exists():
+                    logger.warning(f"File not found, skipping: {p}")
+                    continue
+                if fp.suffix.lower() in self.SUPPORTED_EXTENSIONS:
+                    paths.append(str(fp))
+                else:
+                    logger.warning(f"Unsupported file type, skipping: {p}")
+
+        elif document_dir:
+            dir_path = Path(document_dir).resolve()
+            if not dir_path.is_dir():
+                raise ValueError(f"Not a directory: {document_dir}")
+            for fp in sorted(dir_path.rglob("*")):
+                if fp.is_file() and fp.suffix.lower() in self.SUPPORTED_EXTENSIONS:
+                    paths.append(str(fp))
+                    if len(paths) > max_docs:
+                        raise ValueError(
+                            f"Too many documents ({len(paths)}+). "
+                            f"Maximum is {max_docs}. "
+                            f"Use a more specific directory or explicit paths."
+                        )
+        else:
+            raise ValueError("Either document_dir or document_paths must be provided.")
+
+        if not paths:
+            raise ValueError(
+                f"No supported documents found. "
+                f"Supported file types: {', '.join(sorted(self.SUPPORTED_EXTENSIONS))}"
+            )
+
+        logger.info(f"Found {len(paths)} local documents")
+        return paths
+
+    def generate_embeddings_local(
+        self,
+        file_paths: List[str],
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> EmbeddingResult:
+        """
+        Generate embeddings for local document files.
+
+        Reads each file, renders PDFs to images, and generates embeddings
+        using the configured Bedrock model.
+
+        Args:
+            file_paths: List of local file paths
+            progress_callback: Optional progress callback
+
+        Returns:
+            EmbeddingResult with embeddings matrix and metadata.
+            valid_keys contains the file paths that succeeded.
+        """
+        images: List[bytes] = []
+        path_mapping: List[str] = []
+
+        for fp in file_paths:
+            try:
+                raw_bytes = Path(fp).read_bytes()
+                if fp.lower().endswith(".pdf"):
+                    rendered = self.embedding_service._render_pdf_first_page(raw_bytes)
+                    if rendered:
+                        images.append(rendered)
+                        path_mapping.append(fp)
+                    else:
+                        logger.warning(f"Failed to render PDF: {fp}")
+                else:
+                    compressed = self.embedding_service._compress_image_bytes(raw_bytes)
+                    if compressed:
+                        images.append(compressed)
+                        path_mapping.append(fp)
+                    else:
+                        logger.warning(f"Failed to compress image: {fp}")
+            except Exception as e:
+                logger.warning(f"Failed to read file {fp}: {e}")
+
+        if not images:
+            import numpy as np
+
+            return EmbeddingResult(
+                embeddings=np.array([]),
+                valid_keys=[],
+                failed_keys=list(file_paths),
+                embedding_dim=0,
+            )
+
+        logger.info(f"Prepared {len(images)} local images for embedding")
+
+        embeddings_array, valid_indices = (
+            self.embedding_service.embed_images_from_bytes(
+                images=images,
+                progress_callback=progress_callback,
+            )
+        )
+
+        valid_keys = [path_mapping[i] for i in valid_indices]
+        failed_set = set(valid_keys)
+        failed_keys = [fp for fp in file_paths if fp not in failed_set]
+
+        import numpy as np
+
+        embedding_dim = embeddings_array.shape[1] if embeddings_array.size > 0 else 0
+
+        return EmbeddingResult(
+            embeddings=embeddings_array,
+            valid_keys=valid_keys,
+            failed_keys=failed_keys,
+            embedding_dim=embedding_dim,
+        )
+
+    def _load_local_images(
+        self,
+        file_paths: List[str],
+    ) -> Dict[int, bytes]:
+        """
+        Load local document images into memory for agent analysis.
+
+        Args:
+            file_paths: Local file paths (in same order as embeddings)
+
+        Returns:
+            Mapping of document index -> image bytes
+        """
+        images: Dict[int, bytes] = {}
+
+        for idx, fp in enumerate(file_paths):
+            try:
+                raw_bytes = Path(fp).read_bytes()
+                if fp.lower().endswith(".pdf"):
+                    rendered = self.embedding_service._render_pdf_first_page(raw_bytes)
+                    if rendered:
+                        images[idx] = rendered
+                else:
+                    images[idx] = raw_bytes
+            except Exception as e:
+                logger.warning(f"Failed to load image for doc {idx} ({fp}): {e}")
+
+        logger.info(f"Loaded {len(images)} local images for analysis")
+        return images
+
+    def run_local_pipeline(
+        self,
+        document_dir: Optional[str] = None,
+        document_paths: Optional[List[str]] = None,
+        config_version: Optional[str] = None,
+        progress_callback: Optional[Callable[[str, Any], None]] = None,
+    ) -> MultiDocDiscoveryResult:
+        """
+        Run the complete multi-document discovery pipeline on local files.
+
+        Pipeline steps:
+        1. List local documents
+        2. Generate embeddings for all documents
+        3. Cluster documents by similarity
+        4. Analyze each cluster with Strands agent
+        5. Generate reflection report
+        6. Optionally save to config version
+
+        Args:
+            document_dir: Directory containing documents
+            document_paths: Explicit list of document file paths
+            config_version: Optional config version to save results to
+            progress_callback: Optional callable(step_name, step_data) for status updates
+
+        Returns:
+            MultiDocDiscoveryResult with all outputs
+        """
+
+        def _update(step: str, data: Any = None):
+            if progress_callback:
+                try:
+                    progress_callback(step, data)
+                except Exception:
+                    pass
+
+        # Step 1: List local documents
+        _update("listing_documents", {"dir": document_dir, "paths": document_paths})
+        file_paths = self.list_local_documents(
+            document_dir=document_dir,
+            document_paths=document_paths,
+        )
+        _update("documents_found", {"count": len(file_paths)})
+
+        # Step 2: Generate embeddings from local files
+        _update("generating_embeddings", {"total": len(file_paths)})
+        embedding_result = self.generate_embeddings_local(
+            file_paths=file_paths,
+            progress_callback=lambda done, total: _update(
+                "embedding_progress", {"done": done, "total": total}
+            ),
+        )
+        _update("embeddings_complete", embedding_result.to_serializable())
+
+        # Step 3: Cluster
+        _update("clustering", {"num_documents": len(embedding_result.valid_keys)})
+        cluster_result = self.cluster_documents(embedding_result)
+        _update("clustering_complete", cluster_result.to_serializable())
+
+        # Step 4: Prepare images for agent analysis
+        _update("preparing_images")
+        images = self._load_local_images(embedding_result.valid_keys)
+
+        # Step 5: Analyze clusters
+        _update(
+            "analyzing_clusters",
+            {"total": cluster_result.num_clusters},
+        )
+        discovered_classes = self.discovery_agent.analyze_clusters(
+            cluster_result=cluster_result,
+            images=images,
+            clustering_service=self.clustering_service,
+            progress_callback=lambda done, total, cls: _update(
+                "cluster_analysis_progress",
+                {"done": done, "total": total, "classification": cls},
+            ),
+        )
+        _update(
+            "analysis_complete",
+            {"classes": [dc.to_dict() for dc in discovered_classes]},
+        )
+
+        # Step 6: Reflect
+        _update("reflecting")
+        reflection_report = self.reflect(discovered_classes)
+        _update("reflection_complete")
+
+        # Step 7: Optionally save to config
+        if config_version:
+            _update("saving_to_config", {"version": config_version})
+            self.save_to_config(discovered_classes, config_version, "local", "local")
+            _update("save_complete")
+
+        # Build result
+        num_successful = sum(1 for dc in discovered_classes if not dc.error)
+        num_failed = sum(1 for dc in discovered_classes if dc.error)
+
+        result = MultiDocDiscoveryResult(
+            discovered_classes=[dc.to_dict() for dc in discovered_classes],
+            reflection_report=reflection_report,
+            total_documents=len(file_paths),
+            num_clusters=cluster_result.num_clusters,
+            num_failed_embeddings=len(embedding_result.failed_keys),
+            num_successful_schemas=num_successful,
+            num_failed_schemas=num_failed,
+        )
+
+        _update("pipeline_complete", result.to_dict())
+        return result
+
+    # ---- S3 image loading (for Lambda handlers) ----
+
     def _load_images_for_analysis(
         self,
         bucket: str,
         s3_keys: List[str],
     ) -> Dict[int, bytes]:
         """
-        Load document images into memory for agent analysis.
+        Load document images from S3 into memory for agent analysis.
 
         Args:
             bucket: S3 bucket
