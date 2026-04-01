@@ -756,6 +756,7 @@ const MultiDocDiscoveryPanel = () => {
           Upload a collection of single-class documents (PDF, PNG, JPG, TIFF) — each document should contain only one document type (not
           multi-section packets). The system will use AI to automatically identify document types by clustering similar documents together,
           then generate a JSON Schema for each discovered class. You can provide documents via an S3 path or upload a zip file.
+          <strong> Requires at least 2 documents per expected class</strong> — clusters with fewer than 2 documents are filtered as noise.
         </p>
       </TextContent>
 

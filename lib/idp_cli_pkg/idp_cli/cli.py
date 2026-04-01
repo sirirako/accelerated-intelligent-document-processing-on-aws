@@ -4928,6 +4928,10 @@ def multi_discover(
 
     Requires: make setup (or: pip install idp-common[multi_document_discovery])
 
+    Note: Requires at least 2 documents per expected class. Clusters with
+    fewer than 2 documents are filtered as noise. For discovering schemas
+    from individual documents, use 'idp-cli discover' instead.
+
     \b
     Examples:
       # Discover from a directory of documents

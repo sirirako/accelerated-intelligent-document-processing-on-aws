@@ -2134,6 +2134,8 @@ Unlike `discover` (which analyzes one document at a time), `discover-multidoc` a
 
 **Requires:** `pip install idp-common[multi_document_discovery]` (scikit-learn, scipy, numpy, strands-agents)
 
+**Note:** Requires at least **2 documents per expected class**. Clusters with fewer than 2 documents are filtered as noise. For discovering schemas from individual documents, use [`discover`](#discover) instead.
+
 **Usage:**
 ```bash
 idp-cli discover-multidoc [OPTIONS]

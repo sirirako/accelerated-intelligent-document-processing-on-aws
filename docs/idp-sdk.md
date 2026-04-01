@@ -1479,6 +1479,8 @@ Discover document classes from a collection of documents using embedding-based c
 
 **Requires:** `pip install idp-common[multi_document_discovery]`
 
+**Note:** Requires at least **2 documents per expected class**. Clusters with fewer than 2 documents are filtered as noise. For discovering schemas from individual documents, use `discovery.run()` instead.
+
 **Parameters:**
 - `document_dir` (str, optional): Directory path containing documents to analyze (recursive scan)
 - `document_paths` (list[str], optional): List of individual document file paths
