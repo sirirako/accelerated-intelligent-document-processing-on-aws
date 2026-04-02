@@ -35,6 +35,7 @@ import useAppContext from '../../contexts/app';
 import { formatConfigVersionLink } from './utils/configVersionUtils';
 import {
   parseCostBreakdown,
+  calculateAvgCostPerPage,
   parseAccuracyBreakdown,
   parseSplitClassificationMetrics,
   parseFieldMetrics,
@@ -753,16 +754,7 @@ const TestResults = ({ testRunId, setSelectedTestRunId }: TestResultsProps): Rea
   const costBreakdown: any = results.costBreakdown ? parseCostBreakdown(results.costBreakdown as string) : null;
 
   // Calculate avg cost per page from costBreakdown page counts
-  const avgCostPerPage = (() => {
-    if (results.totalCost == null || !costBreakdown) return null;
-    let totalPages = 0;
-    Object.values(costBreakdown as Record<string, Record<string, Record<string, unknown>>>).forEach((services) => {
-      Object.values(services).forEach((details) => {
-        if (details.unit === 'pages') totalPages += Number(details.value) || 0;
-      });
-    });
-    return totalPages > 0 ? (results.totalCost as number) / totalPages : null;
-  })();
+  const avgCostPerPage = calculateAvgCostPerPage(results.totalCost as number, costBreakdown);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const accuracyBreakdown: any = results.accuracyBreakdown ? parseAccuracyBreakdown(results.accuracyBreakdown as string) : null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
