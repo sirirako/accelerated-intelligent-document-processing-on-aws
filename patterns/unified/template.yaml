@@ -221,6 +221,8 @@ Resources:
           ocr:
             order: 3
             type: object
+            collapsible: true
+            defaultExpanded: false
             sectionLabel: OCR Configuration
             description: "Not used when BDA is enabled - BDA handles OCR internally"
             dependsOn: { field: "use_bda", value: false }
@@ -581,7 +583,9 @@ Resources:
           classification:
             order: 4
             type: object
-            sectionLabel: Classification Inference
+            collapsible: true
+            defaultExpanded: false
+            sectionLabel: Classification Configuration
             description: "Not used when BDA is enabled - BDA handles classification internally"
             dependsOn: { field: "use_bda", value: false }
             required:
@@ -730,7 +734,9 @@ Resources:
             order: 5
             type: object
             format: section
-            sectionLabel: Extraction Inference
+            collapsible: true
+            defaultExpanded: false
+            sectionLabel: Extraction Configuration
             description: "Not used when BDA is enabled - BDA handles extraction internally"
             dependsOn: { field: "use_bda", value: false }
             required:
@@ -880,6 +886,8 @@ Resources:
           assessment:
             order: 6
             type: object
+            collapsible: true
+            defaultExpanded: false
             sectionLabel: Assessment & HITL Configuration
             properties:
               hitl_enabled:
@@ -1048,7 +1056,9 @@ Resources:
           summarization:
             order: 7
             type: object
-            sectionLabel: Summarization Inference
+            collapsible: true
+            defaultExpanded: false
+            sectionLabel: Summarization Configuration
             properties:
               enabled:
                 type: boolean
@@ -1133,9 +1143,11 @@ Resources:
                 description: Task prompt - supports parameters {DOCUMENT_TEXT} and {EXTRACTION_RESULTS}. Optionally use <<CACHEPOINT>> to separate static and dynamic elements of prompt for Bedrock prompt caching.
                 order: 8
           evaluation:
-            order: 8
+            order: 9
             type: object
-            sectionLabel: Evaluation Inference
+            collapsible: true
+            defaultExpanded: false
+            sectionLabel: Evaluation Configuration
             properties:
               enabled:
                 type: boolean
@@ -1218,8 +1230,10 @@ Resources:
                     description: Task prompt for LLM evaluation - supports placeholders {DOCUMENT_CLASS}, {ATTRIBUTE_NAME}, {ATTRIBUTE_DESCRIPTION}, {EXPECTED_VALUE} and {ACTUAL_VALUE}
                     order: 7
           discovery:
-            order: 9
+            order: 10
             type: object
+            collapsible: true
+            defaultExpanded: false
             sectionLabel: Discovery Configuration
             description: Configuration for document class discovery functionality
             properties:
@@ -1487,9 +1501,85 @@ Resources:
                     description: Sample JSON format for discovery output
                     default: "{\n  \"document_class\": \"Form-1040\",\n  \"document_description\": \"Brief summary of the document\",\n  \"groups\": [\n    {\n      \"name\": \"PersonalInformation\",\n      \"description\": \"Personal information of Tax payer\",\n      \"attributeType\": \"group\",\n      \"groupType\": \"normal\",\n      \"groupAttributes\": [\n        {\n          \"name\": \"FirstName\",\n          \"dataType\": \"string\",\n          \"description\": \"First Name of Taxpayer\"\n        },\n        {\n          \"name\": \"Age\",\n          \"dataType\": \"number\",\n          \"description\": \"Age of Taxpayer\"\n        }\n      ]\n    }\n  ]\n}"
                     order: 0
+              multi_document:
+                order: 4
+                type: object
+                sectionLabel: Multi-Document Discovery (Batch Clustering)
+                description: Configuration for discovering document classes from a collection of documents using embedding-based clustering
+                properties:
+                  embedding_model_id:
+                    type: string
+                    description: Bedrock model ID for generating document embeddings
+                    default: "us.cohere.embed-v4:0"
+                    order: 0
+                  analysis_model_id:
+                    type: string
+                    description: Bedrock model ID for analyzing document clusters
+                    default: "us.anthropic.claude-sonnet-4-6"
+                    enum:
+                      - "us.amazon.nova-lite-v1:0"
+                      - "us.amazon.nova-pro-v1:0"
+                      - "us.amazon.nova-premier-v1:0"
+                      - "us.amazon.nova-2-lite-v1:0"
+                      - "us.anthropic.claude-3-5-haiku-20241022-v1:0"
+                      - "us.anthropic.claude-sonnet-4-20250514-v1:0"
+                      - "us.anthropic.claude-sonnet-4-6"
+                      - "us.anthropic.claude-opus-4-20250514-v1:0"
+                      - "us.anthropic.claude-opus-4-6-v1:1m"
+                    order: 1
+                  temperature:
+                    type: number
+                    description: Temperature for cluster analysis model
+                    default: 0.0
+                    minimum: 0
+                    maximum: 1
+                    order: 2
+                  max_tokens:
+                    type: number
+                    description: Maximum output tokens for cluster analysis
+                    default: 10000
+                    order: 3
+                  max_documents:
+                    type: number
+                    description: Maximum documents to process in a single discovery run
+                    default: 500
+                    minimum: 1
+                    order: 4
+                  min_cluster_size:
+                    type: number
+                    description: Minimum documents required to form a cluster
+                    default: 2
+                    minimum: 1
+                    order: 5
+                  num_sample_documents:
+                    type: number
+                    description: Number of sample documents selected per cluster for analysis
+                    default: 3
+                    minimum: 1
+                    order: 6
+                  max_sample_size:
+                    type: number
+                    description: Maximum sample size for cluster analysis
+                    default: 5
+                    minimum: 1
+                    order: 7
+                  max_concurrent_embeddings:
+                    type: number
+                    description: Maximum concurrent embedding API requests
+                    default: 5
+                    minimum: 1
+                    order: 8
+                  max_concurrent_clusters:
+                    type: number
+                    description: Maximum concurrent cluster analysis requests
+                    default: 3
+                    minimum: 1
+                    order: 9
           agents:
-            order: 10
+            order: 11
             type: object
+            collapsible: true
+            defaultExpanded: false
             sectionLabel: Agent Configuration
             description: Configuration for AI agents used in the system
             properties:
@@ -1573,9 +1663,11 @@ Resources:
                         default: 24
                         order: 2
           rule_validation:
-            order: 11
+            order: 8
             type: object
-            sectionLabel: Rule Validation Inference
+            collapsible: true
+            defaultExpanded: false
+            sectionLabel: Rule Validation Configuration
             properties:
               enabled:
                 type: boolean

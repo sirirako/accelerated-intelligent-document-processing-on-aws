@@ -9,6 +9,22 @@ SPDX-License-Identifier: MIT-0
 
 - **Prompt Preview** — New "Prompt Preview" tab in the Configuration page lets you preview the actual prompts sent to the LLM for each processing step (Classification, Extraction, Assessment, Summarization). Config-derived placeholders are filled in with real values (class names, cleaned JSON Schema), while document-specific placeholders are shown as highlighted markers. Includes token estimates, copy-to-clipboard, and a substitution details panel showing the exact schema sent to the LLM. Helps optimize document class schemas and prompt templates.
 
+- **IDP CLI `chat` Command & SDK `ChatOperation`** — Interactive Agent Companion Chat from the terminal and programmatic SDK access. Runs the same multi-agent orchestrator as the Web UI locally, with real-time streaming and multi-turn conversation support. Includes Analytics Agent, Error Analyzer Agent, and optionally Code Intelligence Agent (`--enable-code-intelligence`). Available as `idp-cli chat --stack-name <stack>` for interactive use, `--prompt` flag for single-shot scripting, and `client.chat.send_message()` in the Python SDK. See `docs/idp-cli.md#chat`.
+
+- **Multi-Document Discovery** — New capability to automatically discover document classes from a collection of documents. Instead of manually defining document schemas one at a time, users point to a folder of mixed documents and the system automatically identifies document types, clusters similar documents, generates JSON Schemas with field definitions for each type, and saves them to a configuration version — ready for immediate use in the processing pipeline. Available from the Web UI, CLI (`idp-cli discover-multidoc`), and SDK (`client.discovery.run_multi_doc()`).
+  - **Web UI**: New "Multi-Document" tab on the Discovery page with job submission form (config version selector, bucket selector, S3 prefix input, zip upload), jobs table with search/filter/sort/pagination, and detailed job results page with pipeline progress, expandable JSON schemas, config deep-links, and Quality Review Report
+  - **CLI**: `idp-cli discover-multidoc --dir ./samples/ -o ./schemas/` with Rich progress bars, results table, and reflection report
+  - **SDK**: `client.discovery.run_multi_doc(document_dir="./samples/")` with typed `MultiDocDiscoveryResult` response model
+  - **Two Input Modes**: S3 path (select bucket + prefix), zip upload (presigned URL), or local directory (CLI/SDK)
+  - **Configuration Integration**: Discovered classes are saved directly to the selected config version's `classes` array in DynamoDB, immediately available for document processing without manual schema creation
+
+- **Chandra OCR Lambda Hook Sample** — New `GENAIIDP-chandra-ocr-hook` sample in `samples/lambda-hook-inference/` that integrates [Datalab Chandra OCR 2](https://github.com/datalab-to/chandra) with the LambdaHook feature for high-quality OCR. Supports 90+ languages, math, tables, forms, and handwriting. Uses the Datalab hosted async API (`/api/v1/convert`) with configurable output format (markdown/json/html) and conversion mode (fast/balanced/accurate). Includes standalone SAM template, local test script, and deployment instructions. See `docs/lambda-hook-inference.md` — Chandra OCR Integration section.
+
+
+### Fixed
+
+- **`delete-documents` fails with DynamoDB errors** — Fixed two bugs in `get_documents_by_batch()`: (1) passing empty `ExpressionAttributeNames={}` when no status filter caused `ValidationException`, and (2) using low-level DynamoDB client type descriptors (`{"S": "..."}`) with the high-level Table resource caused `begins_with` operand type mismatch. Rewrote to use the high-level `Table.scan()` API with `boto3.dynamodb.conditions.Attr`.
+
 ## [0.5.4]
 
 ### Added
