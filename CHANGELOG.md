@@ -7,6 +7,8 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
+- **Prompt Preview** — New "Prompt Preview" tab in the Configuration page lets you preview the actual prompts sent to the LLM for each processing step (Classification, Extraction, Assessment, Summarization). Config-derived placeholders are filled in with real values (class names, cleaned JSON Schema), while document-specific placeholders are shown as highlighted markers. Includes token estimates, copy-to-clipboard, and a substitution details panel showing the exact schema sent to the LLM. Helps optimize document class schemas and prompt templates.
+
 - **IDP CLI `chat` Command & SDK `ChatOperation`** — Interactive Agent Companion Chat from the terminal and programmatic SDK access. Runs the same multi-agent orchestrator as the Web UI locally, with real-time streaming and multi-turn conversation support. Includes Analytics Agent, Error Analyzer Agent, and optionally Code Intelligence Agent (`--enable-code-intelligence`). Available as `idp-cli chat --stack-name <stack>` for interactive use, `--prompt` flag for single-shot scripting, and `client.chat.send_message()` in the Python SDK. See `docs/idp-cli.md#chat`.
 
 - **Multi-Document Discovery** — New capability to automatically discover document classes from a collection of documents. Instead of manually defining document schemas one at a time, users point to a folder of mixed documents and the system automatically identifies document types, clusters similar documents, generates JSON Schemas with field definitions for each type, and saves them to a configuration version — ready for immediate use in the processing pipeline. Available from the Web UI, CLI (`idp-cli discover-multidoc`), and SDK (`client.discovery.run_multi_doc()`).

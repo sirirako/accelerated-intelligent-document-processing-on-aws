@@ -21,6 +21,7 @@ import {
 } from '@cloudscape-design/components';
 import type { BoxProps } from '@cloudscape-design/components';
 import SchemaBuilder from '../json-schema-builder/SchemaBuilder';
+import PromptPreview from './PromptPreview';
 
 // Type for schema property definitions used throughout the config builder
 interface SchemaProperty {
@@ -1726,6 +1727,15 @@ const ConfigBuilder = ({
                 },
               ]
             : []),
+          {
+            id: 'prompt-preview',
+            label: 'Prompt Preview',
+            content: (
+              <ExtBox style={{ height: 'calc(70vh - 60px)', overflow: 'auto' }} padding="s">
+                <PromptPreview formValues={formValues} />
+              </ExtBox>
+            ),
+          },
         ]}
       />
 
