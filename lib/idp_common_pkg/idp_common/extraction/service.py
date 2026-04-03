@@ -23,6 +23,7 @@ from idp_common.config.schema_constants import (
     ID_FIELD,
     SCHEMA_PROPERTIES,
     X_AWS_IDP_DOCUMENT_TYPE,
+    X_AWS_IDP_EXTRACTION_MODEL,
 )
 from idp_common.models import Document
 from idp_common.utils.few_shot_example_builder import (
@@ -1380,8 +1381,15 @@ Benefits: Faster, more accurate, handles OCR artifacts automatically.
             f"Extracting fields for {section_info.class_label} document, section"
         )
 
-        # Get extraction config
-        model_id = self.config.extraction.model
+        # Get extraction config — use per-class model override if specified,
+        # otherwise fall back to the global extraction model.
+        class_model_override = self._class_schema.get(X_AWS_IDP_EXTRACTION_MODEL)
+        model_id = class_model_override or self.config.extraction.model
+        if class_model_override:
+            logger.info(
+                f"Using per-class extraction model override for "
+                f"'{section_info.class_label}': {model_id}"
+            )
         temperature = self.config.extraction.temperature
         top_k = self.config.extraction.top_k
         top_p = self.config.extraction.top_p
