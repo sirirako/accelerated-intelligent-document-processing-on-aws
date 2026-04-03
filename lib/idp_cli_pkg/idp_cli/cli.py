@@ -11,7 +11,7 @@ import logging
 import os
 import sys
 import time
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 _SETUP_HELP = """\
 Error: Required packages not found.
@@ -40,13 +40,14 @@ try:
 except ImportError:
     # Dependencies not installed — main() will print a helpful message and exit.
     # Define minimal stubs so the module can still be imported for entry point resolution.
-    click = None  # type: ignore
-    IDPClient = None  # type: ignore
-    Console = None  # type: ignore
-    Live = None  # type: ignore
-    Table = None  # type: ignore
-    display = None  # type: ignore
-    boto3 = None  # type: ignore
+    if not TYPE_CHECKING:
+        click = None
+        IDPClient = None
+        Console = None
+        Live = None
+        Table = None
+        display = None
+        boto3 = None
 
 # Configure logging
 logging.basicConfig(
@@ -225,7 +226,7 @@ TEMPLATE_URLS = {
 
 
 @click.group()
-@click.version_option(version="0.5.4")
+@click.version_option(version="0.5.5")
 def cli():
     """
     IDP CLI - Batch document processing for IDP Accelerator
@@ -458,10 +459,11 @@ def deploy(
                 # Transform
                 headless_template = os.path.join(tmpdir, "idp-headless.yaml")
                 client_tmp = IDPClient(region=region)
+                is_govcloud = region and region.startswith("us-gov-")
                 transform_result = client_tmp.publish.transform_template_headless(
                     source_template=local_template,
                     output_path=headless_template,
-                    update_govcloud_config=True,
+                    update_govcloud_config=is_govcloud,
                 )
                 if not transform_result.success:
                     console.print(
@@ -1093,9 +1095,13 @@ def delete(
     help="Delete all documents in this batch (alternative to --document-ids)",
 )
 @click.option(
+    "--pattern",
+    help='Wildcard pattern to match document keys (e.g. "batch-123/*.pdf", "*invoice*")',
+)
+@click.option(
     "--status-filter",
     type=click.Choice(["FAILED", "COMPLETED", "PROCESSING", "QUEUED"]),
-    help="Only delete documents with this status (use with --batch-id)",
+    help="Only delete documents with this status (use with --batch-id or --pattern)",
 )
 @click.option(
     "--dry-run",
@@ -1113,6 +1119,7 @@ def delete_documents_cmd(
     stack_name: str,
     document_ids: Optional[str],
     batch_id: Optional[str],
+    pattern: Optional[str],
     status_filter: Optional[str],
     dry_run: bool,
     force: bool,
@@ -1141,6 +1148,12 @@ def delete_documents_cmd(
       # Delete only failed documents in a batch
       idp-cli delete-documents --stack-name my-stack --batch-id cli-batch-20250123 --status-filter FAILED
 
+      # Delete documents matching a wildcard pattern
+      idp-cli delete-documents --stack-name my-stack --pattern "batch-123/*.pdf"
+
+      # Delete all failed invoice documents
+      idp-cli delete-documents --stack-name my-stack --pattern "*invoice*" --status-filter FAILED
+
       # Dry run to see what would be deleted
       idp-cli delete-documents --stack-name my-stack --batch-id cli-batch-20250123 --dry-run
 
@@ -1149,19 +1162,24 @@ def delete_documents_cmd(
     """
     try:
         import boto3
-        from idp_common.delete_documents import delete_documents, get_documents_by_batch
+        from idp_common.delete_documents import (
+            delete_documents,
+            get_documents_by_batch,
+            get_documents_by_pattern,
+        )
         from idp_sdk import IDPClient
 
-        # Validate input
-        if not document_ids and not batch_id:
+        # Validate input - exactly one of document_ids, batch_id, or pattern required
+        selector_count = sum(1 for x in [document_ids, batch_id, pattern] if x)
+        if selector_count == 0:
             console.print(
-                "[red]✗ Error: Must specify either --document-ids or --batch-id[/red]"
+                "[red]✗ Error: Must specify one of --document-ids, --batch-id, or --pattern[/red]"
             )
             sys.exit(1)
 
-        if document_ids and batch_id:
+        if selector_count > 1:
             console.print(
-                "[red]✗ Error: Cannot specify both --document-ids and --batch-id[/red]"
+                "[red]✗ Error: Cannot specify more than one of --document-ids, --batch-id, --pattern[/red]"
             )
             sys.exit(1)
 
@@ -1190,6 +1208,27 @@ def delete_documents_cmd(
         if document_ids:
             doc_list = [d.strip() for d in document_ids.split(",")]
             console.print(f"Selected {len(doc_list)} document(s) for deletion")
+        elif pattern:
+            console.print(
+                f"[bold blue]Finding documents matching pattern: {pattern}[/bold blue]"
+            )
+            doc_list = get_documents_by_pattern(
+                tracking_table=tracking_table,
+                pattern=pattern,
+                status_filter=status_filter,
+            )
+            if not doc_list:
+                console.print(
+                    f"[yellow]No documents found matching pattern: {pattern}[/yellow]"
+                )
+                if status_filter:
+                    console.print(
+                        f"[yellow]  (with status filter: {status_filter})[/yellow]"
+                    )
+                sys.exit(0)
+            console.print(f"Found {len(doc_list)} document(s) matching pattern")
+            if status_filter:
+                console.print(f"  (filtered by status: {status_filter})")
         else:
             console.print(
                 f"[bold blue]Getting documents for batch: {batch_id}[/bold blue]"
@@ -4824,6 +4863,294 @@ def _write_discover_output(output, all_schemas, console, is_batch=True):
             )
 
 
+@cli.command(name="discover-multidoc")
+@click.option(
+    "--dir",
+    "document_dir",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    help="Directory containing documents to analyze (recursive scan)",
+)
+@click.option(
+    "--document",
+    "-d",
+    "documents",
+    multiple=True,
+    type=click.Path(exists=True),
+    help="Individual document files (repeatable: -d doc1.pdf -d doc2.png)",
+)
+@click.option(
+    "--embedding-model",
+    default=None,
+    help="Bedrock embedding model ID (default: us.cohere.embed-v4:0)",
+)
+@click.option(
+    "--analysis-model",
+    default=None,
+    help="Bedrock LLM for cluster analysis (default: us.anthropic.claude-sonnet-4-6)",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    help="Output directory for discovered JSON schemas",
+)
+@click.option(
+    "--stack-name",
+    default=None,
+    help="CloudFormation stack name (required for --save-to-config)",
+)
+@click.option(
+    "--config-version",
+    default=None,
+    help="Configuration version to save schemas to",
+)
+@click.option(
+    "--save-to-config",
+    is_flag=True,
+    default=False,
+    help="Save discovered schemas to the stack's configuration",
+)
+@click.option("--region", default=None, help="AWS region")
+def multi_discover(
+    document_dir,
+    documents,
+    embedding_model,
+    analysis_model,
+    output,
+    stack_name,
+    config_version,
+    save_to_config,
+    region,
+):
+    """Discover document classes from a collection of documents.
+
+    Analyzes a directory of documents using embedding-based clustering and
+    agentic analysis to automatically discover document classes and generate
+    JSON Schemas.
+
+    Requires: make setup (or: pip install idp-common[multi_document_discovery])
+
+    Note: Requires at least 2 documents per expected class. Clusters with
+    fewer than 2 documents are filtered as noise. For discovering schemas
+    from individual documents, use 'idp-cli discover' instead.
+
+    \b
+    Examples:
+      # Discover from a directory of documents
+      idp-cli discover-multidoc --dir ./samples/
+
+      # Discover with explicit files
+      idp-cli discover-multidoc -d doc1.pdf -d doc2.png -d doc3.jpg
+
+      # Save schemas to output directory
+      idp-cli discover-multidoc --dir ./samples/ -o ./schemas/
+
+      # Save to stack configuration
+      idp-cli discover-multidoc --dir ./samples/ --save-to-config \\
+          --stack-name IDP --config-version v2
+    """
+    import json
+
+    from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+    from rich.table import Table
+
+    console = Console()
+
+    if not document_dir and not documents:
+        console.print(
+            "[red]Error: Either --dir or --document/-d must be provided[/red]"
+        )
+        sys.exit(1)
+
+    if save_to_config and not stack_name:
+        console.print(
+            "[red]Error: --stack-name is required when using --save-to-config[/red]"
+        )
+        sys.exit(1)
+
+    if save_to_config and not config_version:
+        console.print(
+            "[red]Error: --config-version is required when using --save-to-config[/red]"
+        )
+        sys.exit(1)
+
+    try:
+        from idp_sdk import IDPClient
+    except ImportError:
+        console.print("[red]Error: idp-sdk is required. pip install idp-sdk[/red]")
+        sys.exit(1)
+
+    client = IDPClient(stack_name=stack_name, region=region)
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        transient=False,
+    ) as progress:
+        task = progress.add_task("Starting multi-document discovery...", total=None)
+
+        def _progress_callback(step: str, data=None):
+            data = data or {}
+            if step == "documents_found":
+                progress.update(
+                    task,
+                    description=f"Found {data.get('count', '?')} documents",
+                )
+            elif step == "generating_embeddings":
+                progress.update(
+                    task,
+                    description=(
+                        f"Generating embeddings for {data.get('total', '?')} documents..."
+                    ),
+                )
+            elif step == "embedding_progress":
+                done = data.get("done", 0)
+                total = data.get("total", 0)
+                progress.update(
+                    task,
+                    description=f"Embedding documents... {done}/{total}",
+                )
+            elif step == "clustering":
+                progress.update(
+                    task,
+                    description=(
+                        f"Clustering {data.get('num_documents', '?')} documents..."
+                    ),
+                )
+            elif step == "clustering_complete":
+                progress.update(
+                    task,
+                    description=(f"Found {data.get('num_clusters', '?')} clusters"),
+                )
+            elif step == "analyzing_clusters":
+                progress.update(
+                    task,
+                    description=(
+                        f"Analyzing {data.get('total', '?')} clusters with AI agent..."
+                    ),
+                )
+            elif step == "cluster_analysis_progress":
+                done = data.get("done", 0)
+                total = data.get("total", 0)
+                cls = data.get("classification", "")
+                label = f" → {cls}" if cls else ""
+                progress.update(
+                    task,
+                    description=f"Analyzing clusters... {done}/{total}{label}",
+                )
+            elif step == "reflecting":
+                progress.update(task, description="Generating reflection report...")
+            elif step == "saving_to_config":
+                progress.update(
+                    task,
+                    description=(
+                        f"Saving to config version '{data.get('version', '?')}'..."
+                    ),
+                )
+            elif step == "pipeline_complete":
+                progress.update(task, description="Pipeline complete ✓")
+
+        result = client.discovery.run_multi_doc(
+            document_dir=document_dir,
+            document_paths=list(documents) if documents else None,
+            embedding_model_id=embedding_model,
+            analysis_model_id=analysis_model,
+            save_to_config=save_to_config,
+            config_version=config_version,
+            output_dir=output,
+            progress_callback=_progress_callback,
+            region=region,
+        )
+
+    # Display results
+    console.print()
+
+    if result.status == "FAILED":
+        console.print(f"[red]✗ Discovery failed: {result.error}[/red]")
+        sys.exit(1)
+
+    # Summary table
+    table = Table(title="Multi-Document Discovery Results", show_lines=True)
+    table.add_column("Cluster", style="cyan", justify="center")
+    table.add_column("Classification", style="bold green")
+    table.add_column("Documents", style="yellow", justify="center")
+    table.add_column("Fields", style="magenta", justify="center")
+    table.add_column("Status", justify="center")
+
+    for dc in result.discovered_classes:
+        if dc.error:
+            table.add_row(
+                str(dc.cluster_id),
+                "—",
+                str(dc.document_count),
+                "—",
+                "[red]✗ Error[/red]",
+            )
+        else:
+            num_fields = (
+                len(dc.json_schema.get("properties", {})) if dc.json_schema else 0
+            )
+            table.add_row(
+                str(dc.cluster_id),
+                dc.classification or "Unknown",
+                str(dc.document_count),
+                str(num_fields),
+                "[green]✓[/green]",
+            )
+
+    console.print(table)
+    console.print()
+
+    # Stats line
+    console.print(
+        f"[bold]Summary:[/bold] {result.total_documents} documents → "
+        f"{result.total_clusters} clusters → "
+        f"{len([c for c in result.discovered_classes if not c.error])} schemas"
+    )
+
+    if result.noise_documents > 0:
+        console.print(
+            f"[yellow]⚠ {result.noise_documents} documents failed embedding[/yellow]"
+        )
+
+    if result.config_version:
+        console.print(
+            f"[green]✓ Schemas saved to config version: {result.config_version}[/green]"
+        )
+
+    if output:
+        console.print(f"[green]✓ Schemas written to: {output}[/green]")
+
+    # Print schemas to stdout if no output specified
+    if not output and not save_to_config:
+        all_schemas = [
+            dc.json_schema
+            for dc in result.discovered_classes
+            if dc.json_schema and not dc.error
+        ]
+        if all_schemas:
+            console.print()
+            console.print("[bold]Discovered schemas:[/bold]")
+            console.print(json.dumps(all_schemas, indent=2))
+
+    # Print reflection report if available
+    if result.reflection_report:
+        console.print()
+        console.print("[bold]Reflection Report:[/bold]")
+        from rich.markdown import Markdown
+
+        console.print(Markdown(result.reflection_report))
+
+    if result.status == "PARTIAL":
+        console.print(
+            "\n[yellow]⚠ Some clusters failed analysis. "
+            "Check the errors above.[/yellow]"
+        )
+        sys.exit(1)
+
+
 @cli.command()
 @click.option(
     "--source-dir",
@@ -4938,6 +5265,59 @@ def publish(
         logger.error(f"Error during publish: {e}", exc_info=True)
         console.print(f"[red]✗ Error: {e}[/red]")
         sys.exit(1)
+
+
+@cli.command()
+@click.option("--stack-name", required=True, help="CloudFormation stack name")
+@click.option("--region", default=None, help="AWS region")
+@click.option(
+    "--prompt",
+    default=None,
+    help="Single-shot prompt (non-interactive mode)",
+)
+@click.option(
+    "--enable-code-intelligence",
+    is_flag=True,
+    default=False,
+    help="Enable Code Intelligence Agent (uses external third-party services)",
+)
+def chat(
+    stack_name: str,
+    region: Optional[str],
+    prompt: Optional[str],
+    enable_code_intelligence: bool,
+):
+    """Interactive Agent Companion Chat from the terminal.
+
+    Provides access to the full multi-agent orchestrator including
+    Analytics, Error Analyzer, and other agents.
+
+    \b
+    Examples:
+      # Interactive mode
+      idp-cli chat --stack-name IDP
+
+      # Single-shot mode
+      idp-cli chat --stack-name IDP --prompt "How many documents were processed today?"
+
+      # With Code Intelligence (external services)
+      idp-cli chat --stack-name IDP --enable-code-intelligence
+    """
+    try:
+        from .chat import run_chat
+    except ImportError:
+        console.print(
+            "[red]✗ Chat requires idp_common[agents] to be installed.\n"
+            "  Run: pip install -e 'lib/idp_common_pkg[agents]'[/red]"
+        )
+        sys.exit(1)
+
+    run_chat(
+        stack_name=stack_name,
+        region=region,
+        prompt=prompt,
+        enable_code_intelligence=enable_code_intelligence,
+    )
 
 
 def main():

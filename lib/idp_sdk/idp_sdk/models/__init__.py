@@ -22,6 +22,7 @@ from .batch import (
     BatchResult,
     BatchStatus,
 )
+from .chat import ChatResponse
 from .config import (
     ConfigActivateResult,
     ConfigCreateResult,
@@ -36,8 +37,10 @@ from .config import (
 from .discovery import (
     AutoDetectResult,
     AutoDetectSection,
+    DiscoveredClassResult,
     DiscoveryBatchResult,
     DiscoveryResult,
+    MultiDocDiscoveryResult,
 )
 from .document import (
     DocumentDeletionResult,
@@ -107,6 +110,8 @@ __all__ = [
     "BatchInfo",
     "BatchListResult",
     "BatchRerunResult",
+    # Chat models
+    "ChatResponse",
     "BatchReprocessResult",
     "BatchDownloadResult",
     "BatchDeletionResult",
@@ -135,6 +140,8 @@ __all__ = [
     "DiscoveryBatchResult",
     "AutoDetectResult",
     "AutoDetectSection",
+    "DiscoveredClassResult",
+    "MultiDocDiscoveryResult",
     # Manifest models
     "ManifestDocument",
     "ManifestResult",
