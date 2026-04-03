@@ -48,6 +48,10 @@ REQUIRED_ENDPOINTS = {
     "CreateLambdaEndpoint":          "lambda",
     "CreateEventsEndpoint":          "events",
     "CreateAthenaEndpoint":          "athena",
+    # OCR pattern: ocr/service.py calls Textract API
+    "CreateTextractEndpoint":        "textract",
+    # BDA pattern: bda/bda_service.py and bda/blueprint_optimizer.py call STS AssumeRole
+    "CreateStsEndpoint":             "sts",
 }
 
 

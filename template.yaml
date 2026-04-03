@@ -347,7 +347,12 @@ Parameters:
     Type: String
     Default: ""
     Description: >-
-      (Required when WebUIHosting=ALB) VPC ID for the ALB and S3 VPC endpoint.
+      (Required when WebUIHosting=ALB or AppSyncVisibility=PRIVATE) VPC ID.
+      When using ALB hosting, this is the VPC for the ALB and S3 VPC endpoint.
+      When using private AppSync (AppSyncVisibility=PRIVATE), this VPC ID is
+      also used for the Lambda security group — private AppSync requires all
+      Lambda functions to be in the same VPC as the AppSync VPC endpoint, so
+      ALB hosting and private AppSync always use the same VPC.
 
   ALBSubnetIds:
     Type: CommaDelimitedList
@@ -446,10 +451,11 @@ Parameters:
     Type: String
     Default: ""
     Description: >-
-      (Optional) ARN of a KMS CMK used to encrypt the artifacts S3 bucket (created by
-      idp-cli publish --artifacts-bucket-kms-key-arn). When provided, the CodeBuild
-      role that builds the Web UI receives kms:Decrypt permission so it can read
-      source artifacts from the encrypted bucket.
+      (Optional) ARN of a KMS CMK used to encrypt the artifacts S3 bucket.
+      When the artifacts bucket was pre-created with KMS encryption, provide
+      the key ARN here so that CodeBuild (Docker image builds) and Lambda
+      (configuration copy) can perform kms:Decrypt to read source artifacts.
+      Leave empty if the artifacts bucket uses SSE-S3 (default AES256) encryption.
     AllowedPattern: "^(|arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/.+)$"
     ConstraintDescription: Must be empty or a valid KMS key ARN
 
@@ -566,6 +572,15 @@ Metadata:
           - ALBScheme
           - ALBAllowedCIDRs
       - Label:
+          default: "Private Network (AppSync=PRIVATE requires ALB hosting)"
+        Parameters:
+          - AppSyncVisibility
+          - LambdaSubnetIds
+      - Label:
+          default: "Advanced — Artifact Bucket"
+        Parameters:
+          - ArtifactsBucketKmsKeyArn
+      - Label:
           default: "General Configuration"
         Parameters:
           - MaxConcurrentWorkflows
@@ -640,6 +655,12 @@ Metadata:
         default: "ALB - Scheme (internal/internet-facing)"
       ALBAllowedCIDRs:
         default: "ALB - Allowed CIDR Ranges"
+      AppSyncVisibility:
+        default: "AppSync API Visibility (GLOBAL or PRIVATE)"
+      LambdaSubnetIds:
+        default: "Lambda Subnet IDs (required when AppSyncVisibility=PRIVATE)"
+      ArtifactsBucketKmsKeyArn:
+        default: "Artifacts Bucket KMS Key ARN (optional, for pre-created KMS-encrypted bucket)"
 
 Resources:
   # Custom resource to enforce max length of StackName - prevent downstream failures
@@ -6018,6 +6039,9 @@ Resources:
     Condition: UsePrivateAppSync
     Properties:
       GroupDescription: !Sub "Security group for ${AWS::StackName} Lambda functions in VPC (private AppSync mode)"
+      # ALBVpcId is used here because AppSyncVisibility=PRIVATE always requires
+      # WebUIHosting=ALB — a private AppSync API is only accessible from inside
+      # the VPC, so the browser must also be inside the VPC via the internal ALB.
       VpcId: !Ref ALBVpcId
       SecurityGroupEgress:
         - IpProtocol: tcp

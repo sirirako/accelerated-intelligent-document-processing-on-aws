@@ -130,10 +130,12 @@ echo "   Subnets: $SUBNET_IDS" >&2
 
 # ──────────────────────────────────────────────────────────
 # Interface endpoint services
-#   12 required by the IDP application:
+#   14 required by the IDP application:
 #     appsync-api, appsync, sqs, states, kms, logs,
 #     bedrock-runtime, ssm (Lambda→SSM Parameter Store),
-#     secretsmanager, lambda, events, athena
+#     secretsmanager, lambda, events, athena,
+#     textract (OCR pattern — ocr/service.py calls Textract),
+#     sts (BDA pattern — bda/bda_service.py calls STS AssumeRole)
 #   2 required only for SSM Session Manager testing bastion:
 #     ssmmessages, ec2messages
 # ──────────────────────────────────────────────────────────
@@ -152,6 +154,8 @@ declare -A ENDPOINTS=(
   [CreateLambdaEndpoint]="lambda"
   [CreateEventsEndpoint]="events"
   [CreateAthenaEndpoint]="athena"
+  [CreateTextractEndpoint]="textract"
+  [CreateStsEndpoint]="sts"
 )
 
 # ──────────────────────────────────────────────────────────

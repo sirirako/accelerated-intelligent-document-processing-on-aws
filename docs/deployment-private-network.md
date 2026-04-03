@@ -104,22 +104,24 @@ The command creates an S3 bucket (`<bucket-basename>-<region>`) if needed, build
 
 ### Enterprise artifact bucket hardening (optional)
 
-For enterprise environments, harden the artifact bucket with KMS encryption and cost-allocation tags:
+For enterprise environments with compliance requirements (KMS encryption, tagging, bucket policies, access logging), **pre-create the S3 bucket** before publishing:
+
+1. Create a compliant bucket in your account (apply your CMK, tags, bucket policy, access logging, block public access — whatever your compliance requirements dictate)
+2. Run `idp-cli publish --bucket-basename <your-bucket-name>` — the CLI detects the existing bucket and uploads artifacts without modifying its configuration
+3. When deploying, pass `ArtifactsBucketKmsKeyArn=<key-arn>` so CodeBuild (`DockerBuildRole`) and the configuration copy Lambda (`ConfigurationCopyFunction`) receive `kms:Decrypt` permission to read from the encrypted bucket
 
 ```bash
-idp-cli publish \
-  --source-dir . \
-  --bucket-basename <bucket-basename> \
-  --prefix idp \
-  --region <region> \
-  --artifacts-bucket-kms-key-arn arn:aws:kms:<region>:<account-id>:key/<key-id> \
-  --artifacts-bucket-tags CostCenter=<cost-center>,Project=IDP,Environment=production
-```
+# Step 1: Pre-create your compliant bucket (example — apply your own policies)
+aws s3api create-bucket --bucket my-idp-artifacts --region us-east-1
+aws s3api put-bucket-encryption --bucket my-idp-artifacts \
+  --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"aws:kms","KMSMasterKeyID":"<key-arn>"}}]}'
 
-| Flag | Description |
-|------|-------------|
-| `--artifacts-bucket-kms-key-arn` | Enables SSE-KMS encryption on the artifact bucket using the specified CMK |
-| `--tags` | Applies cost-allocation and governance tags to the artifact bucket (`Key=Value,...`) |
+# Step 2: Publish to your pre-created bucket
+idp-cli publish --source-dir . --bucket-basename my-idp-artifacts --prefix idp --region <region>
+
+# Step 3: Deploy — pass the KMS key ARN so stack resources can decrypt
+# (See the next section for the full deploy command with ArtifactsBucketKmsKeyArn)
+```
 
 ---
 
@@ -191,7 +193,7 @@ python scripts/deploy-vpc-endpoints.py `
 
 The script:
 1. Reads `LambdaSubnetIds` and `LambdaVpcSecurityGroupId` from the IDP stack automatically
-2. Checks each of the 12 required endpoints against the VPC
+2. Checks each of the **14 required endpoints** against the VPC
 3. Deploys only the missing ones (skips any that already exist to avoid DNS conflicts)
 4. Waits for `CREATE_COMPLETE` and reports the result
 
@@ -208,7 +210,7 @@ Example output:
    ➕ com.amazonaws.us-east-1.sqs              missing — will create
    ...
 
-📊 Summary: 11 to create, 1 already exist
+📊 Summary: 13 to create, 1 already exist
 
 🚀 Deploying VPC endpoints stack: IDP-PRIVATE-VPCEndpoints
 ⏳ Waiting for stack 'IDP-PRIVATE-VPCEndpoints' to reach CREATE_COMPLETE...
@@ -375,6 +377,8 @@ When `WebUIHosting=ALB` and `AppSyncVisibility=PRIVATE`, the following are handl
 | **UI loads but shows "network error"** | AppSync API is PRIVATE. From outside the VPC you need an SSM tunnel + `/etc/hosts` entry. From inside VPN/VPC it works automatically. |
 | **CodeBuild fails: `AccessDenied: kms:Decrypt`** | The artifact bucket is KMS-encrypted but `ArtifactsBucketKmsKeyArn` was not passed to the deploy command. Redeploy with `--parameters "...ArtifactsBucketKmsKeyArn=<key-arn>"`. |
 | **`UpdateDefaultConfig` custom resource fails with `NoSuchKey`** | Same root cause as above — `ConfigurationCopyFunction` silently skipped copying config files due to missing `kms:Decrypt`. Pass `ArtifactsBucketKmsKeyArn` and redeploy. |
+| **OCR Lambda times out / Textract calls hang** | Missing `textract` VPC endpoint. Lambda can't reach `com.amazonaws.<region>.textract` — security group only allows port 443 outbound to VPC endpoints. Run `deploy-vpc-endpoints.py` to add the missing endpoint. |
+| **BDA Lambda times out / STS `AssumeRole` fails** | Missing `sts` VPC endpoint. Lambda can't reach `com.amazonaws.<region>.sts`. Run `deploy-vpc-endpoints.py` to add the missing endpoint. |
 | **403 Forbidden on ALB** | Check ALB target group health checks (expected: 200, 307, 405). Verify S3 bucket policy has the correct VPC endpoint ID. |
 | **Target Group Unhealthy** | VPC endpoint ENIs may be stale. Check the endpoint SG allows HTTPS (443) from the ALB. |
 | **App spins after login (stuck loading)** | TLS cert domain mismatch. The ALB cert must include the ELB DNS hostname as a SAN. Run `scripts/generate_self_signed_cert.sh` with `--cert-arn` and `--domain` set to the ALB DNS name to reimport the cert. See Prerequisites §3. |

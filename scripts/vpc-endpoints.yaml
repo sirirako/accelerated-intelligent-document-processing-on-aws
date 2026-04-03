@@ -44,10 +44,12 @@ Parameters:
   # ──────────────────────────────────────────────────────────
   # Per-endpoint creation flags
   #
-  # REQUIRED by the IDP application (12 endpoints):
+  # REQUIRED by the IDP application (14 endpoints):
   #   appsync-api, appsync, sqs, states, kms, logs,
   #   bedrock-runtime, ssm (Lambda→SSM Parameter Store calls),
-  #   secretsmanager, lambda, events, athena
+  #   secretsmanager, lambda, events, athena,
+  #   textract (OCR pattern — ocr/service.py calls Textract API),
+  #   sts (BDA pattern — bda/bda_service.py and bda/blueprint_optimizer.py call STS for AssumeRole)
   #
   # REQUIRED only for SSM Session Manager testing bastion (2 endpoints):
   #   ssmmessages  — SSM Session Manager port-forwarding channel
@@ -143,6 +145,23 @@ Parameters:
     AllowedValues: ["true", "false"]
     Description: Create the athena Interface endpoint. Set to "false" if already exists.
 
+  CreateTextractEndpoint:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Create the textract Interface endpoint. Required for OCR pattern Lambda functions
+      that call the Textract API (ocr/service.py). Set to "false" if already exists.
+
+  CreateStsEndpoint:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Create the sts Interface endpoint. Required for BDA pattern Lambda functions
+      that call STS AssumeRole (bda/bda_service.py, bda/blueprint_optimizer.py).
+      Set to "false" if already exists.
+
 Conditions:
   CreateGatewayEndpoints: !Not
     - !Equals [ !Join [ "", !Ref RouteTableIds ], "" ]
@@ -160,6 +179,8 @@ Conditions:
   ShouldCreateLambdaEndpoint: !Equals [ !Ref CreateLambdaEndpoint, "true" ]
   ShouldCreateEventsEndpoint: !Equals [ !Ref CreateEventsEndpoint, "true" ]
   ShouldCreateAthenaEndpoint: !Equals [ !Ref CreateAthenaEndpoint, "true" ]
+  ShouldCreateTextractEndpoint: !Equals [ !Ref CreateTextractEndpoint, "true" ]
+  ShouldCreateStsEndpoint: !Equals [ !Ref CreateStsEndpoint, "true" ]
 
 Resources:
 
@@ -458,6 +479,44 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "${IDPStackName}-athena"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  TextractVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: ShouldCreateTextractEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.textract"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-textract"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  StsVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: ShouldCreateStsEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sts"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-sts"
         - Key: IDPStack
           Value: !Ref IDPStackName
         - Key: Environment
