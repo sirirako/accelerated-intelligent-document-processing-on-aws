@@ -377,6 +377,44 @@ Resources:
                   type: string
                   description: "Optional regex pattern to match against page content text. When matched during multi-modal page-level classification, the page will be classified as this class type without LLM processing."
                   order: 2.6
+                extraction_model:
+                  type: string
+                  description: "Optional per-class extraction model override. When set, this model is used for extraction instead of the global extraction.model. Useful for classes that benefit from a different model."
+                  order: 2.7
+                  enum:
+                    - ""
+                    - "us.amazon.nova-lite-v1:0"
+                    - "us.amazon.nova-pro-v1:0"
+                    - "us.amazon.nova-premier-v1:0"
+                    - "us.amazon.nova-2-lite-v1:0"
+                    - "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+                    - "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                    - "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
+                    - "us.anthropic.claude-sonnet-4-6"
+                    - "us.anthropic.claude-sonnet-4-6:1m"
+                    - "us.anthropic.claude-opus-4-5-20251101-v1:0"
+                    - "us.anthropic.claude-opus-4-6-v1"
+                    - "us.anthropic.claude-opus-4-6-v1:1m"
+                    - "eu.amazon.nova-lite-v1:0"
+                    - "eu.amazon.nova-pro-v1:0"
+                    - "eu.amazon.nova-2-lite-v1:0"
+                    - "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+                    - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                    - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
+                    - "eu.anthropic.claude-sonnet-4-6"
+                    - "eu.anthropic.claude-sonnet-4-6:1m"
+                    - "eu.anthropic.claude-opus-4-5-20251101-v1:0"
+                    - "eu.anthropic.claude-opus-4-6-v1"
+                    - "eu.anthropic.claude-opus-4-6-v1:1m"
+                    - "global.amazon.nova-2-lite-v1:0"
+                    - "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+                    - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                    - "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
+                    - "global.anthropic.claude-sonnet-4-6"
+                    - "global.anthropic.claude-sonnet-4-6:1m"
+                    - "global.anthropic.claude-opus-4-5-20251101-v1:0"
+                    - "global.anthropic.claude-opus-4-6-v1"
+                    - "global.anthropic.claude-opus-4-6-v1:1m"
                 examples:
                   type: array
                   description: Class few-shot examples
