@@ -4864,16 +4864,6 @@ def _write_discover_output(output, all_schemas, console, is_batch=True):
     default=True,
     help="Enable/disable ruff linting and cfn-lint (default: enabled)",
 )
-@click.option(
-    "--artifacts-bucket-kms-key-arn",
-    default=None,
-    help="KMS CMK ARN for SSE-KMS encryption on the artifact bucket (enterprise hardening)",
-)
-@click.option(
-    "--artifacts-bucket-tags",
-    default=None,
-    help="Tags for the artifact bucket as Key1=Value1,Key2=Value2,... (enterprise hardening)",
-)
 def publish(
     source_dir: str,
     bucket_basename: Optional[str],
@@ -4886,8 +4876,6 @@ def publish(
     no_validate: bool,
     verbose: bool,
     lint: bool,
-    artifacts_bucket_kms_key_arn: Optional[str],
-    artifacts_bucket_tags: Optional[str],
 ):
     """
     Build, package, and publish IDP CloudFormation artifacts to S3
@@ -4915,12 +4903,6 @@ def publish(
 
       # Skip validation
       idp-cli publish --source-dir . --region us-east-1 --no-validate
-
-      # Enterprise: KMS encryption + cost-allocation tags on artifact bucket
-      idp-cli publish --source-dir . --region us-east-1 \\
-          --bucket-basename my-bucket \\
-          --artifacts-bucket-kms-key-arn arn:aws:kms:us-east-1:123456789012:key/key-id \\
-          --artifacts-bucket-tags CostCenter=123,Project=IDP,Environment=production
     """
     try:
         client = IDPClient(region=region)
@@ -4936,8 +4918,6 @@ def publish(
             no_validate=no_validate,
             verbose=verbose,
             lint=lint,
-            artifacts_bucket_kms_key_arn=artifacts_bucket_kms_key_arn,
-            artifacts_bucket_tags=artifacts_bucket_tags,
         )
 
         if not result.success:
