@@ -38,6 +38,8 @@ SPDX-License-Identifier: MIT-0
 
 ### Fixed
 
+- **Headless deployment fails with `ConfigurationPreset` AllowedValues error and `GraphQLApi.Arn` reference error** — Added `lending-package-sample-govcloud` to the base template AllowedValues and ConfigurationMap, and auto-detect GovCloud region (`us-gov-*`) for headless template transform instead of missing or hardcoded flag. Also added Discovery resources (BlueprintOptimization, MultiDocDiscovery, DiscoveryProcessor, etc.) to headless removal list to fix `GraphQLApi.Arn` unresolved reference error.
+
 - **`delete-documents` fails with DynamoDB errors** — Fixed two bugs in `get_documents_by_batch()`: (1) passing empty `ExpressionAttributeNames={}` when no status filter caused `ValidationException`, and (2) using low-level DynamoDB client type descriptors (`{"S": "..."}`) with the high-level Table resource caused `begins_with` operand type mismatch. Rewrote to use the high-level `Table.scan()` API with `boto3.dynamodb.conditions.Attr`.
 
 ## [0.5.4]

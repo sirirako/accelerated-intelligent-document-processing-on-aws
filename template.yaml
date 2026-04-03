@@ -47,6 +47,8 @@ Mappings:
       ConfigPath: "rule-validation"
     rule-extraction:
       ConfigPath: "rule-extraction"
+    lending-package-sample-govcloud:
+      ConfigPath: "lending-package-sample-govcloud"
 
 Parameters:
   # Authorization params
@@ -85,6 +87,7 @@ Parameters:
     Default: "lending-package-sample"
     AllowedValues:
       - "lending-package-sample"
+      - "lending-package-sample-govcloud"
       - "rvl-cdip"
       - "rvl-cdip-with-few-shot-examples"
       - "bank-statement-sample"

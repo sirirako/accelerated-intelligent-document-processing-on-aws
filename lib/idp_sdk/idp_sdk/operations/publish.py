@@ -149,11 +149,13 @@ class PublishOperation:
 
             # Generate headless template if requested
             if headless:
+                is_govcloud = region and region.startswith("us-gov-")
                 headless_result = self.transform_template_headless(
                     source_template=template_path,
                     output_path=os.path.join(
                         source_dir, ".aws-sam", "idp-headless.yaml"
                     ),
+                    update_govcloud_config=is_govcloud,
                 )
                 if headless_result.success and headless_result.output_path:
                     headless_template_path = headless_result.output_path
