@@ -5,6 +5,8 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.5.5]
+
 ### Added
 
 - **Multi-Document Discovery** — New capability to automatically discover document classes from a collection of documents. Instead of manually defining document schemas one at a time, users point to a folder of mixed documents and the system automatically identifies document types, clusters similar documents, generates JSON Schemas with field definitions for each type, and saves them to a configuration version — ready for immediate use in the processing pipeline. Available from the Web UI, CLI (`idp-cli discover-multidoc`), and SDK (`client.discovery.run_multi_doc()`).
@@ -39,6 +41,11 @@ SPDX-License-Identifier: MIT-0
 - **Headless deployment fails with `ConfigurationPreset` AllowedValues error and `GraphQLApi.Arn` reference error** — Added `lending-package-sample-govcloud` to the base template AllowedValues and ConfigurationMap, and auto-detect GovCloud region (`us-gov-*`) for headless template transform instead of missing or hardcoded flag. Also added Discovery resources (BlueprintOptimization, MultiDocDiscovery, DiscoveryProcessor, etc.) to headless removal list to fix `GraphQLApi.Arn` unresolved reference error.
 
 - **`delete-documents` fails with DynamoDB errors** — Fixed two bugs in `get_documents_by_batch()`: (1) passing empty `ExpressionAttributeNames={}` when no status filter caused `ValidationException`, and (2) using low-level DynamoDB client type descriptors (`{"S": "..."}`) with the high-level Table resource caused `begins_with` operand type mismatch. Rewrote to use the high-level `Table.scan()` API with `boto3.dynamodb.conditions.Attr`.
+
+## Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.5.5.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.5.5.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.5.5.yaml`
 
 ## [0.5.4]
 
