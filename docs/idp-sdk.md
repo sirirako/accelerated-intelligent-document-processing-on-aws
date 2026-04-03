@@ -101,6 +101,7 @@ client.document.delete(...)
 # Discovery operations (schema generation)
 client.discovery.run(...)
 client.discovery.run_batch(...)
+client.discovery.run_multi_doc(...)
 client.discovery.run_multi_section(...)
 client.discovery.auto_detect_sections(...)
 
@@ -547,14 +548,17 @@ print(f"Downloaded {result.files_downloaded} source files")
 
 ### batch.delete_documents()
 
-Permanently delete all documents in a batch and their associated data from InputBucket, OutputBucket, and DynamoDB.
+Permanently delete documents and their associated data from InputBucket, OutputBucket, and DynamoDB. Select documents by batch ID or wildcard pattern.
 
 **Parameters:**
-- `batch_id` (str, required): Batch identifier
+- `batch_id` (str, optional): Batch identifier (selects all docs containing this string)
+- `pattern` (str, optional): Wildcard pattern to match document keys (e.g., `"batch-123/*.pdf"`, `"*invoice*"`)
 - `status_filter` (str, optional): Filter by document status (e.g., "FAILED", "COMPLETED")
 - `stack_name` (str, optional): Stack name override
 - `dry_run` (bool, optional): If True, simulate deletion without actually deleting (default: False)
 - `continue_on_error` (bool, optional): Continue deleting if one document fails (default: True)
+
+**Note:** Must specify either `batch_id` or `pattern` (not both).
 
 **Returns:** `BatchDeletionResult` with `success`, `deleted_count`, `failed_count`, `total_count`, `dry_run`, and `results` (list of DocumentDeletionResult)
 
@@ -565,6 +569,17 @@ result = client.batch.delete_documents(batch_id="batch-123")
 # Delete with status filter
 result = client.batch.delete_documents(
     batch_id="batch-123",
+    status_filter="FAILED"
+)
+
+# Delete by wildcard pattern
+result = client.batch.delete_documents(
+    pattern="batch-123/*.pdf"
+)
+
+# Delete all failed invoices across batches
+result = client.batch.delete_documents(
+    pattern="*invoice*",
     status_filter="FAILED"
 )
 
@@ -1457,6 +1472,76 @@ print(f"Discovered {result.succeeded}/{result.total} sections")
 for r in result.results:
     print(f"  Pages {r.page_range}: {r.document_class} ({r.status})")
 ```
+
+### discovery.run_multi_doc()
+
+Discover document classes from a collection of documents using embedding-based clustering and agentic analysis. Unlike `run()` (which analyzes one document at a time), this method analyzes a directory of mixed documents to automatically identify document types, cluster similar documents, and generate JSON Schemas for each discovered class.
+
+**Requires:** `pip install idp-common[multi_document_discovery]`
+
+**Note:** Requires at least **2 documents per expected class**. Clusters with fewer than 2 documents are filtered as noise. For discovering schemas from individual documents, use `discovery.run()` instead.
+
+**Parameters:**
+- `document_dir` (str, optional): Directory path containing documents to analyze (recursive scan)
+- `document_paths` (list[str], optional): List of individual document file paths
+- `embedding_model_id` (str, optional): Bedrock embedding model ID (default: `us.cohere.embed-v4:0`)
+- `analysis_model_id` (str, optional): Bedrock LLM for cluster analysis (default: `us.anthropic.claude-sonnet-4-6`)
+- `output_dir` (str, optional): Directory to write individual JSON schema files per discovered class
+- `save_to_config` (bool, optional): Save discovered schemas to the stack's configuration (default: False)
+- `config_version` (str, optional): Configuration version to save schemas to (required with `save_to_config`)
+- `progress_callback` (callable, optional): Callback function for pipeline progress updates
+- `region` (str, optional): AWS region
+
+**Returns:** `MultiDocDiscoveryResult` with `status` (SUCCESS/PARTIAL/FAILED), `discovered_classes` (list of `DiscoveredClassResult`), `reflection_report`, `total_documents`, `total_clusters`, `noise_documents`, `config_version`, and `error`
+
+**DiscoveredClassResult fields:** `cluster_id`, `classification`, `json_schema`, `document_count`, `sample_doc_ids`, `error`
+
+```python
+# Basic usage — discover from a directory
+client = IDPClient()
+result = client.discovery.run_multi_doc(document_dir="./samples/")
+
+print(f"Status: {result.status}")
+print(f"Documents: {result.total_documents} → Clusters: {result.total_clusters}")
+
+for dc in result.discovered_classes:
+    if not dc.error:
+        print(f"  Cluster {dc.cluster_id}: {dc.classification} ({dc.document_count} docs)")
+
+# Save schemas to output directory
+result = client.discovery.run_multi_doc(
+    document_dir="./samples/",
+    output_dir="./schemas/"
+)
+
+# Save to stack configuration
+client = IDPClient(stack_name="my-stack")
+result = client.discovery.run_multi_doc(
+    document_dir="./samples/",
+    save_to_config=True,
+    config_version="v2"
+)
+
+# With explicit document paths
+result = client.discovery.run_multi_doc(
+    document_paths=["./doc1.pdf", "./doc2.png", "./doc3.jpg"]
+)
+
+# With progress callback
+def on_progress(step, data=None):
+    print(f"  [{step}] {data}")
+
+result = client.discovery.run_multi_doc(
+    document_dir="./samples/",
+    progress_callback=on_progress
+)
+
+# Print reflection report
+if result.reflection_report:
+    print(result.reflection_report)
+```
+
+**Note:** If the required dependencies are not installed, this method returns a `MultiDocDiscoveryResult` with `status="FAILED"` and an error message instructing the user to install `idp-common[multi_document_discovery]`, rather than raising an exception.
 
 ### discovery.run_batch()
 
