@@ -20,8 +20,20 @@ SPDX-License-Identifier: MIT-0
   - **Two Input Modes**: S3 path (select bucket + prefix), zip upload (presigned URL), or local directory (CLI/SDK)
   - **Configuration Integration**: Discovered classes are saved directly to the selected config version's `classes` array in DynamoDB, immediately available for document processing without manual schema creation
 
+- **Agentic Extraction Hardening** — Improved robustness, observability, and table parsing for agentic extraction:
+  - Pre-flight OCR & schema analysis with adaptive guidance strength (RECOMMENDED → STRONGLY_RECOMMENDED → MANDATORY) ensures table parsing tool is used for large tables
+  - Deterministic Markdown table parser with lookahead recovery, auto-merge of split tables, and configurable `max_empty_line_gap`
+  - Post-extraction completeness validation against schema constraints with detailed shortfall reporting
+  - Processing report with tool usage decisions, completeness checks, and root cause diagnostics (new UI tab + CloudWatch logs)
+  - Thread-safe state management via `contextvars.ContextVar`; deprecated review agent (config fields preserved as no-ops)
+  - Bug fixes: `patch_buffer_data` slice correction, confidence assessment loop fix, row-based parse success metric, NoneType guard in completeness check
+
 - **Chandra OCR Lambda Hook Sample** — New `GENAIIDP-chandra-ocr-hook` sample in `samples/lambda-hook-inference/` that integrates [Datalab Chandra OCR 2](https://github.com/datalab-to/chandra) with the LambdaHook feature for high-quality OCR. Supports 90+ languages, math, tables, forms, and handwriting. Uses the Datalab hosted async API (`/api/v1/convert`) with configurable output format (markdown/json/html) and conversion mode (fast/balanced/accurate). Includes standalone SAM template, local test script, and deployment instructions. See `docs/lambda-hook-inference.md` — Chandra OCR Integration section.
 
+- **Wildcard pattern support for delete-documents** — `idp-cli delete-documents` and `client.batch.delete_documents()` now accept a `--pattern` / `pattern` parameter for fnmatch-style wildcard matching (e.g. `"batch-123/*.pdf"`, `"*invoice*"`). Combines with `--status-filter` to delete e.g. all failed invoices across batches.
+- **Prompt Preview** — New "Prompt Preview" tab in the Configuration page lets you preview the actual prompts sent to the LLM for each processing step (Classification, Extraction, Assessment, Summarization). Config-derived placeholders are filled in with real values (class names, cleaned JSON Schema), while document-specific placeholders are shown as highlighted markers. Includes token estimates, copy-to-clipboard, and a substitution details panel showing the exact schema sent to the LLM. Helps optimize document class schemas and prompt templates.
+
+- **IDP CLI `chat` Command & SDK `ChatOperation`** — Interactive Agent Companion Chat from the terminal and programmatic SDK access. Runs the same multi-agent orchestrator as the Web UI locally, with real-time streaming and multi-turn conversation support. Includes Analytics Agent, Error Analyzer Agent, and optionally Code Intelligence Agent (`--enable-code-intelligence`). Available as `idp-cli chat --stack-name <stack>` for interactive use, `--prompt` flag for single-shot scripting, and `client.chat.send_message()` in the Python SDK. See `docs/idp-cli.md#chat`.
 
 ### Fixed
 
