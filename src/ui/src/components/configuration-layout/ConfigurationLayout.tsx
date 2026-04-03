@@ -2248,8 +2248,8 @@ const ConfigurationLayout = (): React.JSX.Element => {
                   <Button
                     variant="normal"
                     onClick={() => {
-                      setSaveAsVersionName(`copy-of-${currentVersionName}`);
-                      setSaveAsVersionDescription(currentVersion?.description ? `Copy of ${currentVersion.description}` : '');
+                      setSaveAsVersionName(`${currentVersionName}-copy`);
+                      setSaveAsVersionDescription(currentVersion?.description ? `${currentVersion.description} - copy` : '');
                       setShowSaveAsVersionModal(true);
                     }}
                     disabled={validationErrors.length > 0}
@@ -2310,8 +2310,8 @@ const ConfigurationLayout = (): React.JSX.Element => {
                   <Button
                     variant="normal"
                     onClick={() => {
-                      setSaveAsVersionName(`copy-of-${currentVersionName}`);
-                      setSaveAsVersionDescription(currentVersion?.description ? `Copy of ${currentVersion.description}` : '');
+                      setSaveAsVersionName(`${currentVersionName}-copy`);
+                      setSaveAsVersionDescription(currentVersion?.description ? `${currentVersion.description} - copy` : '');
                       setShowSaveAsVersionModal(true);
                     }}
                   >
