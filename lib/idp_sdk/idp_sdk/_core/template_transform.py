@@ -162,6 +162,23 @@ class HeadlessTemplateTransformer:
             "DOCUMENTKB",
         }
 
+        self.discovery_resources: Set[str] = {
+            "DiscoveryBucket",
+            "DiscoveryBucketPolicy",
+            "DiscoveryDLQ",
+            "DiscoveryQueue",
+            "DiscoveryTrackingTable",
+            "DiscoveryProcessorFunction",
+            "DiscoveryProcessorFunctionLogGroup",
+            "BlueprintOptimizationFunction",
+            "BlueprintOptimizationFunctionLogGroup",
+            "MultiDocDiscoveryPrepareFunction",
+            "MultiDocDiscoveryPrepareFunctionLogGroup",
+            "MultiDocDiscoveryStateMachine",
+            "MultiDocDiscoveryStateMachineRole",
+            "MULTIDOCDISCOVERYSTACK",
+        }
+
         self.appsync_dependent_resources: Set[str] = {
             "StepFunctionSubscriptionPublisher",
             "StepFunctionSubscriptionPublisherLogGroup",
@@ -206,6 +223,8 @@ class HeadlessTemplateTransformer:
             "ExternalMCPAgentsSecretConsoleURL",
             "MCPConnectorClientId",
             "MCPConnectorClientSecret",
+            "S3DiscoveryBucketName",
+            "S3DiscoveryBucketConsoleURL",
         }
 
         # ---- Conditions to remove ----
@@ -249,6 +268,7 @@ class HeadlessTemplateTransformer:
             | self.agent_resources
             | self.hitl_resources
             | self.kb_resources
+            | self.discovery_resources
         )
 
     # ---- Public API ----
@@ -729,6 +749,18 @@ class HeadlessTemplateTransformer:
             del stack_params["AppSyncApiArn"]
             logger.debug(f"Removed AppSyncApiArn parameter from {stack_name}")
 
+        # Remove Discovery-related parameters (resources removed in headless)
+        for param in [
+            "DiscoveryBucket",
+            "DiscoveryTrackingTable",
+            "DiscoveryBucketName",
+            "DiscoveryTrackingTableName",
+            "MultiDocDiscoveryStateMachineArn",
+        ]:
+            if param in stack_params:
+                del stack_params[param]
+                logger.debug(f"Removed {param} parameter from {stack_name}")
+
         # Remove dependencies on GraphQLApi
         stack_deps = resources[stack_name].get("DependsOn", [])
         if isinstance(stack_deps, list) and "GraphQLApi" in stack_deps:
@@ -802,6 +834,12 @@ class HeadlessTemplateTransformer:
         if "AllowedSignUpEmailDomains" in settings_kvp:
             del settings_kvp["AllowedSignUpEmailDomains"]
             logger.debug("Removed AllowedSignUpEmailDomains from UpdateSettingsValues")
+
+        # Remove Discovery-related settings (resources removed in headless)
+        for key in ["DiscoveryBucket"]:
+            if key in settings_kvp:
+                del settings_kvp[key]
+                logger.debug(f"Removed {key} from UpdateSettingsValues")
 
     def _clean_cloudfront_policy_statements(
         self, template: Dict[str, Any]

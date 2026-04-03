@@ -459,10 +459,11 @@ def deploy(
                 # Transform
                 headless_template = os.path.join(tmpdir, "idp-headless.yaml")
                 client_tmp = IDPClient(region=region)
+                is_govcloud = region and region.startswith("us-gov-")
                 transform_result = client_tmp.publish.transform_template_headless(
                     source_template=local_template,
                     output_path=headless_template,
-                    update_govcloud_config=True,
+                    update_govcloud_config=is_govcloud,
                 )
                 if not transform_result.success:
                     console.print(
