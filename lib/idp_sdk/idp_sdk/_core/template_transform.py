@@ -749,10 +749,16 @@ class HeadlessTemplateTransformer:
             del stack_params["AppSyncApiArn"]
             logger.debug(f"Removed AppSyncApiArn parameter from {stack_name}")
 
-        # Remove Discovery-related parameters (resources removed in headless)
+        # Discovery-related parameters (resources removed in headless)
+        # DiscoveryBucket and DiscoveryTrackingTable are required by the nested
+        # stack (Type: String, no Default), so we must pass empty strings rather
+        # than deleting them.
+        for param in ["DiscoveryBucket", "DiscoveryTrackingTable"]:
+            if param in stack_params:
+                stack_params[param] = ""
+                logger.debug(f"Set {param} to empty string in {stack_name}")
+
         for param in [
-            "DiscoveryBucket",
-            "DiscoveryTrackingTable",
             "DiscoveryBucketName",
             "DiscoveryTrackingTableName",
             "MultiDocDiscoveryStateMachineArn",
