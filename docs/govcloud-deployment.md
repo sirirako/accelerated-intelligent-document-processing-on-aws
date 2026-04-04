@@ -52,35 +52,22 @@ You need to have the following packages installed on your computer:
 7. A local Docker daemon
 8. Python packages for the IDP CLI and SDK. Run `make setup-venv` from the project root to create a `.venv` and install all required packages (idp-cli, idp-sdk, idp_common). Activate with `source .venv/bin/activate`.
 
-### Step 1: Build and Generate Headless Template
+### Deploy to GovCloud
 
-First, build and generate the GovCloud-compatible headless template using `idp-cli publish --headless`. This runs the standard build process to create all Lambda functions and artifacts, and then creates a stripped-down version for GovCloud:
-
-```bash
-# Build for GovCloud region with headless template
-idp-cli publish --source-dir . --region us-gov-west-1 --headless
-
-# Or build for commercial region first (for testing)
-idp-cli publish --source-dir . --region us-east-1 --headless
-```
-
-> **Note**: The CLI will create an S3 bucket automatically. You can customize the bucket name with `--bucket-basename` and the prefix with `--prefix`. The `--headless` flag generates a template with UI, AppSync, Cognito, and WAF resources removed.
-
-> **Legacy**: The `scripts/generate_govcloud_template.py` script is deprecated. Use `idp-cli publish --headless` instead.
-
-### Step 2: Deploy to GovCloud
-
-Deploy the generated template to GovCloud using `idp-cli deploy` with the `--template-file` flag:
+Build and deploy to GovCloud with a single command. The `--from-code .` flag builds from your local source code (required for GovCloud since public templates are not published for GovCloud regions), and `--headless` strips UI, AppSync, Cognito, and WAF resources:
 
 ```bash
 idp-cli deploy \
   --stack-name my-idp-headless-stack \
-  --template-file .aws-sam/idp-govcloud.yaml \
   --region us-gov-west-1 \
+  --from-code . \
+  --headless \
   --wait
 ```
 
-Alternatively, deploy using the AWS CloudFormation console by uploading the generated template file.
+> **Note**: The CLI creates an S3 bucket automatically. Customize with `--bucket-basename` and `--prefix`.
+
+> **Legacy**: The `scripts/generate_govcloud_template.py` script is deprecated. Use `idp-cli deploy --headless --from-code .` instead.
 
 ## Services Removed in GovCloud
 
