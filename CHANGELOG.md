@@ -11,6 +11,10 @@ SPDX-License-Identifier: MIT-0
 
 - **Fixed** agentic extraction `map_table_to_schema` producing phantom empty rows from non-matching tables (e.g. account_summary rows prepended to transaction_details), causing list item ordering to be shifted by several positions.
 
+### Changed
+
+- **Default extraction model updated** to `us.anthropic.claude-sonnet-4-6` (was `us.anthropic.claude-sonnet-4-20250514-v1:0`) in system defaults.
+
 ## [0.5.5]
 
 ### Added
