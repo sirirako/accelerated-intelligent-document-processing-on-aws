@@ -564,6 +564,10 @@ classification:
 - Cost reduction for documents with consistent patterns
 - Simplified processing for homogeneous document types
 
+## Prompt Preview
+
+The Configuration page includes a **Prompt Preview** tab that lets you see the actual prompts sent to the LLM for each processing step (Classification, Extraction, Assessment, Summarization) with your configuration values filled in. This is useful for optimizing document class schemas and prompt templates — you can see exactly how your class names, descriptions, and JSON Schema attributes appear in the prompt that the LLM receives. See [web-ui.md](web-ui.md#prompt-preview) for details.
+
 ## Prompt Optimization
 
 ### Bedrock Prompt Caching
