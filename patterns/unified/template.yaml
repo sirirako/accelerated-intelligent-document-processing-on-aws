@@ -117,6 +117,14 @@ Parameters:
     Type: String
     Description: "S3 bucket containing deployment artifacts"
 
+  ArtifactsBucketKmsKeyArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) KMS CMK ARN used to encrypt the artifacts bucket. When provided,
+      the DockerBuildRole and other CodeBuild roles receive kms:Decrypt permission.
+    AllowedPattern: "^(|arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/.+)$"
+
   ArtifactPrefix:
     Type: String
     Description: "S3 prefix for deployment artifacts"
@@ -158,6 +166,23 @@ Parameters:
     Type: String
     Default: ""
 
+  # Private AppSync VPC config (req #2)
+  UsePrivateAppSync:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Set to "true" when AppSyncVisibility=PRIVATE — puts processing Lambdas in VPC
+
+  LambdaSubnetIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: Subnet IDs for Lambda VpcConfig (required when UsePrivateAppSync=true)
+
+  LambdaSecurityGroupId:
+    Type: String
+    Default: ""
+    Description: Security group ID for Lambda VpcConfig (required when UsePrivateAppSync=true)
+
   EnableMLflow:
     Type: String
     Default: 'false'
@@ -182,7 +207,9 @@ Conditions:
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
   HasAppSyncApi: !Not [!Equals [!Ref AppSyncApiArn, ""]]
   IsECRImageScanningEnabled: !Equals [!Ref EnableECRImageScanning, "true"]
+  IsPrivateAppSync: !Equals [!Ref UsePrivateAppSync, "true"]
   IsMLflowEnabled: !Equals [!Ref EnableMLflow, "true"]
+  HasArtifactsBucketKmsKey: !Not [!Equals [!Ref ArtifactsBucketKmsKeyArn, ""]]
 
 Resources:
 
@@ -2053,6 +2080,17 @@ Resources:
                 Action:
                   - kms:Decrypt
                   - kms:CreateGrant
+              # Grant kms:Decrypt on the artifacts bucket KMS key when provided
+              # This allows DockerBuildRole to download source code from a KMS-encrypted artifact bucket
+              - !If
+                - HasArtifactsBucketKmsKey
+                - Effect: Allow
+                  Action:
+                    - kms:Decrypt
+                    - kms:GenerateDataKey*
+                    - kms:DescribeKey
+                  Resource: !Ref ArtifactsBucketKmsKeyArn
+                - !Ref AWS::NoValue
 
   DockerBuildProject:
     Type: AWS::CodeBuild::Project
@@ -2310,8 +2348,8 @@ Resources:
       RetentionInDays: !Ref LogRetentionDays
   
   BDAProcessResultsFunction:
-    DependsOn: DockerBuildRun
     Type: AWS::Serverless::Function
+    DependsOn: DockerBuildRun
     Metadata:
       SkipBuild: True
       cfn_nag:
@@ -2319,7 +2357,7 @@ Resources:
           - id: W11
             reason: "Cloudwatch does not support resource-level permissions"
           - id: W89
-            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs"
+            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs — placed in VPC when AppSyncVisibility=PRIVATE"
           - id: W92
             reason: "Function does not require concurrent execution limits as it is designed to scale based on demand"
     # checkov:skip=CKV_AWS_116: "DLQ not required for this function as StepFunctions will handle retries"
@@ -2335,6 +2373,12 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -2587,6 +2631,12 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -2704,6 +2754,12 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -2833,6 +2889,12 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -2960,6 +3022,12 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -3077,6 +3145,12 @@ Resources:
           - "index.handler"
       Timeout: 900
       MemorySize: 4096
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -3165,6 +3239,12 @@ Resources:
           - "index.handler"
       Timeout: 900
       MemorySize: 4096
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -3286,6 +3366,12 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
@@ -3455,6 +3541,12 @@ Resources:
       # Runtime: python3.12
       Timeout: 900
       MemorySize: 4096
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -3566,6 +3658,12 @@ Resources:
       # Runtime: python3.12
       Timeout: 900
       MemorySize: 4096
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
