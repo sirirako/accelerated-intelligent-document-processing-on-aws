@@ -4102,6 +4102,13 @@ Resources:
           #set($updateExpression = "${updateExpression}, #result = :result")
         #end
 
+        ## Set error (optional)
+        #if($ctx.args.error)
+          $util.qr($expNames.put("#error", "error"))
+          $util.qr($expValues.put(":error", $util.dynamodb.toDynamoDB($ctx.args.error)))
+          #set($updateExpression = "${updateExpression}, #error = :error")
+        #end
+
         ## Set completedAt to current timestamp when status is COMPLETED or FAILED
         #if($ctx.args.status == "COMPLETED" || $ctx.args.status == "FAILED")
           $util.qr($expNames.put("#completedAt", "completedAt"))

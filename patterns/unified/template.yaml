@@ -1725,26 +1725,47 @@ Resources:
                 sectionLabel: Error Analysis Agent
                 description: Configuration for the error analysis agent
                 properties:
+                  model_id:
+                    type: string
+                    description: Bedrock model ID for the error analysis agent (requires tool use support)
+                    enum:
+                      - "us.amazon.nova-pro-v1:0"
+                      - "us.amazon.nova-premier-v1:0"
+                      - "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                      - "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
+                      - "us.anthropic.claude-sonnet-4-6"
+                      - "us.anthropic.claude-sonnet-4-6:1m"
+                      - "us.anthropic.claude-opus-4-5-20251101-v1:0"
+                      - "us.anthropic.claude-opus-4-6-v1"
+                      - "us.anthropic.claude-opus-4-6-v1:1m"
+                      - "global.amazon.nova-pro-v1:0"
+                      - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                      - "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
+                      - "global.anthropic.claude-sonnet-4-6"
+                      - "global.anthropic.claude-sonnet-4-6:1m"
+                      - "global.anthropic.claude-opus-4-5-20251101-v1:0"
+                      - "global.anthropic.claude-opus-4-6-v1"
+                      - "global.anthropic.claude-opus-4-6-v1:1m"
+                      - "eu.amazon.nova-pro-v1:0"
+                      - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                      - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
+                      - "eu.anthropic.claude-sonnet-4-6"
+                      - "eu.anthropic.claude-sonnet-4-6:1m"
+                      - "eu.anthropic.claude-opus-4-5-20251101-v1:0"
+                      - "eu.anthropic.claude-opus-4-6-v1"
+                      - "eu.anthropic.claude-opus-4-6-v1:1m"
+                    default: "us.anthropic.claude-sonnet-4-6"
+                    order: 0
+                  lookback_hours:
+                    type: integer
+                    description: How far back the error analyzer searches logs, traces, and execution history (in hours)
+                    default: 24
+                    order: 1
                   system_prompt:
                     type: string
                     format: textarea
                     description: System prompt for the error analysis agent
-                    order: 1
-                  parameters:
-                    type: object
-                    sectionLabel: Agent Parameters
-                    description: Configuration parameters for the agent
-                    properties:
-                      max_log_events:
-                        type: integer
-                        description: Maximum number of log events to analyze
-                        default: 100
-                        order: 0
-                      time_range_hours_default:
-                        type: integer
-                        description: Default time range in hours for analysis
-                        default: 24
-                        order: 2
+                    order: 2
           rule_validation:
             order: 8
             type: object
