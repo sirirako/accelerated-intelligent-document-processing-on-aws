@@ -76,7 +76,7 @@
 
 ## 1. Executive Summary
 
-Between v0.3.15 and v0.5.5, the GenAI IDP Accelerator underwent **20 releases** introducing significant new capabilities that substantially change the security footprint:
+Between v0.3.15 and v0.5.5, the GenAI IDP Accelerator underwent **20 releases** introducing new capabilities that change the security footprint:
 
 **Major security-relevant additions:**
 - **Role-Based Access Control (RBAC)** with 4-role model (Admin, Author, Reviewer, Viewer) and server-side AppSync auth directives
@@ -99,7 +99,7 @@ Between v0.3.15 and v0.5.5, the GenAI IDP Accelerator underwent **20 releases** 
 
 | Icon | Level | Meaning |
 |------|-------|---------|
-| 🔴 | **New Attack Surface** | Introduces entirely new external-facing interfaces, authentication flows, or third-party integrations |
+| 🔴 | **New Attack Surface** | Introduces new external-facing interfaces, authentication flows, or third-party integrations |
 | ⚠️ | **Changed Footprint** | Modifies existing security boundaries, adds new API endpoints, or changes authorization model |
 | ✅ | **Minimal Impact** | Internal improvements, bug fixes, or cosmetic changes with no meaningful security footprint change |
 
