@@ -36,7 +36,29 @@ xray_service
     X-Ray base trace service:
     :func:`get_trace_for_document`, :func:`analyze_trace`,
     :func:`get_subsegment_details`, :func:`extract_lambda_request_ids`.
+
+cloudwatch_logs_service
+    CloudWatch log search helpers:
+    :func:`get_stack_log_groups`, :func:`search_log_group`,
+    :func:`search_by_request_ids`, :func:`search_by_document_fallback`,
+    :func:`search_stack_wide`, :func:`prioritize_performance_log_groups`,
+    :func:`reset_settings_cache`.
 """
+
+# ---------------------------------------------------------------------------
+# CloudWatch Logs service
+# ---------------------------------------------------------------------------
+from idp_common.monitoring.cloudwatch_logs_service import (
+    get_stack_log_groups,
+    prioritize_performance_log_groups,
+    search_by_document_fallback,
+    search_by_request_ids,
+    search_log_group,
+    search_stack_wide,
+)
+from idp_common.monitoring.cloudwatch_logs_service import (
+    reset_settings_cache as reset_cw_settings_cache,
+)
 
 # ---------------------------------------------------------------------------
 # Models
@@ -102,6 +124,14 @@ __all__ = [
     "SettingsCache",
     "get_setting",
     "get_cloudwatch_log_groups",
+    # cloudwatch_logs_service
+    "get_stack_log_groups",
+    "prioritize_performance_log_groups",
+    "search_by_document_fallback",
+    "search_by_request_ids",
+    "search_log_group",
+    "search_stack_wide",
+    "reset_cw_settings_cache",
     # stack_utils
     "get_stack_name",
     "extract_stack_name_from_arn",
