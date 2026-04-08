@@ -640,6 +640,7 @@ type Mutation {
     status: String!
     userId: String!
     result: String
+    error: String
   ): Boolean @aws_iam
   updateDiscoveryJobStatus(
     jobId: ID!

@@ -668,6 +668,7 @@ export type MutationUpdateAgentChatMessageArgs = {
 
 
 export type MutationUpdateAgentJobStatusArgs = {
+  error?: InputMaybe<Scalars['String']['input']>;
   jobId: Scalars['ID']['input'];
   result?: InputMaybe<Scalars['String']['input']>;
   status: Scalars['String']['input'];
