@@ -8,12 +8,17 @@ SPDX-License-Identifier: MIT-0
 ### Fixed
 
 - **Fixed** agentic extraction crash (`TypeError: unsupported format string passed to NoneType.__format__`) when table parsing stats contain `None` values for `avg_confidence` or `parse_success_rate`.
-
 - **Fixed** agentic extraction `map_table_to_schema` producing phantom empty rows from non-matching tables (e.g. account_summary rows prepended to transaction_details), causing list item ordering to be shifted by several positions.
+- **Error Analyzer model selection** — The agent was using the Chat Companion's model instead of its own configured model.
+- **Error Analyzer log processing** — Fixed early termination that stopped searching after the first Lambda function with errors; now searches all relevant log groups.
+- **Error Analyzer log truncation** — Fixed handling of long log messages to trim them rather than skip them entirely.
 
 ### Changed
 
 - **Default extraction model updated** to `us.anthropic.claude-sonnet-4-6` (was `us.anthropic.claude-sonnet-4-20250514-v1:0`) in system defaults.
+- **Error Analyzer system prompt improvements** — Added strategy for large batches, priority ordering, and error classification guidance.
+- **Error Analyzer settings** — Replaced duplicate inline cache with the shared cache from the common monitoring package.
+- **Shared CloudWatch Logs** — Extracted log search logic from the Error Analyzer into a reusable library in the common monitoring package.
 
 ## [0.5.5]
 
