@@ -58,10 +58,12 @@ interface Notification {
   onDismiss: () => void;
 }
 
-// Base models that support fine-tuning
+// Base models that support fine-tuning (Nova 2.x + legacy v1 for display)
 const SUPPORTED_BASE_MODELS: Record<string, string> = {
-  'us.amazon.nova-pro-v1:0': 'Amazon Nova Pro',
-  'us.amazon.nova-lite-v1:0': 'Amazon Nova Lite',
+  'us.amazon.nova-2-pro-v1:0': 'Amazon Nova 2 Pro',
+  'us.amazon.nova-2-lite-v1:0': 'Amazon Nova 2 Lite',
+  'us.amazon.nova-pro-v1:0': 'Amazon Nova Pro (v1)',
+  'us.amazon.nova-lite-v1:0': 'Amazon Nova Lite (v1)',
 };
 
 // Status badge colors

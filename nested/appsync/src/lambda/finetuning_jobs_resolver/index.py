@@ -39,10 +39,10 @@ bedrock_client = boto3.client("bedrock", region_name=REGION)
 FINETUNING_JOB_PREFIX = "finetuning#"
 FINETUNING_JOBS_GSI_PK = "finetuning#jobs"
 
-# Supported base models for fine-tuning
+# Supported base models for fine-tuning (Nova 2.x recommended)
 SUPPORTED_BASE_MODELS = [
-    {"id": "us.amazon.nova-lite-v1:0", "name": "Nova Lite", "provider": "Amazon"},
-    {"id": "us.amazon.nova-pro-v1:0", "name": "Nova Pro", "provider": "Amazon"},
+    {"id": "us.amazon.nova-2-lite-v1:0", "name": "Nova 2 Lite", "provider": "Amazon"},
+    {"id": "us.amazon.nova-2-pro-v1:0", "name": "Nova 2 Pro", "provider": "Amazon"},
 ]
 
 
