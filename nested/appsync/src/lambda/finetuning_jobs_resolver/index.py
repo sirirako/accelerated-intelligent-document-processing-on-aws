@@ -20,7 +20,6 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 import boto3
-from boto3.dynamodb.conditions import Key
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -39,10 +38,10 @@ bedrock_client = boto3.client("bedrock", region_name=REGION)
 FINETUNING_JOB_PREFIX = "finetuning#"
 FINETUNING_JOBS_GSI_PK = "finetuning#jobs"
 
-# Supported base models for fine-tuning
+# Supported base models for fine-tuning (Nova 2.x recommended)
 SUPPORTED_BASE_MODELS = [
-    {"id": "us.amazon.nova-lite-v1:0", "name": "Nova Lite", "provider": "Amazon"},
-    {"id": "us.amazon.nova-pro-v1:0", "name": "Nova Pro", "provider": "Amazon"},
+    {"id": "us.amazon.nova-2-lite-v1:0", "name": "Nova 2 Lite", "provider": "Amazon"},
+    {"id": "us.amazon.nova-2-pro-v1:0", "name": "Nova 2 Pro", "provider": "Amazon"},
 ]
 
 
@@ -95,47 +94,56 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Any:
 
 def list_finetuning_jobs(arguments: Dict[str, Any]) -> Dict[str, Any]:
     """List all fine-tuning jobs with pagination.
-    
+
     Uses scan with filter since fine-tuning jobs are relatively few
     and the GSI1 index may not exist on all deployments.
     Jobs are stored with GSI1PK/GSI1SK for future GSI support.
+
+    The scan paginates through the table until enough matching items
+    are collected or the entire table has been scanned, because
+    DynamoDB's ``Limit`` caps items *evaluated* (before filtering),
+    not items *returned*.
     """
-    limit = arguments.get("limit", 20)
+    limit = arguments.get("limit", 50)
     next_token = arguments.get("nextToken")
 
     table = dynamodb.Table(TRACKING_TABLE_NAME)
 
-    # Use scan with filter - fine-tuning jobs have PK starting with 'finetuning#'
     from boto3.dynamodb.conditions import Attr
-    
-    scan_params = {
-        "FilterExpression": Attr("PK").begins_with(FINETUNING_JOB_PREFIX) & Attr("SK").eq("metadata"),
-        "Limit": limit * 5,  # Scan more items since filter reduces results
-    }
+
+    filter_expr = Attr("PK").begins_with(FINETUNING_JOB_PREFIX) & Attr("SK").eq(
+        "metadata"
+    )
+
+    # Collect all matching items by paginating through the scan.
+    # Fine-tuning jobs are few relative to the rest of the table,
+    # so a single scan page may not contain any matches.
+    items: List[Dict[str, Any]] = []
+    scan_kwargs: Dict[str, Any] = {"FilterExpression": filter_expr}
 
     if next_token:
-        scan_params["ExclusiveStartKey"] = json.loads(next_token)
+        scan_kwargs["ExclusiveStartKey"] = json.loads(next_token)
 
-    response = table.scan(**scan_params)
+    while True:
+        response = table.scan(**scan_kwargs)
 
-    # Filter and format items
-    items = []
-    for item in response.get("Items", []):
-        if item.get("PK", "").startswith(FINETUNING_JOB_PREFIX) and item.get("SK") == "metadata":
+        for item in response.get("Items", []):
             items.append(_format_job_for_graphql(item))
-    
+
+        # Stop if we've scanned the whole table
+        if "LastEvaluatedKey" not in response:
+            break
+
+        # Continue scanning from where we left off
+        scan_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+
     # Sort by createdAt descending (most recent first)
     items.sort(key=lambda x: x.get("createdAt", ""), reverse=True)
-    
+
     # Apply limit after sorting
     items = items[:limit]
 
-    result = {"items": items}
-
-    if "LastEvaluatedKey" in response and len(items) >= limit:
-        result["nextToken"] = json.dumps(response["LastEvaluatedKey"], cls=DecimalEncoder)
-
-    return result
+    return {"items": items}
 
 
 def get_finetuning_job(job_id: str) -> Optional[Dict[str, Any]]:

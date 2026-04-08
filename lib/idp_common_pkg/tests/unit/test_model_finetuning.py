@@ -529,12 +529,10 @@ class TestModelFinetuningService:
 
         result = service.list_available_models()
 
-        # Should have 4 base models (Nova Lite, Nova Pro, Nova 2 Lite, Nova 2 Pro)
-        assert len(result.base_models) == 4
-        assert result.base_models[0].name == "Nova Lite"
-        assert result.base_models[1].name == "Nova Pro"
-        assert result.base_models[2].name == "Nova 2 Lite"
-        assert result.base_models[3].name == "Nova 2 Pro"
+        # Should have 2 base models (Nova 2 Lite, Nova 2 Pro)
+        assert len(result.base_models) == 2
+        assert result.base_models[0].name == "Nova 2 Lite"
+        assert result.base_models[1].name == "Nova 2 Pro"
 
         # Should have 1 custom model
         assert len(result.custom_models) == 1
