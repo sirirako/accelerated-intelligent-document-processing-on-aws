@@ -59,10 +59,10 @@ interface SelectOption {
   description?: string;
 }
 
-// Base models that support fine-tuning
+// Base models that support fine-tuning (Nova 2.x recommended)
 const SUPPORTED_BASE_MODELS: SelectOption[] = [
-  { label: 'Amazon Nova Pro', value: 'us.amazon.nova-pro-v1:0', description: 'High-performance model for complex tasks' },
-  { label: 'Amazon Nova Lite', value: 'us.amazon.nova-lite-v1:0', description: 'Balanced performance and cost' },
+  { label: 'Amazon Nova 2 Pro', value: 'us.amazon.nova-2-pro-v1:0', description: 'High-performance model for complex tasks' },
+  { label: 'Amazon Nova 2 Lite', value: 'us.amazon.nova-2-lite-v1:0', description: 'Balanced performance and cost' },
 ];
 
 // Status badge colors
