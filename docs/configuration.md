@@ -351,6 +351,7 @@ Guardrails provide:
 - **Content Filtering**: Block harmful, inappropriate, or sensitive content
 - **Topic Restrictions**: Prevent processing of specific topic areas
 - **Data Protection**: Redact or block personally identifiable information (PII)
+- **Automated Reasoning Checks**: Enable formal verification of model outputs against defined policies using [Automated Reasoning](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-automated-reasoning.html), ensuring factual consistency and logical correctness
 - **Custom Filters**: Define organization-specific content policies
 
 ### Configuring Guardrails
