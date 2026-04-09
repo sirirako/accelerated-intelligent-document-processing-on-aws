@@ -5,6 +5,13 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Changed
+
+- **Default extraction model updated** to `us.anthropic.claude-sonnet-4-6` (was `us.anthropic.claude-sonnet-4-20250514-v1:0`) in system defaults.
+- **Error Analyzer system prompt improvements** — Added strategy for large batches, priority ordering, and error classification guidance.
+- **Error Analyzer settings** — Replaced duplicate inline cache with the shared cache from the common monitoring package.
+- **Shared CloudWatch Logs** — Extracted log search logic from the Error Analyzer into a reusable library in the common monitoring package.
+
 ### Fixed
 
 - **Fixed** agentic extraction crash (`TypeError: unsupported format string passed to NoneType.__format__`) when table parsing stats contain `None` values for `avg_confidence` or `parse_success_rate`.
@@ -14,12 +21,11 @@ SPDX-License-Identifier: MIT-0
 - **Error Analyzer log truncation** — Fixed handling of long log messages to trim them rather than skip them entirely.
 - **Reprocess from Document Details** — Fixed config version not being passed when reprocessing a document from the Document Details page (showed "N/A" instead of the selected version).
 
-### Changed
+## Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.5.6.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.5.6.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.5.6.yaml`
 
-- **Default extraction model updated** to `us.anthropic.claude-sonnet-4-6` (was `us.anthropic.claude-sonnet-4-20250514-v1:0`) in system defaults.
-- **Error Analyzer system prompt improvements** — Added strategy for large batches, priority ordering, and error classification guidance.
-- **Error Analyzer settings** — Replaced duplicate inline cache with the shared cache from the common monitoring package.
-- **Shared CloudWatch Logs** — Extracted log search logic from the Error Analyzer into a reusable library in the common monitoring package.
 
 ## [0.5.5]
 
