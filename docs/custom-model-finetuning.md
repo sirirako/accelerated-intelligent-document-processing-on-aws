@@ -28,6 +28,12 @@ flowchart LR
 5. **Deploy Endpoint**: The trained model is deployed as an on-demand Custom Model Deployment
 6. **Use in Configuration**: Select the custom model when creating or editing configurations
 
+## Roles & Permissions
+
+Custom Model Fine-tuning is available to **Admin** and **Author** roles. The GraphQL mutations (`createFinetuningJob`, `deleteFinetuningJob`) are enforced server-side via AppSync `@aws_auth` directives, so Reviewer and Viewer roles cannot create or delete jobs even via direct API calls. The query APIs (`listFinetuningJobs`, `getFinetuningJob`, `listAvailableModels`) are accessible to all authenticated users at the schema level, but the UI only exposes the Custom Models page to Admin and Author.
+
+> **Note on config-version scoping**: Fine-tuning jobs are currently global — they are not filtered by `allowedConfigVersions`. A scoped Author can see all fine-tuning jobs and create jobs from any test set. However, when applying a custom model to a configuration version (via "Create Config Version"), the config-version scope is enforced — the Author can only target versions within their scope. See [RBAC](./rbac.md) for the full permission matrix.
+
 ## Prerequisites
 
 - An existing Test Set with:
@@ -35,6 +41,7 @@ flowchart LR
   - At least 2 document classes
   - Baseline classifications for all documents
 - Appropriate IAM permissions for Bedrock model customization
+- **Admin** or **Author** role in the IDP Accelerator
 
 ## Using the UI
 

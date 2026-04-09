@@ -80,6 +80,7 @@ export const authorNavItems = [
     items: [
       { type: 'link', text: 'View/Edit Configuration', href: `#${CONFIGURATION_PATH}` },
       { type: 'link', text: 'Discovery', href: `#${DISCOVERY_PATH}` },
+      { type: 'link', text: 'Custom Models', href: `#${CUSTOM_MODELS_PATH}` },
       { type: 'link', text: 'Capacity Planning', href: `#${CAPACITY_PLANNING_PATH}` },
       { type: 'link', text: 'View Pricing', href: `#${PRICING_PATH}` },
     ],
