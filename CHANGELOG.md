@@ -5,6 +5,13 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **External SAML/OIDC Identity Provider Federation** — Optional support for federating authentication through an external SAML or OIDC identity provider via Amazon Cognito. Enables organizations to use existing enterprise identity providers (PingOne, Okta, Microsoft Entra ID, etc.) for single sign-on. All federation functionality is opt-in through 12 new CloudFormation parameters — leaving them empty results in zero additional resources and identical behavior to existing Cognito-native authentication. See `docs/external-idp.md`.
+
+- **Private Network Deployment** — Deploy the IDP Accelerator in fully private / air-gapped environments. New `AppSyncVisibility` parameter (`GLOBAL` | `PRIVATE`) makes the AppSync API accessible only from inside the VPC. All processing Lambda functions (21 across 3 templates) are conditionally placed in customer VPC subnets with an HTTPS-only security group. Includes a separate VPC endpoint CloudFormation template (`scripts/vpc-endpoints.yaml`) with 16 interface endpoints (AppSync, Bedrock, SQS, DynamoDB, S3, Lambda, SSM, KMS, STS, Textract, and more) and per-endpoint creation flags to skip pre-existing endpoints. All features are off by default — existing deployments are completely unaffected. See `docs/deployment-private-network.md`.
+
+
 ### Changed
 
 - **Default extraction model updated** to `us.anthropic.claude-sonnet-4-6` (was `us.anthropic.claude-sonnet-4-20250514-v1:0`) in system defaults.
