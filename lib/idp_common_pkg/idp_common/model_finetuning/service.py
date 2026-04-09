@@ -28,9 +28,8 @@ from idp_common.model_finetuning.models import (
 logger = logging.getLogger(__name__)
 
 # Default supported Nova models for fine-tuning (fallback if config not loaded)
+# Nova 2.x models are recommended; v1 models are kept for backward compatibility.
 DEFAULT_SUPPORTED_MODELS = [
-    {"id": "us.amazon.nova-lite-v1:0", "name": "Nova Lite", "provider": "Amazon"},
-    {"id": "us.amazon.nova-pro-v1:0", "name": "Nova Pro", "provider": "Amazon"},
     {"id": "us.amazon.nova-2-lite-v1:0", "name": "Nova 2 Lite", "provider": "Amazon"},
     {"id": "us.amazon.nova-2-pro-v1:0", "name": "Nova 2 Pro", "provider": "Amazon"},
 ]
