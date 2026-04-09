@@ -4182,3 +4182,7 @@ Outputs:
   AppSyncServiceRoleArn:
     Description: ARN of the AppSync service role
     Value: !GetAtt AppSyncServiceRole.Arn
+
+  TestResultsResolverFunctionArn:
+    Description: ARN of the Test Results Resolver Lambda function
+    Value: !GetAtt TestResultsResolverFunction.Arn
