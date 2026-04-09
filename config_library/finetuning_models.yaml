@@ -30,18 +30,9 @@ supported_models:
   - id: "us.amazon.nova-2-lite-v1:0"
     name: "Nova 2 Lite"
     provider: "Amazon"
-  
+
   - id: "us.amazon.nova-2-pro-v1:0"
     name: "Nova 2 Pro"
-    provider: "Amazon"
-  
-  # Nova 1.x models (legacy)
-  - id: "us.amazon.nova-lite-v1:0"
-    name: "Nova Lite (v1)"
-    provider: "Amazon"
-  
-  - id: "us.amazon.nova-pro-v1:0"
-    name: "Nova Pro (v1)"
     provider: "Amazon"
 
 # ---------------------------------------------------------------------------
@@ -55,13 +46,13 @@ supported_models:
 # Key: Base model ID (without cross-region prefix)
 # Value: Fine-tuning-capable model ID
 model_mappings:
-  # Nova 1.x mappings (300k context window)
-  "amazon.nova-lite-v1:0": "amazon.nova-lite-v1:0:300k"
-  "amazon.nova-pro-v1:0": "amazon.nova-pro-v1:0:300k"
-  
   # Nova 2.x mappings (256k context window)
   "amazon.nova-2-lite-v1:0": "amazon.nova-2-lite-v1:0:256k"
   "amazon.nova-2-pro-v1:0": "amazon.nova-2-pro-v1:0:256k"
+
+  # Nova 1.x mappings (legacy, 300k context window)
+  "amazon.nova-lite-v1:0": "amazon.nova-lite-v1:0:300k"
+  "amazon.nova-pro-v1:0": "amazon.nova-pro-v1:0:300k"
 
 # ---------------------------------------------------------------------------
 # Default Hyperparameters
