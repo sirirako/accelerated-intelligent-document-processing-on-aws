@@ -5,6 +5,10 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **Test Studio CLI Commands** — `idp-cli test-result` to retrieve test results with automatic evaluation triggering and `--wait`/`--output-dir` options, and `idp-cli test-compare` to compare multiple test runs with JSON/CSV export. See `docs/idp-cli.md`.
+
 ### Changed
 
 - **Default extraction model updated** to `us.anthropic.claude-sonnet-4-6` (was `us.anthropic.claude-sonnet-4-20250514-v1:0`) in system defaults.

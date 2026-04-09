@@ -7,6 +7,7 @@ IDP CLI - Main Command Line Interface
 Command-line tool for batch document processing with the IDP Accelerator.
 """
 
+import json
 import logging
 import os
 import sys
@@ -5336,6 +5337,470 @@ def chat(
         prompt=prompt,
         enable_code_intelligence=enable_code_intelligence,
     )
+
+
+@cli.command(name="test-result")
+@click.option("--stack-name", required=True, help="CloudFormation stack name")
+@click.option("--test-run-id", required=True, help="Test run ID")
+@click.option("--region", default=None, help="AWS region")
+@click.option("--wait", is_flag=True, help="Wait for evaluation to complete")
+@click.option(
+    "--timeout", default=600, type=int, help="Timeout in seconds (default: 600)"
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(),
+    help="Output directory for saving results JSON file",
+)
+def test_result(
+    stack_name: str,
+    test_run_id: str,
+    region: Optional[str],
+    wait: bool,
+    timeout: int,
+    output_dir: Optional[str],
+):
+    """Get test results for a specific test run.
+
+    Invokes TestResultsResolverFunction to trigger evaluation if needed
+    and retrieve test results including accuracy, precision, recall, F1 score, and cost.
+
+    \b
+    Examples:
+      # Get results immediately (may show evaluating status)
+      idp-cli test-result --stack-name my-stack --test-run-id fake-w2-20260409-123456
+
+      # Wait for evaluation to complete
+      idp-cli test-result --stack-name my-stack --test-run-id fake-w2-20260409-123456 --wait --timeout 900
+
+      # Save results to file
+      idp-cli test-result --stack-name my-stack --test-run-id fake-w2-20260409-123456 --wait --output-dir ./results
+    """
+    if not region:
+        region = os.environ.get("AWS_REGION", "us-east-1")
+
+    cf_client = boto3.client("cloudformation", region_name=region)
+    lambda_client = boto3.client("lambda", region_name=region)
+
+    try:
+        # Get TestResultsResolverFunction ARN from stack
+        console.print(
+            f"[blue]Looking up TestResultsResolverFunction for stack: {stack_name}[/blue]"
+        )
+
+        # Find nested AppSync stack
+        test_results_resolver_arn = None
+        resources = cf_client.describe_stack_resources(StackName=stack_name)
+        for resource in resources["StackResources"]:
+            if (
+                resource["ResourceType"] == "AWS::CloudFormation::Stack"
+                and "appsync" in resource["LogicalResourceId"].lower()
+            ):
+                nested_stack_id = resource["PhysicalResourceId"]
+                nested_stack_name = nested_stack_id.split("/")[1]
+
+                nested_response = cf_client.describe_stacks(StackName=nested_stack_name)
+                nested_outputs = nested_response["Stacks"][0].get("Outputs", [])
+
+                for output in nested_outputs:
+                    if output["OutputKey"] == "TestResultsResolverFunctionArn":
+                        test_results_resolver_arn = output["OutputValue"]
+                        break
+                break
+
+        if not test_results_resolver_arn:
+            console.print(
+                "[red]✗ TestResultsResolverFunctionArn not found in stack outputs[/red]"
+            )
+            sys.exit(1)
+
+        console.print("[green]✓ Found TestResultsResolverFunction[/green]")
+
+        # Invoke getTestRunStatus (triggers evaluation if needed)
+        console.print(f"[blue]Checking test run status: {test_run_id}[/blue]")
+        status_payload = {
+            "info": {"fieldName": "getTestRunStatus"},
+            "arguments": {"testRunId": test_run_id},
+        }
+
+        response = lambda_client.invoke(
+            FunctionName=test_results_resolver_arn,
+            InvocationType="RequestResponse",
+            Payload=json.dumps(status_payload),
+        )
+
+        status_result = json.loads(response["Payload"].read())
+
+        if "errorMessage" in status_result:
+            console.print(
+                f"[red]✗ Error getting status: {status_result['errorMessage']}[/red]"
+            )
+            sys.exit(1)
+
+        current_status = status_result.get("status", "UNKNOWN")
+        console.print(f"[green]✓ Test run status: {current_status}[/green]")
+
+        # If waiting and status is EVALUATING, poll until complete
+        if wait and current_status == "EVALUATING":
+            console.print(
+                f"[yellow]⏳ Evaluation in progress, waiting up to {timeout}s...[/yellow]"
+            )
+            elapsed = 0
+            poll_interval = 10
+
+            while elapsed < timeout:
+                time.sleep(poll_interval)
+                elapsed += poll_interval
+
+                # Check status again (this is idempotent)
+                response = lambda_client.invoke(
+                    FunctionName=test_results_resolver_arn,
+                    InvocationType="RequestResponse",
+                    Payload=json.dumps(status_payload),
+                )
+
+                status_result = json.loads(response["Payload"].read())
+                current_status = status_result.get("status", "UNKNOWN")
+
+                if current_status in ["COMPLETE", "PARTIAL_COMPLETE"]:
+                    console.print(
+                        f"[green]✓ Evaluation complete after {elapsed}s[/green]"
+                    )
+                    break
+                elif elapsed % 30 == 0:
+                    console.print(
+                        f"[dim]Still evaluating... ({elapsed}s elapsed)[/dim]"
+                    )
+
+            if current_status == "EVALUATING":
+                console.print(
+                    f"[yellow]⚠ Evaluation still in progress after {timeout}s timeout[/yellow]"
+                )
+                sys.exit(1)
+
+        # Get full test results
+        console.print("[blue]Retrieving test results...[/blue]")
+        results_payload = {
+            "info": {"fieldName": "getTestRun"},
+            "arguments": {"testRunId": test_run_id},
+        }
+
+        response = lambda_client.invoke(
+            FunctionName=test_results_resolver_arn,
+            InvocationType="RequestResponse",
+            Payload=json.dumps(results_payload),
+        )
+
+        result = json.loads(response["Payload"].read())
+
+        if "errorMessage" in result:
+            if "evaluating" in result["errorMessage"].lower():
+                console.print(
+                    "[yellow]⚠ Evaluation still in progress. Use --wait to wait for completion.[/yellow]"
+                )
+            else:
+                console.print(f"[red]✗ Error: {result['errorMessage']}[/red]")
+            sys.exit(1)
+
+        # Save to file if output-dir specified
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            output_file = os.path.join(output_dir, f"{test_run_id}-result.json")
+            with open(output_file, "w") as f:
+                json.dump(result, f, indent=2, default=str)
+            console.print(f"[green]✓ Results saved to: {output_file}[/green]\n")
+
+        # Display results
+        console.print("\n[bold green]✓ Test Results[/bold green]\n")
+        console.print(f"[bold]Test Run:[/bold] {result.get('testRunId')}")
+        console.print(f"[bold]Test Set:[/bold] {result.get('testSetName')}")
+        console.print(f"[bold]Status:[/bold] {result.get('status')}")
+        console.print(
+            f"[bold]Files:[/bold] {result.get('completedFiles')}/{result.get('filesCount')} completed"
+        )
+
+        if result.get("failedFiles", 0) > 0:
+            console.print(
+                f"[bold red]Failed Files:[/bold red] {result.get('failedFiles')}"
+            )
+
+        console.print()
+
+        overall_accuracy = result.get("overallAccuracy")
+        if overall_accuracy is not None:
+            console.print(
+                f"[bold cyan]Overall Accuracy:[/bold cyan] {overall_accuracy:.2%}"
+            )
+
+        accuracy_breakdown = result.get("accuracyBreakdown", {})
+        if accuracy_breakdown:
+            console.print(
+                f"[bold cyan]Precision:[/bold cyan] {accuracy_breakdown.get('precision', 0):.2%}"
+            )
+            console.print(
+                f"[bold cyan]Recall:[/bold cyan] {accuracy_breakdown.get('recall', 0):.2%}"
+            )
+            console.print(
+                f"[bold cyan]F1 Score:[/bold cyan] {accuracy_breakdown.get('f1_score', 0):.2%}"
+            )
+
+        total_cost = result.get("totalCost", 0)
+        if total_cost:
+            console.print(f"[bold yellow]Total Cost:[/bold yellow] ${total_cost:.4f}")
+
+        console.print()
+
+        if result.get("createdAt"):
+            console.print(f"[dim]Created: {result.get('createdAt')}[/dim]")
+        if result.get("completedAt"):
+            console.print(f"[dim]Completed: {result.get('completedAt')}[/dim]")
+
+    except Exception as e:
+        logger.error(f"Error getting test results: {e}", exc_info=True)
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
+
+
+@cli.command(name="test-compare")
+@click.option("--stack-name", required=True, help="CloudFormation stack name")
+@click.option(
+    "--test-run-ids",
+    required=True,
+    help="Comma-separated list of test run IDs to compare",
+)
+@click.option("--region", default=None, help="AWS region")
+@click.option(
+    "--output-dir",
+    type=click.Path(),
+    help="Output directory for saving comparison JSON and CSV files",
+)
+def test_compare(
+    stack_name: str, test_run_ids: str, region: Optional[str], output_dir: Optional[str]
+):
+    """Compare results from multiple test runs.
+
+    Shows side-by-side comparison of metrics and configuration differences
+    between test runs.
+
+    \b
+    Examples:
+      # Compare two test runs
+      idp-cli test-compare --stack-name my-stack \\
+        --test-run-ids "fake-w2-20260409-123456,fake-w2-20260409-234567"
+
+      # Compare and save to files
+      idp-cli test-compare --stack-name my-stack \\
+        --test-run-ids "run1,run2,run3" --output-dir ./comparisons
+    """
+    import csv
+    from datetime import datetime, timezone
+
+    if not region:
+        region = os.environ.get("AWS_REGION", "us-east-1")
+
+    cf_client = boto3.client("cloudformation", region_name=region)
+    lambda_client = boto3.client("lambda", region_name=region)
+
+    try:
+        # Parse test run IDs
+        test_run_id_list = [tid.strip() for tid in test_run_ids.split(",")]
+
+        if len(test_run_id_list) < 2:
+            console.print(
+                "[red]✗ At least 2 test run IDs required for comparison[/red]"
+            )
+            sys.exit(1)
+
+        # Get TestResultsResolverFunction ARN from stack
+        console.print(
+            f"[blue]Looking up TestResultsResolverFunction for stack: {stack_name}[/blue]"
+        )
+
+        # Find nested AppSync stack
+        test_results_resolver_arn = None
+        resources = cf_client.describe_stack_resources(StackName=stack_name)
+        for resource in resources["StackResources"]:
+            if (
+                resource["ResourceType"] == "AWS::CloudFormation::Stack"
+                and "appsync" in resource["LogicalResourceId"].lower()
+            ):
+                nested_stack_id = resource["PhysicalResourceId"]
+                nested_stack_name = nested_stack_id.split("/")[1]
+
+                nested_response = cf_client.describe_stacks(StackName=nested_stack_name)
+                nested_outputs = nested_response["Stacks"][0].get("Outputs", [])
+
+                for output in nested_outputs:
+                    if output["OutputKey"] == "TestResultsResolverFunctionArn":
+                        test_results_resolver_arn = output["OutputValue"]
+                        break
+                break
+
+        if not test_results_resolver_arn:
+            console.print(
+                "[red]✗ TestResultsResolverFunctionArn not found in stack outputs[/red]"
+            )
+            sys.exit(1)
+
+        console.print("[green]✓ Found TestResultsResolverFunction[/green]")
+        console.print(f"[blue]Comparing {len(test_run_id_list)} test runs...[/blue]\n")
+
+        # Invoke compareTestRuns
+        compare_payload = {
+            "info": {"fieldName": "compareTestRuns"},
+            "arguments": {"testRunIds": test_run_id_list},
+        }
+
+        response = lambda_client.invoke(
+            FunctionName=test_results_resolver_arn,
+            InvocationType="RequestResponse",
+            Payload=json.dumps(compare_payload),
+        )
+
+        result = json.loads(response["Payload"].read())
+
+        if "errorMessage" in result:
+            console.print(f"[red]✗ Error: {result['errorMessage']}[/red]")
+            sys.exit(1)
+
+        metrics = result.get("metrics", {})
+        configs = result.get("configs", [])
+
+        if not metrics:
+            console.print("[yellow]⚠ No metrics data available for comparison[/yellow]")
+            sys.exit(1)
+
+        # Save to files if output-dir specified
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+
+            # Save JSON
+            json_file = os.path.join(output_dir, f"comparison-{timestamp}.json")
+            with open(json_file, "w") as f:
+                json.dump(result, f, indent=2, default=str)
+            console.print(f"[green]✓ Comparison JSON saved to: {json_file}[/green]")
+
+            # Save CSV (metrics only)
+            csv_file = os.path.join(output_dir, f"comparison-{timestamp}.csv")
+            with open(csv_file, "w", newline="") as f:
+                writer = csv.writer(f)
+
+                # Header row
+                header = ["Metric"] + [tid[:30] for tid in test_run_id_list]
+                writer.writerow(header)
+
+                # Metric rows
+                metric_names = [
+                    ("Overall Accuracy", "overallAccuracy"),
+                    ("Precision", "accuracyBreakdown.precision"),
+                    ("Recall", "accuracyBreakdown.recall"),
+                    ("F1 Score", "accuracyBreakdown.f1_score"),
+                    ("Total Cost", "totalCost"),
+                    ("Files Completed", "completedFiles"),
+                    ("Files Failed", "failedFiles"),
+                ]
+
+                for display_name, metric_path in metric_names:
+                    row = [display_name]
+                    for test_run_id in test_run_id_list:
+                        test_data = metrics.get(test_run_id, {})
+
+                        # Navigate nested paths
+                        value = test_data
+                        for key in metric_path.split("."):
+                            value = value.get(key) if isinstance(value, dict) else None
+
+                        if value is not None:
+                            row.append(
+                                f"{value:.4f}"
+                                if isinstance(value, float)
+                                else str(value)
+                            )
+                        else:
+                            row.append("N/A")
+
+                    writer.writerow(row)
+
+            console.print(f"[green]✓ Comparison CSV saved to: {csv_file}[/green]\n")
+
+        # Display metrics comparison table
+        console.print("[bold green]Metrics Comparison[/bold green]\n")
+
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("Metric", style="dim")
+
+        for test_run_id in test_run_id_list:
+            table.add_column(test_run_id[:20], justify="right")
+
+        # Add rows for each metric
+        metric_names = [
+            ("Overall Accuracy", "overallAccuracy", "%"),
+            ("Precision", "accuracyBreakdown.precision", "%"),
+            ("Recall", "accuracyBreakdown.recall", "%"),
+            ("F1 Score", "accuracyBreakdown.f1_score", "%"),
+            ("Total Cost", "totalCost", "$"),
+        ]
+
+        for display_name, metric_path, format_type in metric_names:
+            row = [display_name]
+            for test_run_id in test_run_id_list:
+                test_data = metrics.get(test_run_id, {})
+
+                # Navigate nested paths
+                value = test_data
+                for key in metric_path.split("."):
+                    value = value.get(key) if isinstance(value, dict) else None
+
+                if value is not None:
+                    if format_type == "%":
+                        row.append(f"{value:.2%}")
+                    elif format_type == "$":
+                        row.append(f"${value:.4f}")
+                    else:
+                        row.append(str(value))
+                else:
+                    row.append("N/A")
+
+            table.add_row(*row)
+
+        console.print(table)
+        console.print()
+
+        # Display configuration differences
+        if configs and len(configs) > 0:
+            console.print("[bold green]Configuration Differences[/bold green]\n")
+
+            config_table = Table(show_header=True, header_style="bold cyan")
+            config_table.add_column("Setting", style="dim")
+
+            for test_run_id in test_run_id_list:
+                config_table.add_column(test_run_id[:20])
+
+            for diff in configs:
+                setting = diff.get("setting", "")
+                values = diff.get("values", {})
+
+                row = [setting]
+                for test_run_id in test_run_id_list:
+                    value = values.get(test_run_id, "<missing>")
+                    # Truncate long values
+                    if len(str(value)) > 50:
+                        value = str(value)[:47] + "..."
+                    row.append(str(value))
+
+                config_table.add_row(*row)
+
+            console.print(config_table)
+        else:
+            console.print("[dim]No configuration differences to display[/dim]")
+
+        console.print()
+
+    except Exception as e:
+        logger.error(f"Error comparing test runs: {e}", exc_info=True)
+        console.print(f"[red]✗ Error: {e}[/red]")
+        sys.exit(1)
 
 
 def main():
