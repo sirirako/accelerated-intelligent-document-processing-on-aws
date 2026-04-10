@@ -634,10 +634,10 @@ def test_step9_single_doc_discovery(stack_name):
         config_version = "test-discovery"
         print(f"Running discovery on {sample_file}...")
         print(f"Saving to config version: {config_version}")
-        print(f"This will take approximately 1-2 minutes...")
+        print(f"This will take approximately 3-5 minutes...")
 
         cmd = f"idp-cli discover --stack-name {stack_name} -d {sample_file} --config-version {config_version}"
-        result = run_command(cmd, check=True, timeout=180)
+        result = run_command(cmd, check=True, timeout=300)
 
         print(f"Verifying discovered class saved to configuration...")
 
@@ -1198,6 +1198,7 @@ def generate_publish_failure_summary(publish_error):
             body=json.dumps({
                 "anthropic_version": "bedrock-2023-05-31",
                 "max_tokens": 2000,
+                "temperature": 0,
                 "messages": [{"role": "user", "content": prompt}]
             })
         )
@@ -1310,13 +1311,19 @@ def get_cloudformation_logs(stack_name):
 def generate_deployment_summary(result, stack_name, template_url):
     """Generate deployment summary using Bedrock API with CodeBuild and CloudFormation logs"""
     try:
-        # Get CodeBuild logs
+        # Get CodeBuild logs (limit if failure to reduce noise from success markers)
         deployment_logs = get_codebuild_logs()
-        
+        if not result.get("success", True):
+            # For failures, only show last 100 lines to reduce noise
+            log_lines = deployment_logs.split('\n')
+            if len(log_lines) > 100:
+                deployment_logs = '\n'.join(log_lines[-100:])
+
         # Initialize Bedrock client
         bedrock = boto3.client('bedrock-runtime')
-        
+
         # Create prompt for Bedrock with structured analysis
+        # IMPORTANT: Deployment result is at END for recency bias
         prompt = dedent(f"""
         You are an AWS deployment analyst. Analyze deployment result and determine appropriate response.
 
@@ -1324,11 +1331,18 @@ def generate_deployment_summary(result, stack_name, template_url):
         - Stack Name: {stack_name}
         - Template URL: {template_url}
 
-        Deployment Result (THIS IS THE SOURCE OF TRUTH):
-        {json.dumps(result, indent=2)}
-
-        CodeBuild Logs (for context only):
+        CodeBuild Logs (for context only - DO NOT use to determine pass/fail):
         {deployment_logs}
+
+        ==================== DEPLOYMENT RESULT (SOURCE OF TRUTH) ====================
+        {json.dumps(result, indent=2)}
+        =============================================================================
+
+        STEP 0: What is the value of the "success" field in Deployment Result above?
+        Write it here: success = _____
+
+        If success = false, this is a FAILURE. Do NOT say "All Tests Passed".
+        If success = true, this is a SUCCESS.
 
         CRITICAL: Check the "success" field in Deployment Result FIRST:
         - If "success": false → This is a FAILURE, analyze the "error" field
@@ -1397,12 +1411,13 @@ def generate_deployment_summary(result, stack_name, template_url):
         5. All 9 tests must be listed in success case (Steps 3-11, excluding deployment)
         """)
         
-        # Call Bedrock API
+        # Call Bedrock API with temperature=0 for deterministic output
         response = bedrock.invoke_model(
             modelId='us.anthropic.claude-sonnet-4-20250514-v1:0',
             body=json.dumps({
                 "anthropic_version": "bedrock-2023-05-31",
                 "max_tokens": 4000,
+                "temperature": 0,
                 "messages": [{"role": "user", "content": prompt}]
             })
         )
@@ -1473,6 +1488,7 @@ def generate_deployment_summary(result, stack_name, template_url):
                 body=json.dumps({
                     "anthropic_version": "bedrock-2023-05-31",
                     "max_tokens": 4000,
+                    "temperature": 0,
                     "messages": [{"role": "user", "content": cf_prompt}]
                 })
             )
