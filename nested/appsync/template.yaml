@@ -2989,7 +2989,7 @@ Resources:
       CodeUri: ./src/lambda/test_results_resolver
       Description: GraphQL resolver for test results queries
       MemorySize: 512
-      Timeout: 300
+      Timeout: 900
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
