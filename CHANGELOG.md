@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
-## [0.5.4]
+## [0.5.6]
 
 ### Added
 
