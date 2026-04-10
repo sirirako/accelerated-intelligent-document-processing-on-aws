@@ -812,34 +812,58 @@ def test_step11_test_compare(stack_name):
                     print(f"⚠️  Test run {i+1} completion check failed")
                     return {"success": False, "error": f"Test run {i+1} completion failed"}
 
-            # Compare the two test runs
+            # Compare the two test runs and save to JSON for validation
             print(f"\nComparing test runs: {', '.join(test_run_ids)}")
-            cmd = f"idp-cli test-compare --stack-name {stack_name} --test-run-ids '{','.join(test_run_ids)}'"
-            result = run_command(cmd, check=False)
 
-            if result.returncode != 0:
-                print(f"❌ test-compare command failed")
-                return {"success": False, "error": "test-compare command failed"}
+            # Create temp directory for comparison output
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmpdir:
+                cmd = f"idp-cli test-compare --stack-name {stack_name} --test-run-ids '{','.join(test_run_ids)}' --output-dir {tmpdir}"
+                result = run_command(cmd, check=False)
 
-            # Verify comparison output contains expected content
-            output = result.stdout
-            expected_fields = ['Overall Accuracy', 'Precision', 'Recall', 'F1 Score', 'Total Cost']
-            missing_fields = [field for field in expected_fields if field not in output]
+                if result.returncode != 0:
+                    print(f"❌ test-compare command failed")
+                    return {"success": False, "error": "test-compare command failed"}
 
-            if missing_fields:
-                print(f"⚠️  Comparison output missing fields: {', '.join(missing_fields)}")
-                return {"success": False, "error": f"test-compare output missing fields: {', '.join(missing_fields)}"}
+                # Find and load the comparison JSON file
+                comparison_files = [f for f in os.listdir(tmpdir) if f.startswith('comparison-') and f.endswith('.json')]
 
-            # Verify test run IDs appear in output (as column headers)
-            test_run_ids_in_output = all(tid in output for tid in test_run_ids)
-            if not test_run_ids_in_output:
-                print(f"⚠️  Test run IDs not found in comparison output")
-                return {"success": False, "error": "Test run IDs not found in comparison output"}
+                if not comparison_files:
+                    print(f"⚠️  No comparison JSON file generated")
+                    return {"success": False, "error": "No comparison JSON file generated"}
 
-            print(f"  ✓ Comparison output contains all expected fields")
-            print(f"  ✓ Test run IDs present in output")
-            print(f"✅ test-compare test completed successfully")
-            return {"success": True}
+                comparison_file = os.path.join(tmpdir, comparison_files[0])
+
+                with open(comparison_file, 'r') as f:
+                    comparison_data = json.load(f)
+
+                # Validate JSON structure contains expected data
+                if 'metrics' not in comparison_data:
+                    print(f"⚠️  Comparison data missing 'metrics' field")
+                    return {"success": False, "error": "Comparison data missing 'metrics' field"}
+
+                metrics = comparison_data['metrics']
+
+                # Verify both test runs are in metrics
+                missing_runs = [tid for tid in test_run_ids if tid not in metrics]
+                if missing_runs:
+                    print(f"⚠️  Test runs missing from comparison: {', '.join(missing_runs)}")
+                    return {"success": False, "error": f"Test runs missing from comparison: {', '.join(missing_runs)}"}
+
+                # Verify each test run has required metric fields
+                required_metrics = ['overallAccuracy', 'totalCost']
+                for test_run_id in test_run_ids:
+                    run_metrics = metrics[test_run_id]
+                    missing_metrics = [m for m in required_metrics if m not in run_metrics]
+
+                    if missing_metrics:
+                        print(f"⚠️  Test run {test_run_id} missing metrics: {', '.join(missing_metrics)}")
+                        return {"success": False, "error": f"Test run missing metrics: {', '.join(missing_metrics)}"}
+
+                print(f"  ✓ Comparison JSON contains both test runs")
+                print(f"  ✓ All required metrics present")
+                print(f"✅ test-compare test completed successfully")
+                return {"success": True}
 
         except Exception as e:
             print(f"⚠️  Could not access test set bucket: {e}")
