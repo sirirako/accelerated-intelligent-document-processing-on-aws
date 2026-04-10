@@ -5379,181 +5379,77 @@ def test_result(
     if not region:
         region = os.environ.get("AWS_REGION", "us-east-1")
 
-    cf_client = boto3.client("cloudformation", region_name=region)
-    lambda_client = boto3.client("lambda", region_name=region)
-
     try:
-        # Get TestResultsResolverFunction ARN from stack
-        console.print(
-            f"[blue]Looking up TestResultsResolverFunction for stack: {stack_name}[/blue]"
-        )
+        # Use SDK to get test result
+        from idp_sdk import IDPClient
 
-        # Find nested AppSync stack
-        test_results_resolver_arn = None
-        resources = cf_client.describe_stack_resources(StackName=stack_name)
-        for resource in resources["StackResources"]:
-            if (
-                resource["ResourceType"] == "AWS::CloudFormation::Stack"
-                and "appsync" in resource["LogicalResourceId"].lower()
-            ):
-                nested_stack_id = resource["PhysicalResourceId"]
-                nested_stack_name = nested_stack_id.split("/")[1]
+        client = IDPClient(stack_name=stack_name, region=region)
 
-                nested_response = cf_client.describe_stacks(StackName=nested_stack_name)
-                nested_outputs = nested_response["Stacks"][0].get("Outputs", [])
-
-                for output in nested_outputs:
-                    if output["OutputKey"] == "TestResultsResolverFunctionArn":
-                        test_results_resolver_arn = output["OutputValue"]
-                        break
-                break
-
-        if not test_results_resolver_arn:
-            console.print(
-                "[red]✗ TestResultsResolverFunctionArn not found in stack outputs[/red]"
-            )
-            sys.exit(1)
-
-        console.print("[green]✓ Found TestResultsResolverFunction[/green]")
-
-        # Invoke getTestRunStatus (triggers evaluation if needed)
-        console.print(f"[blue]Checking test run status: {test_run_id}[/blue]")
-        status_payload = {
-            "info": {"fieldName": "getTestRunStatus"},
-            "arguments": {"testRunId": test_run_id},
-        }
-
-        response = lambda_client.invoke(
-            FunctionName=test_results_resolver_arn,
-            InvocationType="RequestResponse",
-            Payload=json.dumps(status_payload),
-        )
-
-        status_result = json.loads(response["Payload"].read())
-
-        if "errorMessage" in status_result:
-            console.print(
-                f"[red]✗ Error getting status: {status_result['errorMessage']}[/red]"
-            )
-            sys.exit(1)
-
-        current_status = status_result.get("status", "UNKNOWN")
-        console.print(f"[green]✓ Test run status: {current_status}[/green]")
-
-        # If waiting and status is not final, poll until complete
-        if wait and current_status not in ["COMPLETE", "PARTIAL_COMPLETE", "FAILED"]:
+        if wait:
             console.print(
                 f"[yellow]⏳ Waiting for test run to complete (up to {timeout}s)...[/yellow]"
             )
-            elapsed = 0
-            poll_interval = 10
 
-            while elapsed < timeout:
-                time.sleep(poll_interval)
-                elapsed += poll_interval
-
-                # Check status again (this is idempotent)
-                response = lambda_client.invoke(
-                    FunctionName=test_results_resolver_arn,
-                    InvocationType="RequestResponse",
-                    Payload=json.dumps(status_payload),
-                )
-
-                status_result = json.loads(response["Payload"].read())
-                current_status = status_result.get("status", "UNKNOWN")
-
-                if current_status in ["COMPLETE", "PARTIAL_COMPLETE", "FAILED"]:
-                    console.print(
-                        f"[green]✓ Test run complete after {elapsed}s[/green]"
-                    )
-                    break
-                elif elapsed % 30 == 0:
-                    console.print(
-                        f"[dim]Still processing... ({elapsed}s elapsed, status: {current_status})[/dim]"
-                    )
-
-            if current_status not in ["COMPLETE", "PARTIAL_COMPLETE", "FAILED"]:
-                console.print(
-                    f"[yellow]⚠ Test run still in progress after {timeout}s timeout (status: {current_status})[/yellow]"
-                )
-                sys.exit(1)
-
-        # Get full test results
-        console.print("[blue]Retrieving test results...[/blue]")
-        results_payload = {
-            "info": {"fieldName": "getTestRun"},
-            "arguments": {"testRunId": test_run_id},
-        }
-
-        response = lambda_client.invoke(
-            FunctionName=test_results_resolver_arn,
-            InvocationType="RequestResponse",
-            Payload=json.dumps(results_payload),
+        test_result = client.testing.get_test_result(
+            test_run_id=test_run_id,
+            wait=wait,
+            timeout=timeout,
+            poll_interval=10,
         )
-
-        result = json.loads(response["Payload"].read())
-
-        if "errorMessage" in result:
-            if "evaluating" in result["errorMessage"].lower():
-                console.print(
-                    "[yellow]⚠ Evaluation still in progress. Use --wait to wait for completion.[/yellow]"
-                )
-            else:
-                console.print(f"[red]✗ Error: {result['errorMessage']}[/red]")
-            sys.exit(1)
 
         # Save to file if output-dir specified
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
             output_file = os.path.join(output_dir, f"{test_run_id}-result.json")
             with open(output_file, "w") as f:
-                json.dump(result, f, indent=2, default=str)
+                # Use raw_data for complete JSON export
+                json.dump(test_result.raw_data, f, indent=2, default=str)
             console.print(f"[green]✓ Results saved to: {output_file}[/green]\n")
 
-        # Display results
+        # Display results using Rich formatting
         console.print("\n[bold green]✓ Test Results[/bold green]\n")
-        console.print(f"[bold]Test Run:[/bold] {result.get('testRunId')}")
-        console.print(f"[bold]Test Set:[/bold] {result.get('testSetName')}")
-        console.print(f"[bold]Status:[/bold] {result.get('status')}")
+        console.print(f"[bold]Test Run:[/bold] {test_result.test_run_id}")
+        console.print(f"[bold]Test Set:[/bold] {test_result.test_set_name}")
+        console.print(f"[bold]Status:[/bold] {test_result.status}")
         console.print(
-            f"[bold]Files:[/bold] {result.get('completedFiles')}/{result.get('filesCount')} completed"
+            f"[bold]Files:[/bold] {test_result.completed_files}/{test_result.files_count} completed"
         )
 
-        if result.get("failedFiles", 0) > 0:
+        if test_result.failed_files > 0:
             console.print(
-                f"[bold red]Failed Files:[/bold red] {result.get('failedFiles')}"
+                f"[bold red]Failed Files:[/bold red] {test_result.failed_files}"
             )
 
         console.print()
 
-        overall_accuracy = result.get("overallAccuracy")
-        if overall_accuracy is not None:
+        if test_result.overall_accuracy is not None:
             console.print(
-                f"[bold cyan]Overall Accuracy:[/bold cyan] {overall_accuracy:.2%}"
+                f"[bold cyan]Overall Accuracy:[/bold cyan] {test_result.overall_accuracy:.2%}"
             )
 
-        accuracy_breakdown = result.get("accuracyBreakdown", {})
-        if accuracy_breakdown:
+        if test_result.accuracy_breakdown:
+            breakdown = test_result.accuracy_breakdown
             console.print(
-                f"[bold cyan]Precision:[/bold cyan] {accuracy_breakdown.get('precision', 0):.2%}"
+                f"[bold cyan]Precision:[/bold cyan] {breakdown.get('precision', 0):.2%}"
             )
             console.print(
-                f"[bold cyan]Recall:[/bold cyan] {accuracy_breakdown.get('recall', 0):.2%}"
+                f"[bold cyan]Recall:[/bold cyan] {breakdown.get('recall', 0):.2%}"
             )
             console.print(
-                f"[bold cyan]F1 Score:[/bold cyan] {accuracy_breakdown.get('f1_score', 0):.2%}"
+                f"[bold cyan]F1 Score:[/bold cyan] {breakdown.get('f1_score', 0):.2%}"
             )
 
-        total_cost = result.get("totalCost", 0)
-        if total_cost:
-            console.print(f"[bold yellow]Total Cost:[/bold yellow] ${total_cost:.4f}")
+        if test_result.total_cost:
+            console.print(
+                f"[bold yellow]Total Cost:[/bold yellow] ${test_result.total_cost:.4f}"
+            )
 
         console.print()
 
-        if result.get("createdAt"):
-            console.print(f"[dim]Created: {result.get('createdAt')}[/dim]")
-        if result.get("completedAt"):
-            console.print(f"[dim]Completed: {result.get('completedAt')}[/dim]")
+        if test_result.created_at:
+            console.print(f"[dim]Created: {test_result.created_at}[/dim]")
+        if test_result.completed_at:
+            console.print(f"[dim]Completed: {test_result.completed_at}[/dim]")
 
     except Exception as e:
         logger.error(f"Error getting test results: {e}", exc_info=True)
@@ -5598,9 +5494,6 @@ def test_compare(
     if not region:
         region = os.environ.get("AWS_REGION", "us-east-1")
 
-    cf_client = boto3.client("cloudformation", region_name=region)
-    lambda_client = boto3.client("lambda", region_name=region)
-
     try:
         # Parse test run IDs
         test_run_id_list = [tid.strip() for tid in test_run_ids.split(",")]
@@ -5611,60 +5504,20 @@ def test_compare(
             )
             sys.exit(1)
 
-        # Get TestResultsResolverFunction ARN from stack
-        console.print(
-            f"[blue]Looking up TestResultsResolverFunction for stack: {stack_name}[/blue]"
-        )
+        # Use SDK to compare test runs
+        from idp_sdk import IDPClient
 
-        # Find nested AppSync stack
-        test_results_resolver_arn = None
-        resources = cf_client.describe_stack_resources(StackName=stack_name)
-        for resource in resources["StackResources"]:
-            if (
-                resource["ResourceType"] == "AWS::CloudFormation::Stack"
-                and "appsync" in resource["LogicalResourceId"].lower()
-            ):
-                nested_stack_id = resource["PhysicalResourceId"]
-                nested_stack_name = nested_stack_id.split("/")[1]
+        client = IDPClient(stack_name=stack_name, region=region)
 
-                nested_response = cf_client.describe_stacks(StackName=nested_stack_name)
-                nested_outputs = nested_response["Stacks"][0].get("Outputs", [])
-
-                for output in nested_outputs:
-                    if output["OutputKey"] == "TestResultsResolverFunctionArn":
-                        test_results_resolver_arn = output["OutputValue"]
-                        break
-                break
-
-        if not test_results_resolver_arn:
-            console.print(
-                "[red]✗ TestResultsResolverFunctionArn not found in stack outputs[/red]"
-            )
-            sys.exit(1)
-
-        console.print("[green]✓ Found TestResultsResolverFunction[/green]")
         console.print(f"[blue]Comparing {len(test_run_id_list)} test runs...[/blue]\n")
 
-        # Invoke compareTestRuns
-        compare_payload = {
-            "info": {"fieldName": "compareTestRuns"},
-            "arguments": {"testRunIds": test_run_id_list},
-        }
-
-        response = lambda_client.invoke(
-            FunctionName=test_results_resolver_arn,
-            InvocationType="RequestResponse",
-            Payload=json.dumps(compare_payload),
+        comparison_result = client.testing.compare_test_runs(
+            test_run_ids=test_run_id_list
         )
 
-        result = json.loads(response["Payload"].read())
-
-        if "errorMessage" in result:
-            console.print(f"[red]✗ Error: {result['errorMessage']}[/red]")
-            sys.exit(1)
-
-        metrics = result.get("metrics", {})
-        configs = result.get("configs", [])
+        metrics = comparison_result.metrics
+        # Note: configs not yet in SDK model, but in raw_data if needed
+        configs = []  # TODO: Add to SDK model if needed
 
         if not metrics:
             console.print("[yellow]⚠ No metrics data available for comparison[/yellow]")
@@ -5675,10 +5528,14 @@ def test_compare(
             os.makedirs(output_dir, exist_ok=True)
             timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
 
-            # Save JSON
+            # Save JSON (reconstruct result dict for compatibility)
+            result_data = {
+                "metrics": metrics,
+                "configs": configs,
+            }
             json_file = os.path.join(output_dir, f"comparison-{timestamp}.json")
             with open(json_file, "w") as f:
-                json.dump(result, f, indent=2, default=str)
+                json.dump(result_data, f, indent=2, default=str)
             console.print(f"[green]✓ Comparison JSON saved to: {json_file}[/green]")
 
             # Save CSV (metrics only)
