@@ -5,6 +5,8 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.5.4]
+
 ### Added
 
 - **Custom Model Fine-Tuning** — Fine-tune Amazon Nova 2 models (Lite and Pro) for document classification using your own labeled Test Sets. The end-to-end workflow — validate data, generate training data, train via Bedrock, and deploy an on-demand custom model endpoint — is driven from a new **Custom Models** page in the Web UI. Custom models can then be selected in any configuration version for classification. Available to Admin and Author roles. **Note:** currently requires deployment in `us-east-1`. See `docs/custom-model-finetuning.md`.
