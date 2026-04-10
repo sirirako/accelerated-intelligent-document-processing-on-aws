@@ -5,6 +5,41 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **Custom Model Fine-Tuning** — Fine-tune Amazon Nova 2 models (Lite and Pro) for document classification using your own labeled Test Sets. The end-to-end workflow — validate data, generate training data, train via Bedrock, and deploy an on-demand custom model endpoint — is driven from a new **Custom Models** page in the Web UI. Custom models can then be selected in any configuration version for classification. Available to Admin and Author roles. **Note:** currently requires deployment in `us-east-1`. See `docs/custom-model-finetuning.md`.
+  
+- **External SAML/OIDC Identity Provider Federation** — Optional support for federating authentication through an external SAML or OIDC identity provider via Amazon Cognito. Enables organizations to use existing enterprise identity providers (PingOne, Okta, Microsoft Entra ID, etc.) for single sign-on. All federation functionality is opt-in through 12 new CloudFormation parameters — leaving them empty results in zero additional resources and identical behavior to existing Cognito-native authentication. See `docs/external-idp.md`.
+
+- **Private Network Deployment** — Deploy the IDP Accelerator in fully private / air-gapped environments. New `AppSyncVisibility` parameter (`GLOBAL` | `PRIVATE`) makes the AppSync API accessible only from inside the VPC. All processing Lambda functions (21 across 3 templates) are conditionally placed in customer VPC subnets with an HTTPS-only security group. Includes a separate VPC endpoint CloudFormation template (`scripts/vpc-endpoints.yaml`) with 16 interface endpoints (AppSync, Bedrock, SQS, DynamoDB, S3, Lambda, SSM, KMS, STS, Textract, and more) and per-endpoint creation flags to skip pre-existing endpoints. All features are off by default — existing deployments are completely unaffected. See `docs/deployment-private-network.md`.
+
+- **Enhanced Information Panels** — Added comprehensive help content to the Information (ⓘ) panel on every page in the Web UI. Each panel now includes a feature summary, list of key capabilities, and "Learn more" links to relevant docs-site documentation pages. Created new panels for 8 pages that previously had none (Pricing, Capacity Planning, Custom Models, Discovery, User Management, Test Studio), and enriched the existing 7 panels with fuller descriptions and documentation links.
+
+### Changed
+
+- **Removed Claude Sonnet 4:1m and Sonnet 4.5:1m model variants** — The 1M context window beta for Claude Sonnet 4 (`claude-sonnet-4-20250514-v1:0:1m`) and Sonnet 4.5 (`claude-sonnet-4-5-20250929-v1:0:1m`) is being retired effective April 30, 2026. These `:1m` model variants have been removed from all enum lists, UI dropdowns, quota code mappings, pricing, and documentation. Users needing 1M context windows should migrate to Claude Sonnet 4.6 (`claude-sonnet-4-6:1m`), where the 1M context window is generally available (GA).
+
+- **Default extraction model updated** to `us.anthropic.claude-sonnet-4-6` (was `us.anthropic.claude-sonnet-4-20250514-v1:0`) in system defaults.
+- **Error Analyzer system prompt improvements** — Added strategy for large batches, priority ordering, and error classification guidance.
+- **Error Analyzer settings** — Replaced duplicate inline cache with the shared cache from the common monitoring package.
+- **Shared CloudWatch Logs** — Extracted log search logic from the Error Analyzer into a reusable library in the common monitoring package.
+- **Enhanced CI/CD Automated Testing** — Enhanced GitLab CI/CD pipeline smoke tests with parallel test execution (8 tests running concurrently with fail-fast behavior), deeper verification (extraction fields, classification results, rule statistics), and added new tests: multi-document concurrent processing (Test 4), Test Studio evaluation with metrics validation (Test 7), agentic extraction with large table validation - 532 fund items (Test 8), single-document discovery (Test 9), and multi-document discovery (Test 10).
+
+### Fixed
+
+- **Fixed** agentic extraction crash (`TypeError: unsupported format string passed to NoneType.__format__`) when table parsing stats contain `None` values for `avg_confidence` or `parse_success_rate`.
+- **Fixed** agentic extraction `map_table_to_schema` producing phantom empty rows from non-matching tables (e.g. account_summary rows prepended to transaction_details), causing list item ordering to be shifted by several positions.
+- **Error Analyzer model selection** — The agent was using the Chat Companion's model instead of its own configured model.
+- **Error Analyzer log processing** — Fixed early termination that stopped searching after the first Lambda function with errors; now searches all relevant log groups.
+- **Error Analyzer log truncation** — Fixed handling of long log messages to trim them rather than skip them entirely.
+- **Reprocess from Document Details** — Fixed config version not being passed when reprocessing a document from the Document Details page (showed "N/A" instead of the selected version).
+- **Analytics Agent date awareness** — Injected current UTC date/time into the analytics agent system prompt so the LLM can correctly handle relative-time queries (e.g., "show me today's documents", "what was processed this week").
+
+## Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.5.6.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.5.6.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.5.6.yaml`
+
 ## [0.5.5]
 
 ### Added
@@ -150,11 +185,12 @@ SPDX-License-Identifier: MIT-0
   - Lambda FunctionName: `${StackName}-agentcore-analytics` → `${StackName}-agentcore-mcp-handler`
   - Source directory: `src/lambda/agentcore_analytics_processor/` → `src/lambda/agentcore_mcp_handler/`
 
-### Fixed
-
+- **Page images broken for document IDs containing parentheses** — Fixed issue where document page thumbnails and Visual Document Editor images failed to load (showing "Image load error") when the document ID contained parentheses (e.g., `lending_package(1).pdf`). Root cause: JavaScript's `encodeURIComponent()` does not encode `(`, `)`, `!`, `'`, `*` but AWS S3 SigV4 requires them to be percent-encoded in the canonical URI, causing signature mismatches. Added S3-safe URI encoding in `generate-s3-presigned-url.ts`.
+- **"View Rule Validation Summary" button not appearing in real-time** — Fixed two-part bug: (1) State machine `ResultPath` for rule validation steps wrote to `$.RuleValidationOrchestrationResult` instead of `$.Result`, so downstream steps lost the `rule_validation_result`. (2) `RuleValidationResultUri` was missing from `UPDATE_DOCUMENT` and `GET_DOCUMENT` GraphQL selection sets in `mutations.py`, so AppSync subscriptions never delivered the field to the UI. Button appeared only after page refresh.
 - **Page images broken for document IDs containing parentheses** — Fixed issue where document page thumbnails and Visual Document Editor images failed to load (showing "Image load error") when the document ID contained parentheses (e.g., `lending_package(1).pdf`). Root cause: JavaScript's `encodeURIComponent()` does not encode `(`, `)`, `!`, `'`, `*` but AWS S3 SigV4 requires them to be percent-encoded in the canonical URI, causing signature mismatches. Added S3-safe URI encoding in `generate-s3-presigned-url.ts`.
 - **"View Rule Validation Summary" button not appearing in real-time** — Fixed two-part bug: (1) State machine `ResultPath` for rule validation steps wrote to `$.RuleValidationOrchestrationResult` instead of `$.Result`, so downstream steps lost the `rule_validation_result`. (2) `RuleValidationResultUri` was missing from `UPDATE_DOCUMENT` and `GET_DOCUMENT` GraphQL selection sets in `mutations.py`, so AppSync subscriptions never delivered the field to the UI. Button appeared only after page refresh.
 - **Fillable PDF form fields missing from rendered page images** — Fixed bug where fillable PDF form fields (text inputs, checkboxes, radio buttons, dropdowns) were not rendered in page images, causing OCR and extraction to miss user-entered data. Two-part fix: (1) `PdfDocument.init_forms()` initializes the form rendering engine so PDFium can process form fields, and (2) `page.flatten()` merges form field appearances into page content before rendering — required because many fillable PDFs (especially government forms) lack pre-generated appearance streams. Applied in both Pattern 2 (`OcrService`) and Pattern 1 (`create_pdf_page_images`) PDF rendering pipelines. ([#240](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/240))
+- **CLI monitoring exits prematurely before documents start processing** — Fixed bug where `idp-cli process --monitor` would exit immediately after uploading documents, showing 0% completion even though documents were still queued. Root cause: The monitoring loop checked `all_complete` which returned `True` when no documents had completed or failed yet (0 == 0). Added 60-second grace period before allowing early exit, ensuring monitoring waits for documents to be picked up by the queue and start processing.
 - **Discovery subscription handler dropping errorMessage and other fields** — Fixed bug where the UI subscription handler did `{ ...oldJob, status: updatedJob.status }`, discarding all fields except status from real-time subscription updates. Error messages, discovered class names, and status messages were being sent by the backend but silently dropped by the UI. Now spreads all fields: `{ ...oldJob, ...updatedJob }`.
 - **Discovery processor S3 race condition causing NoSuchKey failures** — The discovery upload resolver sends the SQS message before the browser finishes uploading the file to S3 via presigned POST. Previously worked around with a hardcoded `time.sleep(30)`. Replaced with `_wait_for_s3_object()` that polls S3 with exponential backoff (2s initial, 10s max, 60s timeout), proceeding as soon as the file appears.
 - **CLI `--parameters` parsing for comma-delimited values** — Fixed `idp-cli deploy --parameters` to handle values containing commas (e.g., `ALBSubnetIds=subnet-a,subnet-b`). Previously the naive `split(",")` broke multi-value parameters. ([#245](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/pull/245))
@@ -180,6 +216,14 @@ SPDX-License-Identifier: MIT-0
 - **Documentation Site** — Added a hosted documentation site built with [Astro Starlight](https://starlight.astro.build/), auto-deployed to GitHub Pages. Provides full-text search (Pagefind), sidebar navigation organized by topic, dark/light mode, and a professional landing page — all sourced directly from the existing `docs/` markdown files with zero content duplication. Browse at [aws-solutions-library-samples.github.io/accelerated-intelligent-document-processing-on-aws](https://aws-solutions-library-samples.github.io/accelerated-intelligent-document-processing-on-aws/).
 
 - **Discovery accessible from CLI and SDK** — Discovery can now be run programmatically via the IDP SDK (`client.discovery.run()`) and CLI (`idp-cli discover`), enabling users with many document classes to automate schema generation without the Web UI. Supports both modes: without ground truth (exploratory) and with ground truth (optimized). ([#228](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/228))
+
+- **Custom Model Fine-tuning** — Improve extraction and classification accuracy for your specific document types by fine-tuning Amazon Nova models on your own labeled data — no ML expertise required. Select a Test Set with ground truth, choose a base model, and the system handles training data generation, Bedrock fine-tuning, and on-demand model deployment automatically. Custom models are billed pay-per-token with no idle costs. Available to Admin and Author roles. See [Custom Model Fine-tuning](./docs/custom-model-finetuning.md) for details.
+  - **Web UI**: New "Custom Models" page with job creation form (test set selector, base model selector, train/validation split), jobs table with status tracking, and detailed job view with deployment status and configuration version creation
+  - **CLI / SDK**: `idp-cli finetuning create`, `idp-cli finetuning status`, `idp-cli finetuning list`, `idp-cli finetuning delete` commands for programmatic job management
+  - **GraphQL API**: New `createFinetuningJob`, `getFinetuningJob`, `listFinetuningJobs`, `deleteFinetuningJob` mutations/queries with `FinetuningJob` type and real-time status fields
+  - **Step Functions Workflow**: 7-Lambda orchestration pipeline — list documents, parallel document processing (Distributed Map), merge training data, create Bedrock fine-tuning job, poll job status, deploy custom model via Provisioned Throughput
+  - **CloudFormation Resources**: `FinetuningDataBucket` (S3), `FinetuningStateMachine` (Step Functions), 7 Lambda functions with IAM roles, CloudWatch log groups, and Bedrock permissions for model customization and deployment
+  - **Shared Training Data Utilities**: Common module (`idp_common.model_finetuning.training_data_utils`) for extraction field parsing, baseline formatting, PDF-to-image conversion, and document image handling — shared across Lambda functions to eliminate code duplication
 
 ### Changed
 

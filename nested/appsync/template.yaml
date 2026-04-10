@@ -200,10 +200,27 @@ Parameters:
   IDPCommonBaseLayerArn:
     Type: String
     Description: ARN of IDP Common Base Layer
-  
+
   IDPCommonAgentsLayerArn:
     Type: String
     Description: ARN of IDP Common Agents Layer
+
+  # Private AppSync VPC config (req #2) — passed from main template
+  UsePrivateAppSync:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Set to "true" when AppSyncVisibility=PRIVATE — puts resolver Lambdas in VPC
+
+  LambdaSubnetIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: Subnet IDs for Lambda VpcConfig (required when UsePrivateAppSync=true)
+
+  LambdaSecurityGroupId:
+    Type: String
+    Default: ""
+    Description: Security group ID for Lambda VpcConfig (required when UsePrivateAppSync=true)
 
 Metadata:
   cfn-lint:
@@ -218,6 +235,7 @@ Conditions:
   ShouldCreateEvaluationBaselineBucket: !Equals [!Ref ShouldCreateEvaluationBaselineBucket, "true"]
   ShouldCreateReportingBucket: !Equals [!Ref ShouldCreateReportingBucket, "true"]
   HasTestExecutionAggregationFunction: !Not [!Equals [!Ref TestExecutionAggregationFunctionArn, ""]]
+  IsPrivateAppSync: !Equals [!Ref UsePrivateAppSync, "true"]
   HasMLflowLoggerFunction: !Not [!Equals [!Ref MLflowLoggerFunctionArn, ""]]
 
 Resources:
@@ -436,6 +454,12 @@ Resources:
       Description: Lambda function to abort document workflows via GraphQL API
       MemorySize: 512
       Timeout: 60
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
 
       Layers:
         - !Ref IDPCommonBaseLayerArn
@@ -1191,6 +1215,12 @@ Resources:
       Description: Lambda function to copy files to baseline bucket via GraphQL API
       MemorySize: 512
       Timeout: 300
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
 
       Layers:
         - !Ref IDPCommonBaseLayerArn
@@ -2475,6 +2505,12 @@ Resources:
       Description: Lambda function to process section changes via GraphQL API
       MemorySize: 512
       Timeout: 60
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
 
       Layers:
         - !Ref IDPCommonBaseLayerArn
@@ -2724,6 +2760,12 @@ Resources:
       Description: Lambda function to reprocess documents via GraphQL API
       MemorySize: 512
       Timeout: 60
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
 
       Layers:
         - !Ref IDPCommonBaseLayerArn
@@ -4058,6 +4100,13 @@ Resources:
           $util.qr($expNames.put("#result", "result"))
           $util.qr($expValues.put(":result", $util.dynamodb.toDynamoDB($ctx.args.result)))
           #set($updateExpression = "${updateExpression}, #result = :result")
+        #end
+
+        ## Set error (optional)
+        #if($ctx.args.error)
+          $util.qr($expNames.put("#error", "error"))
+          $util.qr($expValues.put(":error", $util.dynamodb.toDynamoDB($ctx.args.error)))
+          #set($updateExpression = "${updateExpression}, #error = :error")
         #end
 
         ## Set completedAt to current timestamp when status is COMPLETED or FAILED

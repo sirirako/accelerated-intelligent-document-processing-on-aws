@@ -117,6 +117,14 @@ Parameters:
     Type: String
     Description: "S3 bucket containing deployment artifacts"
 
+  ArtifactsBucketKmsKeyArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) KMS CMK ARN used to encrypt the artifacts bucket. When provided,
+      the DockerBuildRole and other CodeBuild roles receive kms:Decrypt permission.
+    AllowedPattern: "^(|arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/.+)$"
+
   ArtifactPrefix:
     Type: String
     Description: "S3 prefix for deployment artifacts"
@@ -158,6 +166,23 @@ Parameters:
     Type: String
     Default: ""
 
+  # Private AppSync VPC config (req #2)
+  UsePrivateAppSync:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Set to "true" when AppSyncVisibility=PRIVATE — puts processing Lambdas in VPC
+
+  LambdaSubnetIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: Subnet IDs for Lambda VpcConfig (required when UsePrivateAppSync=true)
+
+  LambdaSecurityGroupId:
+    Type: String
+    Default: ""
+    Description: Security group ID for Lambda VpcConfig (required when UsePrivateAppSync=true)
+
   EnableMLflow:
     Type: String
     Default: 'false'
@@ -182,7 +207,9 @@ Conditions:
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
   HasAppSyncApi: !Not [!Equals [!Ref AppSyncApiArn, ""]]
   IsECRImageScanningEnabled: !Equals [!Ref EnableECRImageScanning, "true"]
+  IsPrivateAppSync: !Equals [!Ref UsePrivateAppSync, "true"]
   IsMLflowEnabled: !Equals [!Ref EnableMLflow, "true"]
+  HasArtifactsBucketKmsKey: !Not [!Equals [!Ref ArtifactsBucketKmsKeyArn, ""]]
 
 Resources:
 
@@ -281,7 +308,6 @@ Resources:
                   - "global.amazon.nova-2-lite-v1:0:flex"
                   - "us.anthropic.claude-haiku-4-5-20251001-v1:0"
                   - "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
                   - "us.anthropic.claude-sonnet-4-6"
                   - "us.anthropic.claude-sonnet-4-6:1m"
                   - "us.anthropic.claude-opus-4-5-20251101-v1:0"
@@ -294,7 +320,6 @@ Resources:
                   - "eu.amazon.nova-2-lite-v1:0:flex"
                   - "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
                   - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
                   - "eu.anthropic.claude-sonnet-4-6"
                   - "eu.anthropic.claude-sonnet-4-6:1m"
                   - "eu.anthropic.claude-opus-4-5-20251101-v1:0"
@@ -308,7 +333,6 @@ Resources:
                   - "global.amazon.nova-2-lite-v1:0"
                   - "global.anthropic.claude-haiku-4-5-20251001-v1:0"
                   - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
                   - "global.anthropic.claude-sonnet-4-6:1m"
                   - "global.anthropic.claude-opus-4-5-20251101-v1:0"
                   - "global.anthropic.claude-opus-4-6-v1"
@@ -389,7 +413,6 @@ Resources:
                     - "us.amazon.nova-2-lite-v1:0"
                     - "us.anthropic.claude-haiku-4-5-20251001-v1:0"
                     - "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                    - "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
                     - "us.anthropic.claude-sonnet-4-6"
                     - "us.anthropic.claude-sonnet-4-6:1m"
                     - "us.anthropic.claude-opus-4-5-20251101-v1:0"
@@ -400,7 +423,6 @@ Resources:
                     - "eu.amazon.nova-2-lite-v1:0"
                     - "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
                     - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                    - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
                     - "eu.anthropic.claude-sonnet-4-6"
                     - "eu.anthropic.claude-sonnet-4-6:1m"
                     - "eu.anthropic.claude-opus-4-5-20251101-v1:0"
@@ -409,7 +431,6 @@ Resources:
                     - "global.amazon.nova-2-lite-v1:0"
                     - "global.anthropic.claude-haiku-4-5-20251001-v1:0"
                     - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                    - "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
                     - "global.anthropic.claude-sonnet-4-6"
                     - "global.anthropic.claude-sonnet-4-6:1m"
                     - "global.anthropic.claude-opus-4-5-20251101-v1:0"
@@ -673,7 +694,6 @@ Resources:
                   - "global.amazon.nova-2-lite-v1:0:flex"
                   - "us.anthropic.claude-haiku-4-5-20251001-v1:0"
                   - "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
                   - "us.anthropic.claude-sonnet-4-6"
                   - "us.anthropic.claude-sonnet-4-6:1m"
                   - "us.anthropic.claude-opus-4-5-20251101-v1:0"
@@ -686,7 +706,6 @@ Resources:
                   - "eu.amazon.nova-2-lite-v1:0:flex"
                   - "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
                   - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
                   - "eu.anthropic.claude-sonnet-4-6"
                   - "eu.anthropic.claude-sonnet-4-6:1m"
                   - "eu.anthropic.claude-opus-4-5-20251101-v1:0"
@@ -700,7 +719,6 @@ Resources:
                   - "global.amazon.nova-2-lite-v1:0"
                   - "global.anthropic.claude-haiku-4-5-20251001-v1:0"
                   - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
                   - "global.anthropic.claude-sonnet-4-6"
                   - "global.anthropic.claude-sonnet-4-6:1m"
                   - "global.anthropic.claude-opus-4-5-20251101-v1:0"
@@ -868,7 +886,6 @@ Resources:
                   - "global.amazon.nova-2-lite-v1:0:flex"
                   - "us.anthropic.claude-haiku-4-5-20251001-v1:0"
                   - "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
                   - "us.anthropic.claude-sonnet-4-6"
                   - "us.anthropic.claude-sonnet-4-6:1m"
                   - "us.anthropic.claude-opus-4-5-20251101-v1:0"
@@ -881,7 +898,6 @@ Resources:
                   - "eu.amazon.nova-2-lite-v1:0:flex"
                   - "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
                   - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
                   - "eu.anthropic.claude-sonnet-4-6"
                   - "eu.anthropic.claude-sonnet-4-6:1m"
                   - "eu.anthropic.claude-opus-4-5-20251101-v1:0"
@@ -895,7 +911,6 @@ Resources:
                   - "global.amazon.nova-2-lite-v1:0"
                   - "global.anthropic.claude-haiku-4-5-20251001-v1:0"
                   - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                  - "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
                   - "global.anthropic.claude-sonnet-4-6"
                   - "global.anthropic.claude-sonnet-4-6:1m"
                   - "global.anthropic.claude-opus-4-5-20251101-v1:0"
@@ -1038,7 +1053,6 @@ Resources:
                     "us.amazon.nova-2-lite-v1:0", "us.amazon.nova-2-lite-v1:0:priority", "us.amazon.nova-2-lite-v1:0:flex", "global.amazon.nova-2-lite-v1:0", "global.amazon.nova-2-lite-v1:0:priority", "global.amazon.nova-2-lite-v1:0:flex",
                     "us.anthropic.claude-haiku-4-5-20251001-v1:0",
                     "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                    "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                     "us.anthropic.claude-sonnet-4-6",
                     "us.anthropic.claude-sonnet-4-6:1m",
                     "us.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1049,7 +1063,6 @@ Resources:
                     "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-2-lite-v1:0:priority", "eu.amazon.nova-2-lite-v1:0:flex",
                     "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
                     "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                    "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                     "eu.anthropic.claude-sonnet-4-6",
                     "eu.anthropic.claude-sonnet-4-6:1m",
                     "eu.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1063,7 +1076,6 @@ Resources:
                     "global.amazon.nova-2-lite-v1:0",
                     "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                     "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                    "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                     "global.anthropic.claude-sonnet-4-6",
                     "global.anthropic.claude-sonnet-4-6:1m",
                     "global.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1133,7 +1145,6 @@ Resources:
                     "us.amazon.nova-2-lite-v1:0", "us.amazon.nova-2-lite-v1:0:priority", "us.amazon.nova-2-lite-v1:0:flex", "global.amazon.nova-2-lite-v1:0", "global.amazon.nova-2-lite-v1:0:priority", "global.amazon.nova-2-lite-v1:0:flex",
                     "us.anthropic.claude-haiku-4-5-20251001-v1:0",
                     "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                    "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                     "us.anthropic.claude-sonnet-4-6",
                     "us.anthropic.claude-sonnet-4-6:1m",
                     "us.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1144,7 +1155,6 @@ Resources:
                     "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-2-lite-v1:0:priority", "eu.amazon.nova-2-lite-v1:0:flex",
                     "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
                     "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                    "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                     "eu.anthropic.claude-sonnet-4-6",
                     "eu.anthropic.claude-sonnet-4-6:1m",
                     "eu.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1158,7 +1168,6 @@ Resources:
                     "global.amazon.nova-2-lite-v1:0",
                     "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                     "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                    "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                     "global.anthropic.claude-sonnet-4-6",
                     "global.anthropic.claude-sonnet-4-6:1m",
                     "global.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1224,7 +1233,6 @@ Resources:
                         "us.amazon.nova-2-lite-v1:0", "us.amazon.nova-2-lite-v1:0:priority", "us.amazon.nova-2-lite-v1:0:flex", "global.amazon.nova-2-lite-v1:0", "global.amazon.nova-2-lite-v1:0:priority", "global.amazon.nova-2-lite-v1:0:flex",
                         "us.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "us.anthropic.claude-sonnet-4-6",
                         "us.anthropic.claude-sonnet-4-6:1m",
                         "us.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1235,7 +1243,6 @@ Resources:
                         "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-2-lite-v1:0:priority", "eu.amazon.nova-2-lite-v1:0:flex",
                         "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "eu.anthropic.claude-sonnet-4-6",
                         "eu.anthropic.claude-sonnet-4-6:1m",
                         "eu.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1249,7 +1256,6 @@ Resources:
                         "global.amazon.nova-2-lite-v1:0",
                         "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "global.anthropic.claude-sonnet-4-6",
                         "global.anthropic.claude-sonnet-4-6:1m",
                         "global.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1310,7 +1316,6 @@ Resources:
                         "us.amazon.nova-2-lite-v1:0", "us.amazon.nova-2-lite-v1:0:priority", "us.amazon.nova-2-lite-v1:0:flex", "global.amazon.nova-2-lite-v1:0", "global.amazon.nova-2-lite-v1:0:priority", "global.amazon.nova-2-lite-v1:0:flex",
                         "us.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "us.anthropic.claude-sonnet-4-6",
                         "us.anthropic.claude-sonnet-4-6:1m",
                         "us.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1321,7 +1326,6 @@ Resources:
                         "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-2-lite-v1:0:priority", "eu.amazon.nova-2-lite-v1:0:flex",
                         "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "eu.anthropic.claude-sonnet-4-6",
                         "eu.anthropic.claude-sonnet-4-6:1m",
                         "eu.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1335,7 +1339,6 @@ Resources:
                         "global.amazon.nova-2-lite-v1:0",
                         "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "global.anthropic.claude-sonnet-4-6",
                         "global.anthropic.claude-sonnet-4-6:1m",
                         "global.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1394,7 +1397,6 @@ Resources:
                         "us.amazon.nova-2-lite-v1:0", "us.amazon.nova-2-lite-v1:0:priority", "us.amazon.nova-2-lite-v1:0:flex", "global.amazon.nova-2-lite-v1:0", "global.amazon.nova-2-lite-v1:0:priority", "global.amazon.nova-2-lite-v1:0:flex",
                         "us.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "us.anthropic.claude-sonnet-4-6",
                         "us.anthropic.claude-sonnet-4-6:1m",
                         "us.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1405,7 +1407,6 @@ Resources:
                         "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-2-lite-v1:0:priority", "eu.amazon.nova-2-lite-v1:0:flex",
                         "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "eu.anthropic.claude-sonnet-4-6",
                         "eu.anthropic.claude-sonnet-4-6:1m",
                         "eu.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1419,7 +1420,6 @@ Resources:
                         "global.amazon.nova-2-lite-v1:0",
                         "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "global.anthropic.claude-sonnet-4-6",
                         "global.anthropic.claude-sonnet-4-6:1m",
                         "global.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1478,7 +1478,6 @@ Resources:
                         "us.amazon.nova-2-lite-v1:0", "us.amazon.nova-2-lite-v1:0:priority", "us.amazon.nova-2-lite-v1:0:flex", "global.amazon.nova-2-lite-v1:0", "global.amazon.nova-2-lite-v1:0:priority", "global.amazon.nova-2-lite-v1:0:flex",
                         "us.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "us.anthropic.claude-sonnet-4-6",
                         "us.anthropic.claude-sonnet-4-6:1m",
                         "us.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1489,7 +1488,6 @@ Resources:
                         "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-2-lite-v1:0:priority", "eu.amazon.nova-2-lite-v1:0:flex",
                         "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "eu.anthropic.claude-sonnet-4-6",
                         "eu.anthropic.claude-sonnet-4-6:1m",
                         "eu.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1503,7 +1501,6 @@ Resources:
                         "global.amazon.nova-2-lite-v1:0",
                         "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "global.anthropic.claude-sonnet-4-6",
                         "global.anthropic.claude-sonnet-4-6:1m",
                         "global.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1659,7 +1656,6 @@ Resources:
                       - "global.amazon.nova-2-lite-v1:0:flex"
                       - "us.anthropic.claude-haiku-4-5-20251001-v1:0"
                       - "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                      - "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
                       - "us.anthropic.claude-sonnet-4-6"
                       - "us.anthropic.claude-sonnet-4-6:1m"
                       - "us.anthropic.claude-opus-4-5-20251101-v1:0"
@@ -1667,7 +1663,6 @@ Resources:
                       - "us.anthropic.claude-opus-4-6-v1:1m"
                       - "global.anthropic.claude-haiku-4-5-20251001-v1:0"
                       - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                      - "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
                       - "global.anthropic.claude-sonnet-4-6"
                       - "global.anthropic.claude-sonnet-4-6:1m"
                       - "global.anthropic.claude-opus-4-5-20251101-v1:0"
@@ -1680,7 +1675,6 @@ Resources:
                       - "eu.amazon.nova-2-lite-v1:0:flex"
                       - "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
                       - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
-                      - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m"
                       - "eu.anthropic.claude-sonnet-4-6"
                       - "eu.anthropic.claude-sonnet-4-6:1m"
                       - "eu.anthropic.claude-opus-4-5-20251101-v1:0"
@@ -1698,26 +1692,44 @@ Resources:
                 sectionLabel: Error Analysis Agent
                 description: Configuration for the error analysis agent
                 properties:
+                  model_id:
+                    type: string
+                    description: Bedrock model ID for the error analysis agent (requires tool use support)
+                    enum:
+                      - "us.amazon.nova-pro-v1:0"
+                      - "us.amazon.nova-premier-v1:0"
+                      - "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                      - "us.anthropic.claude-sonnet-4-6"
+                      - "us.anthropic.claude-sonnet-4-6:1m"
+                      - "us.anthropic.claude-opus-4-5-20251101-v1:0"
+                      - "us.anthropic.claude-opus-4-6-v1"
+                      - "us.anthropic.claude-opus-4-6-v1:1m"
+                      - "global.amazon.nova-pro-v1:0"
+                      - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                      - "global.anthropic.claude-sonnet-4-6"
+                      - "global.anthropic.claude-sonnet-4-6:1m"
+                      - "global.anthropic.claude-opus-4-5-20251101-v1:0"
+                      - "global.anthropic.claude-opus-4-6-v1"
+                      - "global.anthropic.claude-opus-4-6-v1:1m"
+                      - "eu.amazon.nova-pro-v1:0"
+                      - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                      - "eu.anthropic.claude-sonnet-4-6"
+                      - "eu.anthropic.claude-sonnet-4-6:1m"
+                      - "eu.anthropic.claude-opus-4-5-20251101-v1:0"
+                      - "eu.anthropic.claude-opus-4-6-v1"
+                      - "eu.anthropic.claude-opus-4-6-v1:1m"
+                    default: "us.anthropic.claude-sonnet-4-6"
+                    order: 0
+                  lookback_hours:
+                    type: integer
+                    description: How far back the error analyzer searches logs, traces, and execution history (in hours)
+                    default: 24
+                    order: 1
                   system_prompt:
                     type: string
                     format: textarea
                     description: System prompt for the error analysis agent
-                    order: 1
-                  parameters:
-                    type: object
-                    sectionLabel: Agent Parameters
-                    description: Configuration parameters for the agent
-                    properties:
-                      max_log_events:
-                        type: integer
-                        description: Maximum number of log events to analyze
-                        default: 100
-                        order: 0
-                      time_range_hours_default:
-                        type: integer
-                        description: Default time range in hours for analysis
-                        default: 24
-                        order: 2
+                    order: 2
           rule_validation:
             order: 8
             type: object
@@ -1774,7 +1786,6 @@ Resources:
                         "us.amazon.nova-2-lite-v1:0", "us.amazon.nova-2-lite-v1:0:priority", "us.amazon.nova-2-lite-v1:0:flex", "global.amazon.nova-2-lite-v1:0", "global.amazon.nova-2-lite-v1:0:priority", "global.amazon.nova-2-lite-v1:0:flex",
                         "us.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "us.anthropic.claude-sonnet-4-6",
                         "us.anthropic.claude-sonnet-4-6:1m",
                         "us.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1785,7 +1796,6 @@ Resources:
                         "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-2-lite-v1:0:priority", "eu.amazon.nova-2-lite-v1:0:flex",
                         "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "eu.anthropic.claude-sonnet-4-6",
                         "eu.anthropic.claude-sonnet-4-6:1m",
                         "eu.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1799,7 +1809,6 @@ Resources:
                         "global.amazon.nova-2-lite-v1:0",
                         "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "global.anthropic.claude-sonnet-4-6",
                         "global.anthropic.claude-sonnet-4-6:1m",
                         "global.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1859,7 +1868,6 @@ Resources:
                         "us.amazon.nova-2-lite-v1:0", "us.amazon.nova-2-lite-v1:0:priority", "us.amazon.nova-2-lite-v1:0:flex", "global.amazon.nova-2-lite-v1:0", "global.amazon.nova-2-lite-v1:0:priority", "global.amazon.nova-2-lite-v1:0:flex",
                         "us.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "us.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "us.anthropic.claude-sonnet-4-6",
                         "us.anthropic.claude-sonnet-4-6:1m",
                         "us.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1870,7 +1878,6 @@ Resources:
                         "eu.amazon.nova-2-lite-v1:0", "eu.amazon.nova-2-lite-v1:0:priority", "eu.amazon.nova-2-lite-v1:0:flex",
                         "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "eu.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "eu.anthropic.claude-sonnet-4-6",
                         "eu.anthropic.claude-sonnet-4-6:1m",
                         "eu.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -1884,7 +1891,6 @@ Resources:
                         "global.amazon.nova-2-lite-v1:0",
                         "global.anthropic.claude-haiku-4-5-20251001-v1:0",
                         "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-                        "global.anthropic.claude-sonnet-4-5-20250929-v1:0:1m",
                         "global.anthropic.claude-sonnet-4-6",
                         "global.anthropic.claude-sonnet-4-6:1m",
                         "global.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -2053,6 +2059,17 @@ Resources:
                 Action:
                   - kms:Decrypt
                   - kms:CreateGrant
+              # Grant kms:Decrypt on the artifacts bucket KMS key when provided
+              # This allows DockerBuildRole to download source code from a KMS-encrypted artifact bucket
+              - !If
+                - HasArtifactsBucketKmsKey
+                - Effect: Allow
+                  Action:
+                    - kms:Decrypt
+                    - kms:GenerateDataKey*
+                    - kms:DescribeKey
+                  Resource: !Ref ArtifactsBucketKmsKeyArn
+                - !Ref AWS::NoValue
 
   DockerBuildProject:
     Type: AWS::CodeBuild::Project
@@ -2310,8 +2327,8 @@ Resources:
       RetentionInDays: !Ref LogRetentionDays
   
   BDAProcessResultsFunction:
-    DependsOn: DockerBuildRun
     Type: AWS::Serverless::Function
+    DependsOn: DockerBuildRun
     Metadata:
       SkipBuild: True
       cfn_nag:
@@ -2319,7 +2336,7 @@ Resources:
           - id: W11
             reason: "Cloudwatch does not support resource-level permissions"
           - id: W89
-            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs"
+            reason: "This Lambda function does not require VPC access as it only interacts with AWS services via AWS APIs — placed in VPC when AppSyncVisibility=PRIVATE"
           - id: W92
             reason: "Function does not require concurrent execution limits as it is designed to scale based on demand"
     # checkov:skip=CKV_AWS_116: "DLQ not required for this function as StepFunctions will handle retries"
@@ -2335,6 +2352,12 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -2587,6 +2610,12 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -2639,6 +2668,8 @@ Resources:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
+                # Custom model deployments created via fine-tuning feature
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:custom-model-deployment/*"
             - Effect: Allow
               Action:
                 - aws-marketplace:Subscribe
@@ -2704,6 +2735,12 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -2765,6 +2802,8 @@ Resources:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
+                # Custom model deployments created via fine-tuning feature
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:custom-model-deployment/*"
                 - !If
                   - HasCustomClassificationModelARN
                   - !Ref CustomClassificationModelARN
@@ -2833,6 +2872,12 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -2895,6 +2940,8 @@ Resources:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
+                # Custom model deployments created via fine-tuning feature
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:custom-model-deployment/*"
                 - !If
                   - HasCustomExtractionModelARN
                   - !Ref CustomExtractionModelARN
@@ -2960,6 +3007,12 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -3016,6 +3069,8 @@ Resources:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
+                # Custom model deployments created via fine-tuning feature
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:custom-model-deployment/*"
             - Effect: Allow
               Action:
                 - aws-marketplace:Subscribe
@@ -3077,6 +3132,12 @@ Resources:
           - "index.handler"
       Timeout: 900
       MemorySize: 4096
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -3165,6 +3226,12 @@ Resources:
           - "index.handler"
       Timeout: 900
       MemorySize: 4096
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -3224,6 +3291,8 @@ Resources:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
+                # Custom model deployments created via fine-tuning feature
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:custom-model-deployment/*"
             - Effect: Allow
               Action:
                 - aws-marketplace:Subscribe
@@ -3286,6 +3355,12 @@ Resources:
       Timeout: 900
       MemorySize: 4096
       Tracing: Active
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
@@ -3344,6 +3419,8 @@ Resources:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
+                # Custom model deployments created via fine-tuning feature
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:custom-model-deployment/*"
             # Lambda invoke permission for SaveReportingFunction (in main template)
             - Effect: Allow
               Action:
@@ -3455,6 +3532,12 @@ Resources:
       # Runtime: python3.12
       Timeout: 900
       MemorySize: 4096
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
@@ -3514,6 +3597,8 @@ Resources:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
+                # Custom model deployments created via fine-tuning feature
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:custom-model-deployment/*"
             - !If
               - HasGuardrailConfig
               - Effect: Allow
@@ -3566,6 +3651,12 @@ Resources:
       # Runtime: python3.12
       Timeout: 900
       MemorySize: 4096
+      VpcConfig: !If
+        - IsPrivateAppSync
+        - SubnetIds: !Ref LambdaSubnetIds
+          SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           METRIC_NAMESPACE: !Ref StackName
