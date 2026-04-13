@@ -26,10 +26,8 @@ class TestStudioProcessor:
             stack_name: CloudFormation stack name
             region: AWS region (defaults to session region)
         """
-        self.stack_name = stack_name
-        self.region = region
         self.stack_info = StackInfo(stack_name=stack_name, region=region)
-        self.lambda_client = boto3.client("lambda", region_name=region)
+        self.lambda_client = boto3.client("lambda", region_name=self.stack_info.region)
         self._resolver_arn = None
 
     def _get_resolver_function_arn(self) -> str:
@@ -46,36 +44,10 @@ class TestStudioProcessor:
 
         try:
             # TestResultsResolverFunctionArn is in the nested AppSync stack, not main stack
-            cfn_client = boto3.client("cloudformation", region_name=self.region)
-
-            # Find nested AppSync stack
-            resources = cfn_client.describe_stack_resources(StackName=self.stack_name)
-            nested_stack_name = None
-
-            for resource in resources["StackResources"]:
-                if (
-                    resource["ResourceType"] == "AWS::CloudFormation::Stack"
-                    and "appsync" in resource["LogicalResourceId"].lower()
-                ):
-                    nested_stack_id = resource["PhysicalResourceId"]
-                    nested_stack_name = nested_stack_id.split("/")[1]
-                    break
-
-            if not nested_stack_name:
-                raise IDPResourceNotFoundError(
-                    f"AppSync nested stack not found in {self.stack_name}. "
-                    "Ensure Test Studio is enabled in your stack."
-                )
-
-            # Get TestResultsResolverFunctionArn from nested stack outputs
-            nested_response = cfn_client.describe_stacks(StackName=nested_stack_name)
-            nested_outputs = nested_response["Stacks"][0].get("Outputs", [])
-
-            resolver_arn = None
-            for output in nested_outputs:
-                if output["OutputKey"] == "TestResultsResolverFunctionArn":
-                    resolver_arn = output["OutputValue"]
-                    break
+            resolver_arn = self.stack_info.get_nested_stack_output(
+                nested_stack_pattern="appsync",
+                output_key="TestResultsResolverFunctionArn",
+            )
 
             if not resolver_arn:
                 raise IDPResourceNotFoundError(
@@ -87,6 +59,12 @@ class TestStudioProcessor:
             logger.debug(f"Found TestResultsResolverFunction: {resolver_arn}")
             return resolver_arn
 
+        except ValueError as e:
+            # Convert ValueError from get_nested_stack_output to IDPResourceNotFoundError
+            raise IDPResourceNotFoundError(
+                f"Failed to get TestResultsResolverFunction ARN: {e}. "
+                "Ensure Test Studio is enabled in your stack."
+            ) from e
         except Exception as e:
             raise IDPResourceNotFoundError(
                 f"Failed to get TestResultsResolverFunction ARN: {e}"

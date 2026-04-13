@@ -14,6 +14,28 @@ class TestingOperation:
 
     def __init__(self, client):
         self._client = client
+        self._processor = None
+        self._processor_cache = {}
+
+    def _get_processor(self, stack_name=None):
+        """Get or create a cached TestStudioProcessor.
+
+        Args:
+            stack_name: Optional stack name override
+
+        Returns:
+            TestStudioProcessor instance
+        """
+        name = stack_name or self._client._require_stack()
+        if name not in self._processor_cache:
+            from idp_sdk._core.test_studio_processor import TestStudioProcessor
+
+            self._processor_cache[name] = TestStudioProcessor(
+                stack_name=name, region=self._client._region
+            )
+        if not stack_name:
+            self._processor = self._processor_cache[name]
+        return self._processor_cache[name]
 
     def load_test(
         self,
@@ -101,15 +123,9 @@ class TestingOperation:
         Raises:
             IDPProcessingError: If retrieval fails or timeout occurs
         """
-        from idp_sdk._core.test_studio_processor import TestStudioProcessor
-
-        name = self._client._require_stack(stack_name)
+        processor = self._get_processor(stack_name)
 
         try:
-            processor = TestStudioProcessor(
-                stack_name=name, region=self._client._region
-            )
-
             result = processor.get_test_result(
                 test_run_id=test_run_id,
                 wait=wait,
@@ -155,15 +171,9 @@ class TestingOperation:
         Raises:
             IDPProcessingError: If comparison fails
         """
-        from idp_sdk._core.test_studio_processor import TestStudioProcessor
-
-        name = self._client._require_stack(stack_name)
+        processor = self._get_processor(stack_name)
 
         try:
-            processor = TestStudioProcessor(
-                stack_name=name, region=self._client._region
-            )
-
             result = processor.compare_test_runs(test_run_ids=test_run_ids)
 
             return TestComparisonResult(
