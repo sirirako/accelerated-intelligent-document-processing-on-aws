@@ -5,6 +5,10 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+### Added
+
+- **Configuration Version in Metering Database** — Added `config_version` field to the metering database to enable cost tracking and analytics per configuration version. The metering Glue table now includes a `config_version` column, and all metering Parquet files store the configuration version used for each document. Enables Athena queries to compare costs across different configurations, support A/B testing analytics, and optimize per-version costs. Documents without a config version default to "default".
+
 ## [0.5.6]
 
 ### Added
