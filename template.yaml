@@ -2860,6 +2860,8 @@ Resources:
               Type: int
             - Name: correctly_split_with_order
               Type: int
+            - Name: config_version
+              Type: string
           Compressed: true
         PartitionKeys:
           - Name: date
@@ -2924,6 +2926,8 @@ Resources:
               Type: double
             - Name: evaluation_date
               Type: timestamp
+            - Name: config_version
+              Type: string
           Compressed: true
         PartitionKeys:
           - Name: date
@@ -2994,6 +2998,8 @@ Resources:
               Type: double
             - Name: evaluation_date
               Type: timestamp
+            - Name: config_version
+              Type: string
           Compressed: true
         PartitionKeys:
           - Name: date
