@@ -415,6 +415,7 @@ def get_dynamic_document_sections_description(
                 "  - `timestamp` (timestamp): When the document was processed\n"
             )
             description += "  - `date` (string): Partition key in YYYY-MM-DD format\n"
+            description += "  - `config_version` (string): Configuration version used for processing\n"
             description += (
                 "  - Various `metadata.*` columns (strings): Processing metadata\n"
             )
@@ -494,6 +495,16 @@ FROM document_sections_w2 ds
 JOIN metering m ON ds."document_id" = m."document_id"
 WHERE ds."document_class.type" = 'W2'
 GROUP BY ds."section_classification", ds."document_class.type"
+
+-- CORRECT: Filter by configuration version
+SELECT "document_id",
+       "document_class.type",
+       "config_version",
+       "timestamp"
+FROM document_sections_w2
+WHERE "config_version" = 'fake_w2'
+AND date >= '2024-01-01'
+ORDER BY "timestamp" DESC
 ```
 
 **This schema information is generated from your actual configuration and shows exactly what tables and columns exist in your deployment.**
@@ -801,12 +812,13 @@ def _get_specific_document_sections_table_info(
 
 #### Standard Columns (present in all document_sections tables):
 - `"document_id"` (string): Unique identifier for the document
-- `"section_id"` (string): Unique identifier for the section  
+- `"section_id"` (string): Unique identifier for the section
 - `"section_classification"` (string): Type/class of the document section
 - `"section_confidence"` (string): Confidence score for classification
 - `"explainability_info"` (string): JSON with extraction field confidence scores and geometry
 - `"timestamp"` (timestamp): When document was processed in YYYY-MM-DD hh:mm:ss.ms format
 - `"date"` (string): Partition key in YYYY-MM-DD format
+- `"config_version"` (string): Configuration version used for processing
 
 #### Columns specific to this table:
 """
