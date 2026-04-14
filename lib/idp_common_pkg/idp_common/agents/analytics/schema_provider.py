@@ -197,7 +197,7 @@ def get_evaluation_tables_description() -> str:
 - Use `document_id` to join between all three tables
 - Use `section_id` and `document_id` to join section and attribute evaluations
 - Join with metering table on `document_id` for cost vs accuracy analysis
-- **To get config_version**: JOIN with metering table using DISTINCT subquery (each document has multiple metering rows)
+- `config_version` is available directly in all evaluation tables (no join needed)
 
 ### Sample Queries:
 ```sql
@@ -230,37 +230,31 @@ FROM section_evaluations se
 JOIN metering m ON se."document_id" = m."document_id"
 GROUP BY se."section_type"
 
--- Get config_version for evaluation analysis (using DISTINCT to avoid duplicates)
-SELECT e."document_id",
-       e."accuracy",
-       e."f1_score",
-       m."config_version"
-FROM document_evaluations e
-JOIN (SELECT DISTINCT "document_id", "config_version" FROM metering) m
-  ON e."document_id" = m."document_id"
-WHERE m."config_version" = 'your-config-version'
+-- Filter by config_version (available directly in evaluation tables)
+SELECT "document_id",
+       "accuracy",
+       "f1_score",
+       "config_version"
+FROM document_evaluations
+WHERE "config_version" = 'your-config-version'
 
 -- Compare accuracy across configuration versions
-SELECT m."config_version",
-       AVG(e."accuracy") as avg_accuracy,
-       AVG(e."f1_score") as avg_f1_score,
-       COUNT(DISTINCT e."document_id") as document_count
-FROM document_evaluations e
-JOIN (SELECT DISTINCT "document_id", "config_version" FROM metering) m
-  ON e."document_id" = m."document_id"
-GROUP BY m."config_version"
+SELECT "config_version",
+       AVG("accuracy") as avg_accuracy,
+       AVG("f1_score") as avg_f1_score,
+       COUNT(DISTINCT "document_id") as document_count
+FROM document_evaluations
+GROUP BY "config_version"
 ORDER BY avg_f1_score DESC
 
 -- Cost vs quality analysis by config version
-SELECT m."config_version",
+SELECT e."config_version",
        AVG(e."weighted_overall_score") as avg_quality_score,
-       SUM(costs."estimated_cost") as total_cost,
-       SUM(costs."estimated_cost") / AVG(e."weighted_overall_score") as cost_per_quality_point
+       SUM(m."estimated_cost") as total_cost,
+       SUM(m."estimated_cost") / AVG(e."weighted_overall_score") as cost_per_quality_point
 FROM document_evaluations e
-JOIN (SELECT DISTINCT "document_id", "config_version" FROM metering) m
-  ON e."document_id" = m."document_id"
-JOIN metering costs ON e."document_id" = costs."document_id"
-GROUP BY m."config_version"
+JOIN metering m ON e."document_id" = m."document_id"
+GROUP BY e."config_version"
 ORDER BY avg_quality_score DESC
 ```
 """
