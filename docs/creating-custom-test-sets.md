@@ -1,3 +1,5 @@
+
+
 ---
 title: "Creating Custom Test Sets with Ground Truth"
 ---
@@ -15,6 +17,10 @@ This guide walks through the end-to-end workflow for creating a custom test set 
 - **Custom model training** — Provide labeled training data for fine-tuning (see [Custom Model Fine-Tuning](./custom-model-finetuning.md))
 
 > **Pre-deployed test sets**: The accelerator ships with four ready-to-use benchmark datasets. If you just want to run tests against those, see [Test Studio — Pre-Deployed Test Sets](./test-studio.md#pre-deployed-test-sets). This guide is for creating your **own** test set from your own documents.
+
+
+https://github.com/user-attachments/assets/d5e0d590-ce8b-4e14-b2b7-8bde31e57ec2
+
 
 ## Workflow Overview
 
