@@ -66,6 +66,37 @@ DEFAULT_INITIAL_BACKOFF = 2  # seconds
 DEFAULT_MAX_BACKOFF = 300  # 5 minutes
 
 
+# Claude 4.7+ model base names that don't support temperature/top_k/top_p parameters.
+# These parameters are deprecated for these models and cause runtime errors.
+# Add new model base names here as needed (e.g., sonnet-4-7, haiku-4-7).
+_CLAUDE_4_7_BASE_NAMES = {
+    "anthropic.claude-opus-4-7",
+}
+
+
+def _is_claude_4_7_model(model_id: str) -> bool:
+    """Check if a model is a Claude 4.7+ variant that doesn't support temperature/top_k/top_p.
+
+    Handles region prefixes (us., eu., global.) and :1m suffix automatically.
+
+    Args:
+        model_id: Bedrock model ID (e.g., 'us.anthropic.claude-opus-4-7:1m')
+
+    Returns:
+        True if the model is a Claude 4.7+ variant
+    """
+    # Strip region prefix (us., eu., global.)
+    parts = model_id.split(".", 1)
+    if len(parts) == 2 and parts[0] in ("us", "eu", "global"):
+        base = parts[1]
+    else:
+        base = model_id
+    # Strip :1m suffix
+    if base.endswith(":1m"):
+        base = base[:-3]
+    return base in _CLAUDE_4_7_BASE_NAMES
+
+
 # Base model names that support cachePoint (without region prefix)
 # Used to check inference profiles by resolving their underlying foundation model
 _CACHEPOINT_BASE_MODELS = set()
@@ -100,8 +131,8 @@ CACHEPOINT_SUPPORTED_MODELS = [
     "eu.anthropic.claude-opus-4-5-20251101-v1:0",
     "eu.anthropic.claude-opus-4-6-v1",
     "eu.anthropic.claude-opus-4-6-v1:1m",
-    "eu.anthropic.claude-opus-4-7-v1",
-    "eu.anthropic.claude-opus-4-7-v1:1m",
+    "eu.anthropic.claude-opus-4-7",
+    "eu.anthropic.claude-opus-4-7:1m",
     "eu.amazon.nova-lite-v1:0",
     "eu.amazon.nova-pro-v1:0",
     "eu.amazon.nova-2-lite-v1:0",
@@ -117,8 +148,8 @@ CACHEPOINT_SUPPORTED_MODELS = [
     "global.anthropic.claude-opus-4-5-20251101-v1:0",
     "global.anthropic.claude-opus-4-6-v1",
     "global.anthropic.claude-opus-4-6-v1:1m",
-    "global.anthropic.claude-opus-4-7-v1",
-    "global.anthropic.claude-opus-4-7-v1:1m",
+    "global.anthropic.claude-opus-4-7",
+    "global.anthropic.claude-opus-4-7:1m",
 ]
 
 # Build set of base model names (without region/tier prefixes) for inference profile resolution.
@@ -541,33 +572,42 @@ class BedrockClient:
                 )
                 temperature = 0.0
 
-        # Initialize inference config with temperature
-        inference_config = {"temperature": temperature}
+        # Claude 4.7+ models don't support temperature, top_k, or top_p parameters
+        is_claude_4_7 = _is_claude_4_7_model(model_id)
+        if is_claude_4_7:
+            inference_config = {}
+            logger.info(
+                f"Skipping temperature/top_p for Claude 4.7+ model: {model_id} "
+                "(these parameters are deprecated for this model)"
+            )
+        else:
+            # Initialize inference config with temperature
+            inference_config = {"temperature": temperature}
 
-        # Handle top_p parameter - use top_p if it's positive, otherwise use temperature
-        # Some models don't allow both temperature and top_p to be specified
-        # This allows temperature=0.0 for deterministic output (recommended by Anthropic)
-        if top_p is not None:
-            # Convert top_p to float if it's a string
-            if isinstance(top_p, str):
-                try:
-                    top_p = float(top_p)
-                except ValueError:
-                    logger.warning(
-                        f"Failed to convert top_p value '{top_p}' to float. Not using top_p."
+            # Handle top_p parameter - use top_p if it's positive, otherwise use temperature
+            # Some models don't allow both temperature and top_p to be specified
+            # This allows temperature=0.0 for deterministic output (recommended by Anthropic)
+            if top_p is not None:
+                # Convert top_p to float if it's a string
+                if isinstance(top_p, str):
+                    try:
+                        top_p = float(top_p)
+                    except ValueError:
+                        logger.warning(
+                            f"Failed to convert top_p value '{top_p}' to float. Not using top_p."
+                        )
+                        top_p = None
+
+                # Only use top_p if it's positive (greater than 0)
+                if top_p is not None and top_p > 0:
+                    inference_config["topP"] = top_p
+                    # Remove temperature when using top_p to avoid conflicts
+                    del inference_config["temperature"]
+                    logger.debug(f"Using top_p={top_p} for inference (temperature ignored)")
+                else:
+                    logger.debug(
+                        f"Using temperature={temperature} for inference (top_p is 0 or None)"
                     )
-                    top_p = None
-
-            # Only use top_p if it's positive (greater than 0)
-            if top_p is not None and top_p > 0:
-                inference_config["topP"] = top_p
-                # Remove temperature when using top_p to avoid conflicts
-                del inference_config["temperature"]
-                logger.debug(f"Using top_p={top_p} for inference (temperature ignored)")
-            else:
-                logger.debug(
-                    f"Using temperature={temperature} for inference (top_p is 0 or None)"
-                )
 
         # Handle max_tokens parameter
         if max_tokens is not None:
@@ -603,8 +643,14 @@ class BedrockClient:
         # Handle model-specific parameters
         if "anthropic" in model_id.lower():
             # Add parameters to additionalModelRequestFields for Claude (snake_case)
-            if top_k is not None:
+            # Skip top_k for Claude 4.7+ models (deprecated parameter)
+            if top_k is not None and not is_claude_4_7:
                 additional_model_fields["top_k"] = int(top_k)
+            elif top_k is not None and is_claude_4_7:
+                logger.info(
+                    f"Skipping top_k for Claude 4.7+ model: {model_id} "
+                    "(this parameter is deprecated for this model)"
+                )
 
             if max_tokens is not None:
                 additional_model_fields["max_tokens"] = max_tokens
