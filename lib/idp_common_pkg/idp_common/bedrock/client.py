@@ -78,6 +78,8 @@ CACHEPOINT_SUPPORTED_MODELS = [
     "us.anthropic.claude-opus-4-5-20251101-v1:0",
     "us.anthropic.claude-opus-4-6-v1",
     "us.anthropic.claude-opus-4-6-v1:1m",
+    "us.anthropic.claude-opus-4-7-v1",
+    "us.anthropic.claude-opus-4-7-v1:1m",
     "us.anthropic.claude-opus-4-1-20250805-v1:0",
     "us.anthropic.claude-opus-4-20250514-v1:0",
     "us.anthropic.claude-sonnet-4-20250514-v1:0",
@@ -98,6 +100,8 @@ CACHEPOINT_SUPPORTED_MODELS = [
     "eu.anthropic.claude-opus-4-5-20251101-v1:0",
     "eu.anthropic.claude-opus-4-6-v1",
     "eu.anthropic.claude-opus-4-6-v1:1m",
+    "eu.anthropic.claude-opus-4-7-v1",
+    "eu.anthropic.claude-opus-4-7-v1:1m",
     "eu.amazon.nova-lite-v1:0",
     "eu.amazon.nova-pro-v1:0",
     "eu.amazon.nova-2-lite-v1:0",
@@ -113,6 +117,8 @@ CACHEPOINT_SUPPORTED_MODELS = [
     "global.anthropic.claude-opus-4-5-20251101-v1:0",
     "global.anthropic.claude-opus-4-6-v1",
     "global.anthropic.claude-opus-4-6-v1:1m",
+    "global.anthropic.claude-opus-4-7-v1",
+    "global.anthropic.claude-opus-4-7-v1:1m",
 ]
 
 # Build set of base model names (without region/tier prefixes) for inference profile resolution.
