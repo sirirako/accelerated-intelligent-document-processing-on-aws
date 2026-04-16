@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT-0
 
 ### Added
 
-- **Claude Opus 4.7 Model Support** — Added `anthropic.claude-opus-4-7-v1` (and `:1m` context variant) across all `us`, `eu`, and `global` inference profiles. Includes unified template enums, UI model dropdowns, cachepoint support, EU region mappings, pricing entries, and documentation updates.
+- **Claude Opus 4.7 Model Support** — Added `anthropic.claude-opus-4-7` (and `:1m` context variant) across all `us`, `eu`, and `global` inference profiles. Includes unified template enums, UI model dropdowns, cachepoint support, EU region mappings, pricing entries, and documentation updates.
 
 - **Creating Custom Test Sets Guide** — New tutorial-style documentation (`docs/creating-custom-test-sets.md`) walking through the end-to-end workflow for creating custom test sets with ground truth data from scratch: configure for max accuracy, discover document schema, process samples, review/edit predictions, save evaluation baselines, register test sets, and run comparative test executions to evaluate cost vs. accuracy tradeoffs. Referenced from `docs/demo-videos.md`.
   
