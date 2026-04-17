@@ -38,6 +38,7 @@ export default defineConfig({
             { label: "Architecture", slug: "architecture" },
             { label: "Deployment", slug: "deployment" },
             { label: "ALB Hosting", slug: "alb-hosting" },
+            { label: "Private Network Deployment", slug: "deployment-private-network" },
             { label: "Configuration", slug: "configuration" },
             {
               label: "Configuration Versions",
@@ -98,6 +99,7 @@ export default defineConfig({
               slug: "evaluation-enhanced-reporting",
             },
             { label: "Test Studio", slug: "test-studio" },
+            { label: "Creating Custom Test Sets", slug: "creating-custom-test-sets" },
             { label: "MLflow Experiment Tracking", slug: "mlflow-integration" },
           ],
         },
@@ -125,6 +127,7 @@ export default defineConfig({
               slug: "lambda-hook-inference",
             },
             { label: "Nova Fine-Tuning", slug: "nova-finetuning" },
+            { label: "Custom Model Fine-Tuning", slug: "custom-model-finetuning" },
             { label: "Service Tiers", slug: "service-tiers" },
           ],
         },
@@ -152,6 +155,7 @@ export default defineConfig({
               label: "Role-Based Access Control (RBAC)",
               slug: "rbac",
             },
+            { label: "External Identity Provider", slug: "external-idp" },
             { label: "GovCloud Deployment", slug: "govcloud-deployment" },
             {
               label: "EU Region Model Support",
