@@ -317,6 +317,8 @@ SPDX-License-Identifier: MIT-0
 
 - **Configuration Page Error Display** — Fixed `[object Object]` error message when configuration loading fails (e.g., due to Lambda throttling) by properly extracting error messages from Amplify GraphQL error responses.
 
+- **OCR Retry Logic** — Fixed broken retry chain between OCR Lambda and Step Functions that caused document processing failures under Textract throttling. The OCR Lambda was catching `ProvisionedThroughputExceededException` and re-raising it as a generic `Exception`, which Step Functions didn't match for retries. Now propagates a `ThrottlingException` that Step Functions can retry on. Also added retry-safe page skipping so retries only re-process failed pages instead of re-OCRing the entire document, and increased OCR step retry attempts from 2 to 6 with longer backoff intervals. ([#195](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/195))
+
 ### Templates
    - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.5.1.yaml`
    - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.5.1.yaml`
