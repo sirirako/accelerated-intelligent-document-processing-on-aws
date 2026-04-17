@@ -164,6 +164,8 @@ You don't have to create your entire test set in one go. As you process and revi
 
 Files without matching baseline data are automatically excluded, so you can use a broad pattern — only documents you've reviewed and saved as evaluation baselines will be added. The test set's file count is updated automatically.
 
+https://github.com/user-attachments/assets/bcd18e62-4795-44ea-9554-637062fd21d7
+
 ## Next Steps
 
 - **Improve accuracy**: Use field-level metrics to refine your document class descriptions, attribute prompts, and few-shot examples. See [IDP Configuration Best Practices](./idp-configuration-best-practices.md) and [Few-Shot Examples](./few-shot-examples.md).
