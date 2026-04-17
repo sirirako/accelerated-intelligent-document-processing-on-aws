@@ -5,9 +5,45 @@ SPDX-License-Identifier: MIT-0
 
 ## [Unreleased]
 
+## [0.5.7]
+
+### Added
+
+- **Claude Opus 4.7 Model Support** — Added `anthropic.claude-opus-4-7` (and `:1m` context variant) across all `us`, `eu`, and `global` inference profiles. Includes unified template enums, UI model dropdowns, cachepoint support, EU region mappings, pricing entries, and documentation updates.
+
+- **Add Documents to Existing Test Sets** — New "Add Documents" action in Test Studio allows incrementally adding documents (with ground truth) to an existing test set. Supports both "From Existing Files" (S3 pattern) and "From Upload" (ZIP) sources. Key features:
+  - **Automatic baseline filtering**: When using the Input Bucket, files without matching baseline/ground truth data are automatically excluded rather than failing the operation, with a result message reporting counts (e.g., "Added 8 of 12 files (4 excluded - no baseline data)")
+  - **Time filter**: Optional "Modified after" filter with presets (Last 1 hour, 4 hours, 24 hours, 7 days, 30 days) and a custom date/time picker, available in both new test set creation and add-documents flows
+  - **Idempotent**: Re-adding an existing document overwrites it; file counts are always recounted from S3 for accuracy
+  - **UPDATING status**: Test sets show a transient "Updating..." badge while documents are being added
+
+- **Creating Custom Test Sets Guide** — New tutorial-style documentation (`docs/creating-custom-test-sets.md`) walking through the end-to-end workflow for creating custom test sets with ground truth data from scratch: configure for max accuracy, discover document schema, process samples, review/edit predictions, save evaluation baselines, register test sets, and run comparative test executions to evaluate cost vs. accuracy tradeoffs. Referenced from `docs/demo-videos.md`.
+  
+- **Configuration Version Tracking Across All Analytics Tables** — Added `config_version` field to all analytics tables (metering, document_evaluations, section_evaluations, attribute_evaluations, and document_sections_*) to enable comprehensive tracking and analytics per configuration version. All Glue tables now include a `config_version` column, and all Parquet files store the configuration version used for each document. Enables direct filtering and comparison queries without complex JOINs - users can query "show me W2 documents processed with config v2.1" or "compare accuracy for configs v2.0 vs v2.1" with simple WHERE clauses. Supports cost analysis, A/B testing, quality comparison, and data lineage tracking. Documents without a config version default to "default".
+
+### Fixed
+
+- **Incorrect global inference profile IDs for Knowledge Base model** — Fixed `global.anthropic.claude-haiku-4-5-v1:0` and `global.anthropic.claude-sonnet-4-5-v1:0` in the `KnowledgeBaseModelId` CloudFormation parameter dropdown. These shortened IDs were invalid and caused `ResourceNotFoundException` when used. Corrected to `global.anthropic.claude-haiku-4-5-20251001-v1:0` and `global.anthropic.claude-sonnet-4-5-20250929-v1:0` per the [AWS Bedrock inference profiles documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html). ([#286](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/286))
+
+- **Application Inference Profile IAM permissions** — Added `application-inference-profile/*` ARN pattern to `bedrock:InvokeModel` IAM policies across all templates (root, appsync, multi-doc-discovery, and sample templates). PR #236 previously fixed only `patterns/unified/template.yaml`; this completes the fix for all Lambda execution roles. Also added `bedrock:GetInferenceProfile` read permission to support prompt caching resolution. ([#272](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/272))
+
+- **Prompt caching with application inference profiles** — Fixed `<<CACHEPOINT>>` tags being stripped when using Bedrock application inference profile ARNs as model IDs. The cachepoint check now resolves inference profile ARNs to their underlying foundation model via the `GetInferenceProfile` API, enabling prompt caching for profiles that wrap supported models (Claude, Nova). Results are cached to avoid repeated API calls, with graceful fallback if the API call fails. ([#272](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/272))
+
+- **Chat with document uses hardcoded US model ID** — Fixed "Chat with document" feature failing in non-US regions (e.g., `eu-west-1`) with "The provided model identifier is invalid" error. The backend Lambda's `get_summarization_model()` fallback was hardcoded to `us.amazon.nova-pro-v1:0`. Added `get_default_model_for_region()` helper that selects the appropriate region-prefixed model (`eu.amazon.nova-pro-v1:0` for EU, `us.amazon.nova-pro-v1:0` for US) based on `AWS_REGION`. ([#282](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/282))
+
+- **BDA activation modal checking wrong version config** — Fixed the "Activate Version" flow incorrectly checking the *currently selected* version's `use_bda` flag (`mergedConfig?.use_bda`) instead of the *target* version being activated. This caused the BDA sync confirmation modal to appear (or not appear) based on the wrong version's configuration. The fix fetches and inspects the target version's actual config before deciding whether to show the modal. Also added a `fetchVersions()` refresh after BDA sync operations to keep BDA project ARN metadata up to date in the versions list.
+
+## Templates
+   - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.5.7.yaml`
+   - us-east-1: `https://s3.us-east-1.amazonaws.com/aws-ml-blog-us-east-1/artifacts/genai-idp/idp-main_0.5.7.yaml`
+   - eu-central-1: `https://s3.eu-central-1.amazonaws.com/aws-ml-blog-eu-central-1/artifacts/genai-idp/idp-main_0.5.7.yaml`
+  
+  
 ## [0.5.6]
 
 ### Added
+
+- **Test Studio CLI Commands** — `idp-cli test-result` to retrieve test results with automatic evaluation triggering and `--wait`/`--output-dir` options, and `idp-cli test-compare` to compare multiple test runs with JSON/CSV export. See `docs/idp-cli.md`.
 
 - **Custom Model Fine-Tuning** — Fine-tune Amazon Nova 2 models (Lite and Pro) for document classification and extraction using your own labeled Test Sets. The end-to-end workflow — validate data, generate training data, train via Bedrock, and deploy an on-demand custom model endpoint — is driven from a new **Custom Models** page in the Web UI. Custom models can then be selected in any configuration version for classification and/or extraction. Available to Admin and Author roles. **Note:** currently requires deployment in `us-east-1`. See `docs/custom-model-finetuning.md`.
   
@@ -16,7 +52,7 @@ SPDX-License-Identifier: MIT-0
 - **Private Network Deployment** — Deploy the IDP Accelerator in fully private / air-gapped environments. New `AppSyncVisibility` parameter (`GLOBAL` | `PRIVATE`) makes the AppSync API accessible only from inside the VPC. All processing Lambda functions (21 across 3 templates) are conditionally placed in customer VPC subnets with an HTTPS-only security group. Includes a separate VPC endpoint CloudFormation template (`scripts/vpc-endpoints.yaml`) with 16 interface endpoints (AppSync, Bedrock, SQS, DynamoDB, S3, Lambda, SSM, KMS, STS, Textract, and more) and per-endpoint creation flags to skip pre-existing endpoints. All features are off by default — existing deployments are completely unaffected. See `docs/deployment-private-network.md`.
 
 - **Enhanced Information Panels** — Added comprehensive help content to the Information (ⓘ) panel on every page in the Web UI. Each panel now includes a feature summary, list of key capabilities, and "Learn more" links to relevant docs-site documentation pages. Created new panels for 8 pages that previously had none (Pricing, Capacity Planning, Custom Models, Discovery, User Management, Test Studio), and enriched the existing 7 panels with fuller descriptions and documentation links.
-
+  
 ### Changed
 
 - **Removed Claude Sonnet 4:1m and Sonnet 4.5:1m model variants** — The 1M context window beta for Claude Sonnet 4 (`claude-sonnet-4-20250514-v1:0:1m`) and Sonnet 4.5 (`claude-sonnet-4-5-20250929-v1:0:1m`) is being retired effective April 30, 2026. These `:1m` model variants have been removed from all enum lists, UI dropdowns, quota code mappings, pricing, and documentation. Users needing 1M context windows should migrate to Claude Sonnet 4.6 (`claude-sonnet-4-6:1m`), where the 1M context window is generally available (GA).
@@ -289,6 +325,8 @@ SPDX-License-Identifier: MIT-0
 - **AgentCore Gateway Manager** — Fixed the issue where gateway was not getting deleted once stack is deleted.
 
 - **Configuration Page Error Display** — Fixed `[object Object]` error message when configuration loading fails (e.g., due to Lambda throttling) by properly extracting error messages from Amplify GraphQL error responses.
+
+- **OCR Retry Logic** — Fixed broken retry chain between OCR Lambda and Step Functions that caused document processing failures under Textract throttling. The OCR Lambda was catching `ProvisionedThroughputExceededException` and re-raising it as a generic `Exception`, which Step Functions didn't match for retries. Now propagates a `ThrottlingException` that Step Functions can retry on. Also added retry-safe page skipping so retries only re-process failed pages instead of re-OCRing the entire document, and increased OCR step retry attempts from 2 to 6 with longer backoff intervals. ([#195](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws/issues/195))
 
 ### Templates
    - us-west-2: `https://s3.us-west-2.amazonaws.com/aws-ml-blog-us-west-2/artifacts/genai-idp/idp-main_0.5.1.yaml`

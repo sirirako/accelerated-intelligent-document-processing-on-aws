@@ -66,6 +66,41 @@ DEFAULT_INITIAL_BACKOFF = 2  # seconds
 DEFAULT_MAX_BACKOFF = 300  # 5 minutes
 
 
+# Claude 4.7+ model base names that don't support temperature/top_k/top_p parameters.
+# These parameters are deprecated for these models and cause runtime errors.
+# Add new model base names here as needed (e.g., sonnet-4-7, haiku-4-7).
+_CLAUDE_4_7_BASE_NAMES = {
+    "anthropic.claude-opus-4-7",
+}
+
+
+def _is_claude_4_7_model(model_id: str) -> bool:
+    """Check if a model is a Claude 4.7+ variant that doesn't support temperature/top_k/top_p.
+
+    Handles region prefixes (us., eu., global.) and :1m suffix automatically.
+
+    Args:
+        model_id: Bedrock model ID (e.g., 'us.anthropic.claude-opus-4-7:1m')
+
+    Returns:
+        True if the model is a Claude 4.7+ variant
+    """
+    # Strip region prefix (us., eu., global.)
+    parts = model_id.split(".", 1)
+    if len(parts) == 2 and parts[0] in ("us", "eu", "global"):
+        base = parts[1]
+    else:
+        base = model_id
+    # Strip :1m suffix
+    if base.endswith(":1m"):
+        base = base[:-3]
+    return base in _CLAUDE_4_7_BASE_NAMES
+
+
+# Base model names that support cachePoint (without region prefix)
+# Used to check inference profiles by resolving their underlying foundation model
+_CACHEPOINT_BASE_MODELS = set()
+
 # Models that support cachePoint functionality
 CACHEPOINT_SUPPORTED_MODELS = [
     "us.anthropic.claude-3-5-haiku-20241022-v1:0",
@@ -74,6 +109,8 @@ CACHEPOINT_SUPPORTED_MODELS = [
     "us.anthropic.claude-opus-4-5-20251101-v1:0",
     "us.anthropic.claude-opus-4-6-v1",
     "us.anthropic.claude-opus-4-6-v1:1m",
+    "us.anthropic.claude-opus-4-7",
+    "us.anthropic.claude-opus-4-7:1m",
     "us.anthropic.claude-opus-4-1-20250805-v1:0",
     "us.anthropic.claude-opus-4-20250514-v1:0",
     "us.anthropic.claude-sonnet-4-20250514-v1:0",
@@ -94,6 +131,8 @@ CACHEPOINT_SUPPORTED_MODELS = [
     "eu.anthropic.claude-opus-4-5-20251101-v1:0",
     "eu.anthropic.claude-opus-4-6-v1",
     "eu.anthropic.claude-opus-4-6-v1:1m",
+    "eu.anthropic.claude-opus-4-7",
+    "eu.anthropic.claude-opus-4-7:1m",
     "eu.amazon.nova-lite-v1:0",
     "eu.amazon.nova-pro-v1:0",
     "eu.amazon.nova-2-lite-v1:0",
@@ -109,7 +148,24 @@ CACHEPOINT_SUPPORTED_MODELS = [
     "global.anthropic.claude-opus-4-5-20251101-v1:0",
     "global.anthropic.claude-opus-4-6-v1",
     "global.anthropic.claude-opus-4-6-v1:1m",
+    "global.anthropic.claude-opus-4-7",
+    "global.anthropic.claude-opus-4-7:1m",
 ]
+
+# Build set of base model names (without region/tier prefixes) for inference profile resolution.
+# e.g., "us.anthropic.claude-sonnet-4-6" -> "anthropic.claude-sonnet-4-6"
+# and "eu.amazon.nova-2-lite-v1:0:priority" -> "amazon.nova-2-lite-v1:0"
+for _model_id in CACHEPOINT_SUPPORTED_MODELS:
+    _parts = _model_id.split(".", 1)
+    if len(_parts) == 2 and _parts[0] in ("us", "eu", "global"):
+        _base = _parts[1]
+        # Strip tier suffixes (:priority, :flex) but keep version suffixes (:0, :1m)
+        if _base.endswith(":priority") or _base.endswith(":flex"):
+            _base = _base.rsplit(":", 1)[0]
+        _CACHEPOINT_BASE_MODELS.add(_base)
+
+# Module-level cache for inference profile -> cachepoint support resolution
+_inference_profile_cachepoint_cache: Dict[str, bool] = {}
 
 
 class BedrockClient:
@@ -139,6 +195,7 @@ class BedrockClient:
         self.max_backoff = max_backoff
         self.metrics_enabled = metrics_enabled
         self._client = None
+        self._bedrock_control_client = None
         self._lambda_client = None
         self._s3_client = None
 
@@ -165,6 +222,15 @@ class BedrockClient:
         return self._lambda_client
 
     @property
+    def bedrock_control_client(self):
+        """Lazy-loaded Bedrock control plane client for GetInferenceProfile etc."""
+        if self._bedrock_control_client is None:
+            self._bedrock_control_client = boto3.client(
+                "bedrock", region_name=self.region
+            )
+        return self._bedrock_control_client
+
+    @property
     def s3_client(self):
         """Lazy-loaded S3 client for LambdaHook image uploads."""
         if self._s3_client is None:
@@ -172,6 +238,93 @@ class BedrockClient:
                 "s3", region_name=self.region
             )
         return self._s3_client
+
+    def _is_model_cachepoint_supported(self, model_id: str) -> bool:
+        """
+        Check if a model supports cachePoint, including inference profile resolution.
+
+        For standard model IDs (e.g., "us.anthropic.claude-sonnet-4-6"), checks
+        the CACHEPOINT_SUPPORTED_MODELS list directly.
+
+        For inference profile ARNs (containing "inference-profile" or
+        "application-inference-profile"), resolves the underlying foundation
+        model via the GetInferenceProfile API and checks if that base model
+        supports cachePoint. Results are cached to avoid repeated API calls.
+
+        Args:
+            model_id: Bedrock model ID or inference profile ARN
+
+        Returns:
+            True if the model (or underlying model for inference profiles) supports cachePoint
+        """
+        # Fast path: direct match against the known list
+        if model_id in CACHEPOINT_SUPPORTED_MODELS:
+            return True
+
+        # Check if this is an inference profile ARN
+        if "inference-profile" not in model_id:
+            return False
+
+        # Check module-level cache
+        if model_id in _inference_profile_cachepoint_cache:
+            cached = _inference_profile_cachepoint_cache[model_id]
+            logger.debug(
+                f"Inference profile cachepoint support (cached): {model_id} -> {cached}"
+            )
+            return cached
+
+        # Resolve the inference profile to its underlying foundation model
+        try:
+            response = self.bedrock_control_client.get_inference_profile(
+                inferenceProfileIdentifier=model_id
+            )
+            models = response.get("models", [])
+            if not models:
+                logger.warning(
+                    f"Inference profile {model_id} has no models listed. "
+                    "Cannot determine cachePoint support."
+                )
+                _inference_profile_cachepoint_cache[model_id] = False
+                return False
+
+            # Extract the base model name from the first model's ARN.
+            # Model ARN format: arn:aws:bedrock:<region>::foundation-model/<base-model-name>
+            # e.g., "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-6"
+            first_model_arn = models[0].get("modelArn", "")
+            if "foundation-model/" in first_model_arn:
+                base_model_name = first_model_arn.split("foundation-model/")[-1]
+            else:
+                logger.warning(
+                    f"Cannot parse foundation model from ARN: {first_model_arn}"
+                )
+                _inference_profile_cachepoint_cache[model_id] = False
+                return False
+
+            supported = base_model_name in _CACHEPOINT_BASE_MODELS
+            _inference_profile_cachepoint_cache[model_id] = supported
+
+            logger.info(
+                f"Resolved inference profile {model_id} -> "
+                f"foundation model '{base_model_name}' -> "
+                f"cachePoint {'supported' if supported else 'not supported'}"
+            )
+            return supported
+
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            logger.warning(
+                f"Failed to resolve inference profile {model_id} for cachePoint check "
+                f"({error_code}): {e}. Disabling cachePoint for this model."
+            )
+            _inference_profile_cachepoint_cache[model_id] = False
+            return False
+        except Exception as e:
+            logger.warning(
+                f"Unexpected error resolving inference profile {model_id} "
+                f"for cachePoint check: {e}. Disabling cachePoint for this model."
+            )
+            _inference_profile_cachepoint_cache[model_id] = False
+            return False
 
     def __call__(
         self,
@@ -375,7 +528,7 @@ class BedrockClient:
         )
 
         if has_cachepoint_tags:
-            if model_id in CACHEPOINT_SUPPORTED_MODELS:
+            if self._is_model_cachepoint_supported(model_id):
                 # Process content for cachePoint tags with supported model
                 processed_content = self._preprocess_content_for_cachepoint(content)
                 logger.info(
@@ -394,7 +547,9 @@ class BedrockClient:
                         clean_text = item["text"].replace("<<CACHEPOINT>>", "")
                         processed_content.append({"text": clean_text})
                         logger.warning(
-                            f"Removed <<CACHEPOINT>> tags for unsupported model: {model_id}. CachePoint is only supported for: {', '.join(CACHEPOINT_SUPPORTED_MODELS)}"
+                            f"Removed <<CACHEPOINT>> tags for unsupported model: {model_id}. "
+                            "CachePoint is supported for standard cross-region inference profiles "
+                            "and application inference profiles that wrap supported foundation models."
                         )
                     else:
                         # Pass through unchanged
@@ -417,33 +572,42 @@ class BedrockClient:
                 )
                 temperature = 0.0
 
-        # Initialize inference config with temperature
-        inference_config = {"temperature": temperature}
+        # Claude 4.7+ models don't support temperature, top_k, or top_p parameters
+        is_claude_4_7 = _is_claude_4_7_model(model_id)
+        if is_claude_4_7:
+            inference_config = {}
+            logger.info(
+                f"Skipping temperature/top_p for Claude 4.7+ model: {model_id} "
+                "(these parameters are deprecated for this model)"
+            )
+        else:
+            # Initialize inference config with temperature
+            inference_config = {"temperature": temperature}
 
-        # Handle top_p parameter - use top_p if it's positive, otherwise use temperature
-        # Some models don't allow both temperature and top_p to be specified
-        # This allows temperature=0.0 for deterministic output (recommended by Anthropic)
-        if top_p is not None:
-            # Convert top_p to float if it's a string
-            if isinstance(top_p, str):
-                try:
-                    top_p = float(top_p)
-                except ValueError:
-                    logger.warning(
-                        f"Failed to convert top_p value '{top_p}' to float. Not using top_p."
+            # Handle top_p parameter - use top_p if it's positive, otherwise use temperature
+            # Some models don't allow both temperature and top_p to be specified
+            # This allows temperature=0.0 for deterministic output (recommended by Anthropic)
+            if top_p is not None:
+                # Convert top_p to float if it's a string
+                if isinstance(top_p, str):
+                    try:
+                        top_p = float(top_p)
+                    except ValueError:
+                        logger.warning(
+                            f"Failed to convert top_p value '{top_p}' to float. Not using top_p."
+                        )
+                        top_p = None
+
+                # Only use top_p if it's positive (greater than 0)
+                if top_p is not None and top_p > 0:
+                    inference_config["topP"] = top_p
+                    # Remove temperature when using top_p to avoid conflicts
+                    del inference_config["temperature"]
+                    logger.debug(f"Using top_p={top_p} for inference (temperature ignored)")
+                else:
+                    logger.debug(
+                        f"Using temperature={temperature} for inference (top_p is 0 or None)"
                     )
-                    top_p = None
-
-            # Only use top_p if it's positive (greater than 0)
-            if top_p is not None and top_p > 0:
-                inference_config["topP"] = top_p
-                # Remove temperature when using top_p to avoid conflicts
-                del inference_config["temperature"]
-                logger.debug(f"Using top_p={top_p} for inference (temperature ignored)")
-            else:
-                logger.debug(
-                    f"Using temperature={temperature} for inference (top_p is 0 or None)"
-                )
 
         # Handle max_tokens parameter
         if max_tokens is not None:
@@ -479,8 +643,14 @@ class BedrockClient:
         # Handle model-specific parameters
         if "anthropic" in model_id.lower():
             # Add parameters to additionalModelRequestFields for Claude (snake_case)
-            if top_k is not None:
+            # Skip top_k for Claude 4.7+ models (deprecated parameter)
+            if top_k is not None and not is_claude_4_7:
                 additional_model_fields["top_k"] = int(top_k)
+            elif top_k is not None and is_claude_4_7:
+                logger.info(
+                    f"Skipping top_k for Claude 4.7+ model: {model_id} "
+                    "(this parameter is deprecated for this model)"
+                )
 
             if max_tokens is not None:
                 additional_model_fields["max_tokens"] = max_tokens

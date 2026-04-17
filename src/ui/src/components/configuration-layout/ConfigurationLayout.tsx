@@ -339,8 +339,53 @@ const ConfigurationLayout = (): React.JSX.Element => {
       return;
     }
 
+    // Check if the version being activated (not the currently selected one) has BDA enabled
+    // Need to check the actual use_bda flag in config, not just bdaProjectArn existence
+    // (bdaProjectArn can be stale from previous syncs)
+    let targetHasBda = false;
+
+    try {
+      // Fetch the target version's config to check use_bda flag
+      const targetConfig = await fetchVersion(versionName);
+
+      // Parse configs if they're JSON strings (same logic as handleCompareVersions)
+      let schemaObj = targetConfig.schema;
+      let targetDefaultConfig = targetConfig.default;
+      let targetCustomConfig = targetConfig.custom;
+
+      // Parse schema if it's a string
+      if (typeof targetConfig.schema === 'string') {
+        schemaObj = parseConfigurationData(targetConfig.schema);
+      }
+
+      // Unwrap nested Schema object if present
+      if (schemaObj && (schemaObj as Record<string, unknown>).Schema) {
+        schemaObj = (schemaObj as Record<string, unknown>).Schema;
+      }
+
+      if (typeof targetDefaultConfig === 'string') {
+        targetDefaultConfig = JSON.parse(targetDefaultConfig);
+      }
+      if (typeof targetCustomConfig === 'string') {
+        targetCustomConfig = JSON.parse(targetCustomConfig);
+      }
+
+      // Normalize boolean values (same as handleCompareVersions)
+      const normalizedDefaultObj = normalizeBooleans(targetDefaultConfig as Record<string, unknown>, schemaObj as ConfigSchema);
+      const normalizedCustomObj = normalizeBooleans(targetCustomConfig as Record<string, unknown>, schemaObj as ConfigSchema);
+
+      // Merge default and custom configs using deepMerge (same as handleCompareVersions)
+      const targetMergedConfig: Record<string, unknown> = deepMerge(normalizedDefaultObj ?? {}, normalizedCustomObj ?? {});
+
+      targetHasBda = (targetMergedConfig.use_bda as boolean) === true;
+    } catch (err) {
+      console.error('Failed to fetch target version config:', err);
+      // Fallback: if we can't fetch config, don't show modal
+      targetHasBda = false;
+    }
+
     // Check if BDA-enabled pattern and show confirmation for auto-sync to BDA (unless skipping)
-    if ((isPattern1 || mergedConfig?.use_bda) && !skipSyncConfirmation) {
+    if ((isPattern1 || targetHasBda) && !skipSyncConfirmation) {
       setActivateVersionTarget(versionName);
       setShowActivateVersionConfirmModal(true);
       return;
@@ -377,16 +422,29 @@ const ConfigurationLayout = (): React.JSX.Element => {
     }
 
     try {
-      // First sync to BDA
-      await handleSyncBdaIdp('idp_to_bda');
+      // Check if the target version already has a BDA project
+      const targetVersionData = versions.find((v) => v.versionName === versionName);
+      const hadBdaProject = targetVersionData?.bdaProjectArn;
+
+      // Show creating status if this is a new BDA project
+      if (!hadBdaProject) {
+        setBdaProjectCreating(true);
+      }
+
+      // First sync to BDA - pass the target version being activated, not the currently selected one
+      await handleSyncBdaIdp('idp_to_bda', undefined, 'replace', versionName);
       logger.debug(`Synced to BDA before activating version ${versionName}`);
 
       // Then activate the version (but don't sync again since we just did)
       await setActiveVersion(versionName);
       await new Promise((resolve) => setTimeout(resolve, 500));
       setSelectedVersion(versionName);
+
+      // Clear creating status
+      setBdaProjectCreating(false);
     } catch (err) {
       console.error('Failed to sync and activate version:', err);
+      setBdaProjectCreating(false);
     }
   };
 
@@ -489,6 +547,7 @@ const ConfigurationLayout = (): React.JSX.Element => {
   const [syncSuccess, setSyncSuccess] = useState(false);
   const [syncSuccessMessage, setSyncSuccessMessage] = useState('');
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [bdaProjectCreating, setBdaProjectCreating] = useState(false); // Track if BDA project is being created
   const [showSyncToBdaConfirmModal, setShowSyncToBdaConfirmModal] = useState(false);
   const [showActivateVersionConfirmModal, setShowActivateVersionConfirmModal] = useState(false);
   const [activateVersionTarget, setActivateVersionTarget] = useState<string | null>(null); // Track which version to activate
@@ -1542,7 +1601,12 @@ const ConfigurationLayout = (): React.JSX.Element => {
   };
 
   // Handler for BDA/IDP sync with direction support and optional BDA project ARN
-  const handleSyncBdaIdp = async (direction = 'bidirectional', bdaProjectArn?: string, syncMode = 'replace'): Promise<void> => {
+  const handleSyncBdaIdp = async (
+    direction = 'bidirectional',
+    bdaProjectArn?: string,
+    syncMode = 'replace',
+    versionName?: string,
+  ): Promise<void> => {
     setSyncingDirection(direction);
     setSyncSuccess(false);
     setSyncSuccessMessage('');
@@ -1551,9 +1615,18 @@ const ConfigurationLayout = (): React.JSX.Element => {
     try {
       logger.debug(`Starting BDA/IDP sync with direction: ${direction}, mode: ${syncMode}, bdaProjectArn: ${bdaProjectArn || 'auto'}...`);
 
+      // Check if BDA project ARN exists before syncing (for new projects)
+      const hadBdaProject = currentVersion?.bdaProjectArn;
+
+      // If syncing to BDA and no project existed, show creating status BEFORE the sync call
+      // This provides user feedback while waiting for backend to create and save ARN
+      if (direction === 'idp_to_bda' && !hadBdaProject) {
+        setBdaProjectCreating(true);
+      }
+
       // Build variables - always pass saveArn: true to persist the project ARN
       const variables: Record<string, unknown> = {
-        versionName: currentVersionName,
+        versionName: versionName || currentVersionName,
         direction,
         syncMode,
         saveArn: true,
@@ -1593,7 +1666,17 @@ const ConfigurationLayout = (): React.JSX.Element => {
         }
 
         // Refresh configuration to show any new classes
-        await fetchConfiguration(currentVersionName);
+        await fetchConfiguration(versionName || currentVersionName);
+
+        // Refresh versions list to update BDA project ARN metadata
+        await fetchVersions();
+
+        // If we showed creating status, keep it visible for a moment then clear
+        if (direction === 'idp_to_bda' && !hadBdaProject) {
+          // Small delay to ensure state updates complete and user sees the status
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          setBdaProjectCreating(false);
+        }
 
         // Only auto-dismiss if there are no warnings in the message
         // Warnings indicate BDA limitations that users should read
@@ -1608,11 +1691,13 @@ const ConfigurationLayout = (): React.JSX.Element => {
       } else {
         const errorMsg = String(response?.error?.message || response?.message || 'Sync operation failed');
         setSyncError(errorMsg);
+        setBdaProjectCreating(false); // Clear creating status on error
         logger.error('Sync failed:', errorMsg);
       }
     } catch (err) {
       logger.error('Sync error:', err);
       setSyncError(`Sync failed: ${(err as Error).message}`);
+      setBdaProjectCreating(false); // Clear creating status on error
     } finally {
       setSyncingDirection(null);
     }
@@ -2401,7 +2486,14 @@ const ConfigurationLayout = (): React.JSX.Element => {
           {/* BDA Project Status Banner */}
           {Boolean(isPattern1 || mergedConfig?.use_bda || formValues?.use_bda) && currentVersion && (
             <>
-              {currentVersion.bdaProjectArn ? (
+              {bdaProjectCreating ? (
+                <Alert type="info" header="BDA Project Creation In Progress">
+                  <Box variant="p">
+                    <Spinner size="normal" /> Creating BDA project and syncing blueprints... This may take a few moments. The project ARN
+                    will appear once creation is complete.
+                  </Box>
+                </Alert>
+              ) : currentVersion.bdaProjectArn ? (
                 <Alert
                   type={currentVersion.bdaSyncStatus === 'needs-sync' ? 'warning' : 'info'}
                   header={currentVersion.bdaSyncStatus === 'needs-sync' ? 'BDA Project Linked — Sync Required' : 'BDA Project Linked'}
