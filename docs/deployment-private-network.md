@@ -1,3 +1,7 @@
+---
+title: "Deploying IDP in a Private Network"
+---
+
 # Deploying IDP in a Private Network
 
 This runbook deploys the GenAI IDP Accelerator in a **fully private / air-gapped environment**:
