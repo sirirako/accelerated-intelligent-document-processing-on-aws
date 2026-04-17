@@ -871,9 +871,11 @@ Resources:
             - Effect: Allow
               Action:
                 - "bedrock:InvokeModel"
+                - bedrock:GetInferenceProfile
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
             - Effect: Allow
               Action:
                 - aws-marketplace:Subscribe
@@ -889,6 +891,7 @@ Resources:
                 - "bedrock:GetInferenceProfile"
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
             - Effect: Allow
               Action:
                 - ssm:GetParameter
@@ -1755,10 +1758,12 @@ Resources:
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
+                - bedrock:GetInferenceProfile
                 - bedrock:Converse
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
             # Step Functions permission for multi-document discovery
             - Effect: Allow
               Action:
@@ -2650,14 +2655,17 @@ Resources:
             - Effect: Allow
               Action:
                 - "bedrock:InvokeModel"
+                - bedrock:GetInferenceProfile
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
             - Effect: Allow
               Action:
                 - "bedrock:GetInferenceProfile"
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
             - Effect: Allow
               Action:
                 - aws-marketplace:Subscribe
@@ -2989,7 +2997,7 @@ Resources:
       CodeUri: ./src/lambda/test_results_resolver
       Description: GraphQL resolver for test results queries
       MemorySize: 512
-      Timeout: 300
+      Timeout: 900
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
@@ -3372,6 +3380,32 @@ Resources:
       DataSourceName: !GetAtt TestSetDataSource.Name
       TypeName: Mutation
       FieldName: addTestSetFromUpload
+
+
+  ##########################################################################
+  # AddDocumentsToTestSetResolver
+  ##########################################################################
+  AddDocumentsToTestSetResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !Ref GraphQLApiId
+      DataSourceName: !GetAtt TestSetDataSource.Name
+      TypeName: Mutation
+      FieldName: addDocumentsToTestSet
+
+
+  ##########################################################################
+  # AddDocumentsToTestSetFromUploadResolver
+  ##########################################################################
+  AddDocumentsToTestSetFromUploadResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !Ref GraphQLApiId
+      DataSourceName: !GetAtt TestSetDataSource.Name
+      TypeName: Mutation
+      FieldName: addDocumentsToTestSetFromUpload
 
 
   ##########################################################################
@@ -4182,3 +4216,7 @@ Outputs:
   AppSyncServiceRoleArn:
     Description: ARN of the AppSync service role
     Value: !GetAtt AppSyncServiceRole.Arn
+
+  TestResultsResolverFunctionArn:
+    Description: ARN of the Test Results Resolver Lambda function
+    Value: !GetAtt TestResultsResolverFunction.Arn

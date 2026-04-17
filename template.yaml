@@ -305,8 +305,8 @@ Parameters:
       - "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
       - "qwen.qwen3-vl-235b-a22b"
       - "global.amazon.nova-2-lite-v1:0"
-      - "global.anthropic.claude-haiku-4-5-v1:0"
-      - "global.anthropic.claude-sonnet-4-5-v1:0"
+      - "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+      - "global.anthropic.claude-sonnet-4-5-20250929-v1:0"
 
     Description: Model to use for optional Document Knowledge Base. Model access MUST be enabled in Amazon Bedrock. Note - Nova Premier may not be available in all EU regions.
 
@@ -1169,9 +1169,11 @@ Resources:
               Action:
                 - bedrock:InvokeModel
                 - bedrock:InvokeModelWithResponseStream
+                - bedrock:GetInferenceProfile
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
             - Effect: Allow
               Action:
                 - aws-marketplace:Subscribe
@@ -2858,6 +2860,8 @@ Resources:
               Type: int
             - Name: correctly_split_with_order
               Type: int
+            - Name: config_version
+              Type: string
           Compressed: true
         PartitionKeys:
           - Name: date
@@ -2922,6 +2926,8 @@ Resources:
               Type: double
             - Name: evaluation_date
               Type: timestamp
+            - Name: config_version
+              Type: string
           Compressed: true
         PartitionKeys:
           - Name: date
@@ -2992,6 +2998,8 @@ Resources:
               Type: double
             - Name: evaluation_date
               Type: timestamp
+            - Name: config_version
+              Type: string
           Compressed: true
         PartitionKeys:
           - Name: date
@@ -3052,6 +3060,8 @@ Resources:
               Type: double
             - Name: timestamp
               Type: timestamp
+            - Name: config_version
+              Type: string
           Compressed: true
         PartitionKeys:
           - Name: date
@@ -5158,9 +5168,11 @@ Resources:
               Action:
                 - bedrock:InvokeModel
                 - bedrock:InvokeModelWithResponseStream
+                - bedrock:GetInferenceProfile
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
             - Effect: Allow
               Action:
                 - aws-marketplace:Subscribe
@@ -5605,9 +5617,11 @@ Resources:
               Action:
                 - bedrock:InvokeModel
                 - bedrock:InvokeModelWithResponseStream
+                - bedrock:GetInferenceProfile
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
             - Effect: Allow
               Action:
                 - aws-marketplace:Subscribe
@@ -7224,9 +7238,11 @@ Resources:
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
+                - bedrock:GetInferenceProfile
               Resource:
                 - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
                 - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:application-inference-profile/*"
             - Effect: Allow
               Action:
                 - aws-marketplace:Subscribe

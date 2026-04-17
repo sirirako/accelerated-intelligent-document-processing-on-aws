@@ -235,6 +235,8 @@ const SchemaInspector = ({
                     { label: 'us.anthropic.claude-opus-4-5-20251101-v1:0', value: 'us.anthropic.claude-opus-4-5-20251101-v1:0' },
                     { label: 'us.anthropic.claude-opus-4-6-v1', value: 'us.anthropic.claude-opus-4-6-v1' },
                     { label: 'us.anthropic.claude-opus-4-6-v1:1m', value: 'us.anthropic.claude-opus-4-6-v1:1m' },
+                    { label: 'us.anthropic.claude-opus-4-7', value: 'us.anthropic.claude-opus-4-7' },
+                    { label: 'us.anthropic.claude-opus-4-7:1m', value: 'us.anthropic.claude-opus-4-7:1m' },
                     { label: 'eu.amazon.nova-lite-v1:0', value: 'eu.amazon.nova-lite-v1:0' },
                     { label: 'eu.amazon.nova-pro-v1:0', value: 'eu.amazon.nova-pro-v1:0' },
                     { label: 'eu.amazon.nova-2-lite-v1:0', value: 'eu.amazon.nova-2-lite-v1:0' },
@@ -245,6 +247,8 @@ const SchemaInspector = ({
                     { label: 'eu.anthropic.claude-opus-4-5-20251101-v1:0', value: 'eu.anthropic.claude-opus-4-5-20251101-v1:0' },
                     { label: 'eu.anthropic.claude-opus-4-6-v1', value: 'eu.anthropic.claude-opus-4-6-v1' },
                     { label: 'eu.anthropic.claude-opus-4-6-v1:1m', value: 'eu.anthropic.claude-opus-4-6-v1:1m' },
+                    { label: 'eu.anthropic.claude-opus-4-7', value: 'eu.anthropic.claude-opus-4-7' },
+                    { label: 'eu.anthropic.claude-opus-4-7:1m', value: 'eu.anthropic.claude-opus-4-7:1m' },
                     { label: 'global.amazon.nova-2-lite-v1:0', value: 'global.amazon.nova-2-lite-v1:0' },
                     { label: 'global.anthropic.claude-haiku-4-5-20251001-v1:0', value: 'global.anthropic.claude-haiku-4-5-20251001-v1:0' },
                     {
@@ -256,6 +260,8 @@ const SchemaInspector = ({
                     { label: 'global.anthropic.claude-opus-4-5-20251101-v1:0', value: 'global.anthropic.claude-opus-4-5-20251101-v1:0' },
                     { label: 'global.anthropic.claude-opus-4-6-v1', value: 'global.anthropic.claude-opus-4-6-v1' },
                     { label: 'global.anthropic.claude-opus-4-6-v1:1m', value: 'global.anthropic.claude-opus-4-6-v1:1m' },
+                    { label: 'global.anthropic.claude-opus-4-7', value: 'global.anthropic.claude-opus-4-7' },
+                    { label: 'global.anthropic.claude-opus-4-7:1m', value: 'global.anthropic.claude-opus-4-7:1m' },
                   ]}
                   filteringType="auto"
                   placeholder="Select model override"
