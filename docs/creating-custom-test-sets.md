@@ -1,5 +1,3 @@
-
-
 ---
 title: "Creating Custom Test Sets with Ground Truth"
 ---
