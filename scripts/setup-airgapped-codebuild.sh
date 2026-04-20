@@ -17,7 +17,7 @@
 # Usage:
 #   bash scripts/setup-airgapped-codebuild.sh \
 #     --region <aws-region> \
-#     --account <aws-account-id> \
+#     --account <account-id> \
 #     [--repo-name <ecr-repo>]      # default: idp-base-images
 #     [--pypi-url <artifactory-url>] # optional: your internal PyPI URL
 #

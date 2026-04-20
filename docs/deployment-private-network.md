@@ -147,7 +147,7 @@ Run the provided helper script — it pulls both images, re-tags them into the d
 ```bash
 ./scripts/setup-airgapped-codebuild.sh \
   --region <region> \
-  --account-id <account-id>
+  --account <account-id>
 ```
 
 Example output:
@@ -191,7 +191,27 @@ If the images are stored in Artifactory rather than ECR, you need to provide cre
 
 > **Security note**: credentials are fetched at build time via the IAM role — they are never stored in CloudFormation parameters or environment variable logs.
 
-> **See also**: [Artifactory Dependency Workaround](./artifactory-dependency-workaround.md) for a comprehensive guide covering all four dependency resolution options.
+#### CodeBuild VPC Placement (optional, for fully air-gapped subnets)
+
+If CodeBuild's subnets have no internet access at all (no NAT Gateway), you can place CodeBuild inside your VPC using the `CodeBuildVpcId`, `CodeBuildSubnetIds`, and `CodeBuildSecurityGroupId` parameters. When these are set:
+
+- CodeBuild runs entirely within your VPC with no public internet access
+- The subnets need VPC Interface Endpoints for: `ecr.api`, `ecr.dkr`, `codebuild`, `logs`, `secretsmanager` — plus a free S3 **Gateway** endpoint
+- Run the VPC endpoint deployment script with the `--codebuild-endpoints` flag to create them:
+
+```bash
+python scripts/deploy-vpc-endpoints.py \
+  --vpc-id <vpc-id> \
+  --stack-name IDP-PRIVATE \
+  --security-group-id <codebuild-sg-id> \
+  --subnet-ids <subnet-1>,<subnet-2> \
+  --codebuild-endpoints \
+  --region <region>
+```
+
+> **Note:** `CodeBuildVpcId` can be the same VPC as `ALBVpcId`, but `CodeBuildSubnetIds` should be private subnets that have the required VPC endpoints. These can be different from `LambdaSubnetIds`.
+
+> **See also**: [Artifactory Dependency Workaround](./artifactory-dependency-workaround.md) for a comprehensive guide covering all dependency resolution options.
 
 ---
 
@@ -223,9 +243,13 @@ idp-cli deploy \
 | `DocumentKnowledgeBase` | `DISABLED` | Disable Knowledge Base (avoids extra VPC endpoints) |
 | `UvImage` | ECR URI | *(Air-gapped only)* Internal ECR URI for the `uv` build tool image. Replaces `ghcr.io/astral-sh/uv:0.9.6`. |
 | `LambdaBaseImage` | ECR URI | *(Air-gapped only)* Internal ECR URI for the Lambda Python base image. Replaces `public.ecr.aws/lambda/python:3.12-arm64`. |
-| `UvIndexUrl` | HTTPS URL | *(Air-gapped only)* Internal PyPI index URL (e.g. Artifactory). Replaces `pypi.org` for Lambda dependency installs. |
+| `UvIndexUrl` | HTTPS URL | *(Air-gapped only)* Internal PyPI index URL (e.g. Artifactory). Replaces `pypi.org` for Lambda dependency installs. May contain auth credentials — stored with `NoEcho`. |
+| `NpmRegistryUrl` | HTTPS URL | *(Air-gapped only)* Internal npm registry URL (e.g. Artifactory). Replaces `registry.npmjs.org` for the Web UI build. |
 | `ArtifactoryDockerUrl` | hostname | *(Air-gapped only)* Artifactory Docker registry hostname. Required when images are stored in Artifactory instead of ECR. |
 | `ArtifactoryCredentialsSecretArn` | secret ARN | *(Air-gapped only)* Secrets Manager secret ARN with Artifactory credentials. Required with `ArtifactoryDockerUrl`. |
+| `CodeBuildVpcId` | VPC ID | *(Air-gapped only)* VPC ID to place CodeBuild in for network isolation. When set, both `DockerBuildProject` and `UICodeBuildProject` run inside this VPC. Requires `CodeBuildSubnetIds` and `CodeBuildSecurityGroupId`. |
+| `CodeBuildSubnetIds` | subnet IDs | *(Air-gapped only)* Comma-separated private subnet IDs for CodeBuild VPC placement. Required with `CodeBuildVpcId`. |
+| `CodeBuildSecurityGroupId` | SG ID | *(Air-gapped only)* Security group ID for CodeBuild VPC placement. Must allow outbound HTTPS (443) to VPC endpoints. Required with `CodeBuildVpcId`. |
 > **`AppSyncVisibility` is immutable** — it cannot be changed after the stack is created. To switch between GLOBAL and PRIVATE, delete and recreate the stack.
 
 ### Enterprise: deploying with a KMS-encrypted artifact bucket
@@ -449,7 +473,7 @@ When `WebUIHosting=ALB` and `AppSyncVisibility=PRIVATE`, the following are handl
 | **`npm error engine Unsupported engine`** | Node.js 22.12+ required. `brew install node@22 && export PATH="/opt/homebrew/opt/node@22/bin:$PATH"` |
 | **Stack fails with `conflicting DNS domain`** | A VPC endpoint already exists for that service. Re-run `check-vpc-endpoints.sh` — it will detect this and set the right `Create*=false` flags. |
 | **UI loads but shows "network error"** | AppSync API is PRIVATE. From outside the VPC you need an SSM tunnel + `/etc/hosts` entry. From inside VPN/VPC it works automatically. |
-| **CodeBuild fails: `pull access denied` / `name unknown` on image pull** | CodeBuild cannot reach public container registries (`ghcr.io`, `public.ecr.aws`). Run `scripts/setup-airgapped-codebuild.sh` to mirror images to ECR, then pass `UvImage=<ecr-uri>` and `LambdaBaseImage=<ecr-uri>` to the deploy command. See [Artifactory Dependency Workaround](./artifactory-dependency-workaround.md). |
+| **CodeBuild fails: `pull access denied` / `name unknown` on image pull** | CodeBuild cannot reach public container registries (`ghcr.io`, `public.ecr.aws`). Run `scripts/setup-airgapped-codebuild.sh --region <region> --account <account-id>` to mirror images to ECR, then pass `UvImage=<ecr-uri>` and `LambdaBaseImage=<ecr-uri>` to the deploy command. See [Artifactory Dependency Workaround](./artifactory-dependency-workaround.md). |
 | **CodeBuild fails: `AccessDenied: kms:Decrypt`** | The artifact bucket is KMS-encrypted but `ArtifactsBucketKmsKeyArn` was not passed to the deploy command. Redeploy with `--parameters "...ArtifactsBucketKmsKeyArn=<key-arn>"`. |
 | **`UpdateDefaultConfig` custom resource fails with `NoSuchKey`** | Same root cause as above — `ConfigurationCopyFunction` silently skipped copying config files due to missing `kms:Decrypt`. Pass `ArtifactsBucketKmsKeyArn` and redeploy. |
 | **OCR Lambda times out / Textract calls hang** | Missing `textract` VPC endpoint. Lambda can't reach `com.amazonaws.<region>.textract` — security group only allows port 443 outbound to VPC endpoints. Run `deploy-vpc-endpoints.py` to add the missing endpoint. |

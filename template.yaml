@@ -579,9 +579,11 @@ Parameters:
   UvIndexUrl:
     Type: String
     Default: ""
+    NoEcho: true
     Description: >-
       (Optional — air-gapped) Internal PyPI index URL for uv to install Lambda requirements.txt packages.
       Replaces pypi.org when CodeBuild cannot reach the public internet.
+      May contain authentication credentials in the URL — stored with NoEcho.
       Example: https://artifactory.company.com/artifactory/api/pypi/pypi-virtual/simple/
 
   ArtifactoryDockerUrl:
@@ -603,6 +605,39 @@ Parameters:
         aws secretsmanager create-secret --name idp/artifactory-docker-creds
           --secret-string '{"username":"svc-build","password":"<api-key>"}'
     AllowedPattern: "^(|arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+)$"
+
+  NpmRegistryUrl:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) Internal npm registry URL for the Web UI CodeBuild build.
+      Replaces registry.npmjs.org when CodeBuild cannot reach the public internet.
+      Example: https://artifactory.company.com/artifactory/api/npm/npm-virtual/
+
+  CodeBuildVpcId:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) VPC ID to place CodeBuild in for network isolation.
+      When set, both DockerBuildProject and UICodeBuildProject run inside this VPC.
+      Requires CodeBuildSubnetIds and CodeBuildSecurityGroupId.
+      The subnets must have VPC endpoints for ECR (ecr.api, ecr.dkr), S3 (Gateway),
+      Secrets Manager, Logs, and CodeBuild — run scripts/deploy-vpc-endpoints.py
+      --codebuild-endpoints to create them.
+
+  CodeBuildSubnetIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) Comma-separated subnet IDs for CodeBuild VPC placement.
+      Required when CodeBuildVpcId is set.
+
+  CodeBuildSecurityGroupId:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) Security group ID for CodeBuild VPC placement.
+      Required when CodeBuildVpcId is set. Must allow outbound HTTPS (443) to VPC endpoints.
 
 Rules:
   MLflowTrackingURIRequired:
@@ -1582,6 +1617,10 @@ Resources:
         UvIndexUrl: !Ref UvIndexUrl
         ArtifactoryDockerUrl: !Ref ArtifactoryDockerUrl
         ArtifactoryCredentialsSecretArn: !Ref ArtifactoryCredentialsSecretArn
+        NpmRegistryUrl: !Ref NpmRegistryUrl
+        CodeBuildVpcId: !Ref CodeBuildVpcId
+        CodeBuildSubnetIds: !Ref CodeBuildSubnetIds
+        CodeBuildSecurityGroupId: !Ref CodeBuildSecurityGroupId
 
   ##########################################################################
   # Encryption key

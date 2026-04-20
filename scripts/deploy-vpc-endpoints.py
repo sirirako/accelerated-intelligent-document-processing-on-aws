@@ -31,7 +31,7 @@ import time
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
 
-# The 14 Interface endpoint services IDP requires
+# The core Interface endpoint services IDP requires (Lambda + AppSync deployment)
 # Maps CFN parameter name → AWS service suffix
 REQUIRED_ENDPOINTS = {
     "CreateAppSyncApiEndpoint":      "appsync-api",
@@ -54,6 +54,16 @@ REQUIRED_ENDPOINTS = {
     "CreateStsEndpoint":             "sts",
 }
 
+# Additional endpoints required when CodeBuild is placed in a VPC (CodeBuildVpcId is set).
+# These default to "false" in vpc-endpoints.yaml and must be explicitly enabled.
+CODEBUILD_ENDPOINTS = {
+    "CreateEcrApiEndpoint":     "ecr.api",    # docker pull metadata / image manifests
+    "CreateEcrDkrEndpoint":     "ecr.dkr",    # docker image layer downloads from ECR
+    "CreateCodeBuildEndpoint":  "codebuild",  # CodeBuild agent ↔ service communication
+    # NOTE: S3 access for ECR layers and build artifacts uses a Gateway endpoint (free).
+    # Set --route-table-ids when running this script to auto-create the S3 Gateway endpoint.
+}
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -70,6 +80,23 @@ def parse_args():
     parser.add_argument(
         "--subnet-ids",
         help="Comma-separated subnet IDs (auto-read from IDP stack if omitted)",
+    )
+    parser.add_argument(
+        "--security-group-id",
+        help=(
+            "Security group ID to attach to VPC endpoints (auto-read from IDP stack output "
+            "'LambdaVpcSecurityGroupId' if omitted). Required when AppSyncVisibility=GLOBAL "
+            "or when using CodeBuild VPC endpoints without private AppSync."
+        ),
+    )
+    parser.add_argument(
+        "--codebuild-endpoints",
+        action="store_true",
+        help=(
+            "Also create CodeBuild VPC endpoints (ecr.api, ecr.dkr, codebuild). "
+            "Required when CodeBuildVpcId is set and CodeBuild cannot reach the internet. "
+            "Ensure --route-table-ids is also set to create the required S3 Gateway endpoint."
+        ),
     )
     parser.add_argument("--region", default=None, help="AWS region (default: from AWS config)")
     parser.add_argument("--profile", default=None, help="AWS CLI profile name")
@@ -166,20 +193,24 @@ def main():
         print("❌ No AWS credentials found. Configure with 'aws configure' or set environment variables.")
         sys.exit(1)
 
-    # ── Read Lambda SG from IDP stack ────────────────────────────────────
+    # ── Read Lambda SG from IDP stack (or use --security-group-id override) ─
     print(f"🔍 Reading IDP stack outputs from: {args.stack_name}")
-    try:
-        lambda_sg = get_stack_output(cf, args.stack_name, "LambdaVpcSecurityGroupId")
-    except ClientError as e:
-        print(f"❌ Could not read stack '{args.stack_name}': {e}")
-        print("   Make sure the stack is CREATE_COMPLETE and AppSyncVisibility=PRIVATE.")
-        sys.exit(1)
+    lambda_sg = args.security_group_id
+    if not lambda_sg:
+        try:
+            lambda_sg = get_stack_output(cf, args.stack_name, "LambdaVpcSecurityGroupId")
+        except ClientError as e:
+            print(f"❌ Could not read stack '{args.stack_name}': {e}")
+            print("   Make sure the stack is CREATE_COMPLETE and the stack name is correct.")
+            sys.exit(1)
 
     if not lambda_sg:
-        print(f"❌ Output 'LambdaVpcSecurityGroupId' not found in stack '{args.stack_name}'.")
-        print("   Make sure AppSyncVisibility=PRIVATE was set when the stack was created.")
+        print(f"❌ Could not determine security group ID.")
+        print("   Either:")
+        print("     • Set AppSyncVisibility=PRIVATE when deploying the IDP stack, OR")
+        print("     • Pass --security-group-id <sg-id> explicitly")
         sys.exit(1)
-    print(f"   Lambda SG: {lambda_sg}")
+    print(f"   Security Group: {lambda_sg}")
 
     # ── Read subnet IDs ───────────────────────────────────────────────────
     subnet_ids = args.subnet_ids
@@ -191,6 +222,12 @@ def main():
         sys.exit(1)
     print(f"   Subnets:   {subnet_ids}")
 
+    # ── Build endpoint map (core + optional CodeBuild endpoints) ─────────
+    endpoints_to_check = dict(REQUIRED_ENDPOINTS)
+    if args.codebuild_endpoints:
+        print("   CodeBuild VPC endpoints enabled (--codebuild-endpoints flag set)")
+        endpoints_to_check.update(CODEBUILD_ENDPOINTS)
+
     # ── Check each endpoint ───────────────────────────────────────────────
     print(f"\n🔍 Checking existing VPC endpoints in {args.vpc_id} (region: {region})...\n")
 
@@ -198,7 +235,7 @@ def main():
     create_list = []    # service suffixes to create
     skip_list = []      # service suffixes to skip
 
-    for param, service in sorted(REQUIRED_ENDPOINTS.items()):
+    for param, service in sorted(endpoints_to_check.items()):
         full = f"com.amazonaws.{region}.{service}"
         if endpoint_exists(ec2, args.vpc_id, region, service):
             print(f"   ✅ {full:<50} already exists — will skip")
@@ -207,6 +244,12 @@ def main():
         else:
             print(f"   ➕ {full:<50} missing — will create")
             create_list.append(service)
+
+    # For CodeBuild endpoints not in the check list, explicitly set them to "false"
+    # so the CFN template skips creating them (they default to "false" but be explicit)
+    if not args.codebuild_endpoints:
+        for param in CODEBUILD_ENDPOINTS:
+            skip_params[param] = "false"
 
     print(f"\n📊 Summary: {len(create_list)} to create, {len(skip_list)} already exist")
 

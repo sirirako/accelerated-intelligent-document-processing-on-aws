@@ -49,12 +49,17 @@ COPY ${FUNCTION_PATH}/requirements.txt* /build/
 
 # Install all dependencies including idp_common_pkg in one step
 # Using mount from uv stage instead of COPY to avoid layer bloat
+# When UV_INDEX_URL is set (air-gapped), pass --index-url explicitly rather than relying
+# on the env var alone — this ensures the flag is always evaluated even when the uv
+# cache layer was previously built against pypi.org.
 RUN --mount=from=uv,source=/uv,target=/bin/uv \
   --mount=type=cache,target=/root/.cache/uv \
   if [ -f /build/requirements.txt ]; then \
-  sed 's|^\.\./\.\.\(/\.\.\)\?/lib/idp_common_pkg|/tmp/idp_common_pkg|' /build/requirements.txt > /tmp/requirements.txt && \
-  uv pip install --python python3.12 --target "${LAMBDA_TASK_ROOT}" -r /tmp/requirements.txt && \
-  rm /tmp/requirements.txt; \
+    sed 's|^\.\./\.\.\(/\.\.\)\?/lib/idp_common_pkg|/tmp/idp_common_pkg|' /build/requirements.txt > /tmp/requirements.txt && \
+    INDEX_ARG="" && \
+    if [ -n "$UV_INDEX_URL" ]; then INDEX_ARG="--index-url $UV_INDEX_URL"; fi && \
+    uv pip install --python python3.12 --target "${LAMBDA_TASK_ROOT}" $INDEX_ARG -r /tmp/requirements.txt && \
+    rm /tmp/requirements.txt; \
   fi && \
   rm -rf /tmp/idp_common_pkg
 

@@ -243,6 +243,39 @@ Parameters:
           --secret-string '{"username":"svc-build","password":"<api-key>"}'
     AllowedPattern: "^(|arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+)$"
 
+  NpmRegistryUrl:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) Internal npm registry URL for any npm install steps in CodeBuild.
+      Replaces registry.npmjs.org when CodeBuild cannot reach the public internet.
+      Example: https://artifactory.company.com/artifactory/api/npm/npm-virtual/
+
+  CodeBuildVpcId:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) VPC ID to place CodeBuild in for network isolation.
+      When set, CodeBuild runs inside this VPC and cannot reach the public internet directly.
+      Requires CodeBuildSubnetIds and CodeBuildSecurityGroupId.
+      The subnets must have access to ECR, S3, Secrets Manager, Logs, and CodeBuild via
+      VPC endpoints — run scripts/deploy-vpc-endpoints.py --codebuild-endpoints to create them.
+
+  CodeBuildSubnetIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) Comma-separated subnet IDs for CodeBuild VPC placement.
+      Required when CodeBuildVpcId is set. Use private subnets that have VPC endpoints
+      for ECR (ecr.api, ecr.dkr), S3 (Gateway), Secrets Manager, Logs, and CodeBuild.
+
+  CodeBuildSecurityGroupId:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) Security group ID for CodeBuild VPC placement.
+      Required when CodeBuildVpcId is set. Must allow outbound HTTPS (443) to VPC endpoints.
+
 Conditions:
   HasGuardrailConfig:
     !And [
@@ -265,6 +298,7 @@ Conditions:
   HasUvIndexUrl: !Not [!Equals [!Ref UvIndexUrl, ""]]
   HasArtifactoryDockerUrl: !Not [!Equals [!Ref ArtifactoryDockerUrl, ""]]
   HasArtifactoryCredentials: !Not [!Equals [!Ref ArtifactoryCredentialsSecretArn, ""]]
+  UseCodeBuildVpc: !Not [!Equals [!Ref CodeBuildVpcId, ""]]
 
 Resources:
 
@@ -2220,6 +2254,21 @@ Resources:
                     - secretsmanager:GetSecretValue
                   Resource: !Ref ArtifactoryCredentialsSecretArn
                 - !Ref AWS::NoValue
+              # Required by CodeBuild when placed in a VPC (CodeBuildVpcId is set).
+              # CodeBuild needs to create/describe/delete ENIs to attach to the VPC.
+              - !If
+                - UseCodeBuildVpc
+                - Effect: Allow
+                  Action:
+                    - ec2:CreateNetworkInterface
+                    - ec2:DescribeNetworkInterfaces
+                    - ec2:DeleteNetworkInterface
+                    - ec2:DescribeSubnets
+                    - ec2:DescribeSecurityGroups
+                    - ec2:DescribeVpcs
+                    - ec2:CreateNetworkInterfacePermission
+                  Resource: "*"
+                - !Ref AWS::NoValue
 
   DockerBuildProject:
     Type: AWS::CodeBuild::Project
@@ -2267,6 +2316,15 @@ Resources:
             Value: !If [HasArtifactoryDockerUrl, !Ref ArtifactoryDockerUrl, ""]
           - Name: ARTIFACTORY_CREDENTIALS_SECRET_ARN
             Value: !If [HasArtifactoryCredentials, !Ref ArtifactoryCredentialsSecretArn, ""]
+          - Name: NPM_REGISTRY_URL
+            Value: !Ref NpmRegistryUrl
+      VpcConfig: !If
+        - UseCodeBuildVpc
+        - VpcId: !Ref CodeBuildVpcId
+          Subnets: !Ref CodeBuildSubnetIds
+          SecurityGroupIds:
+            - !Ref CodeBuildSecurityGroupId
+        - !Ref AWS::NoValue
       TimeoutInMinutes: 90
 
   CodeBuildExecutionRole:

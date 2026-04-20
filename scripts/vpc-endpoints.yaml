@@ -57,6 +57,13 @@ Parameters:
   #   (If you are accessing the UI via VPN/Direct Connect in production,
   #    you do NOT need ssmmessages or ec2messages.)
   #
+  # REQUIRED only when CodeBuild is placed in a VPC (CodeBuildVpcId is set):
+  #   ecr.api    — ECR API endpoint (docker pull metadata / image manifest)
+  #   ecr.dkr    — ECR DKR endpoint (docker layer downloads)
+  #   codebuild  — CodeBuild service endpoint (build agent ↔ service communication)
+  #   NOTE: S3 access for ECR layer data and build artifacts requires a free S3 Gateway
+  #         endpoint — set RouteTableIds to automatically create it.
+  #
   # Set any flag to "false" if the endpoint already exists in the VPC.
   # Use scripts/check-vpc-endpoints.sh to auto-detect and generate the correct deploy command.
   # ──────────────────────────────────────────────────────────
@@ -162,6 +169,37 @@ Parameters:
       that call STS AssumeRole (bda/bda_service.py, bda/blueprint_optimizer.py).
       Set to "false" if already exists.
 
+  # ── CodeBuild VPC endpoints (only needed when CodeBuildVpcId is set) ──────
+  CreateEcrApiEndpoint:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Create the ecr.api Interface endpoint. Required when CodeBuild is placed in a
+      VPC (CodeBuildVpcId is set) and needs to pull base images from ECR.
+      Handles docker pull metadata and image manifests.
+      Set to "false" if already exists or CodeBuild is not in a VPC.
+
+  CreateEcrDkrEndpoint:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Create the ecr.dkr Interface endpoint. Required when CodeBuild is placed in a
+      VPC (CodeBuildVpcId is set) and needs to pull base images from ECR.
+      Handles docker image layer downloads. Must be used together with ecr.api endpoint.
+      Set to "false" if already exists or CodeBuild is not in a VPC.
+
+  CreateCodeBuildEndpoint:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Create the codebuild Interface endpoint. Required when CodeBuild is placed in a
+      VPC (CodeBuildVpcId is set). Allows the CodeBuild agent to communicate with the
+      CodeBuild service without internet access.
+      Set to "false" if already exists or CodeBuild is not in a VPC.
+
 Conditions:
   CreateGatewayEndpoints: !Not
     - !Equals [ !Join [ "", !Ref RouteTableIds ], "" ]
@@ -181,6 +219,9 @@ Conditions:
   ShouldCreateAthenaEndpoint: !Equals [ !Ref CreateAthenaEndpoint, "true" ]
   ShouldCreateTextractEndpoint: !Equals [ !Ref CreateTextractEndpoint, "true" ]
   ShouldCreateStsEndpoint: !Equals [ !Ref CreateStsEndpoint, "true" ]
+  ShouldCreateEcrApiEndpoint: !Equals [ !Ref CreateEcrApiEndpoint, "true" ]
+  ShouldCreateEcrDkrEndpoint: !Equals [ !Ref CreateEcrDkrEndpoint, "true" ]
+  ShouldCreateCodeBuildEndpoint: !Equals [ !Ref CreateCodeBuildEndpoint, "true" ]
 
 Resources:
 
@@ -517,6 +558,67 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "${IDPStackName}-sts"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  ##########################################################################
+  # CodeBuild VPC Endpoints (only needed when CodeBuildVpcId is set)
+  ##########################################################################
+
+  EcrApiVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: ShouldCreateEcrApiEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ecr.api"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-ecr-api"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  EcrDkrVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: ShouldCreateEcrDkrEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ecr.dkr"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-ecr-dkr"
+        - Key: IDPStack
+          Value: !Ref IDPStackName
+        - Key: Environment
+          Value: !Ref EnvironmentTag
+
+  CodeBuildVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: ShouldCreateCodeBuildEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.codebuild"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref VpcEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${IDPStackName}-codebuild"
         - Key: IDPStack
           Value: !Ref IDPStackName
         - Key: Environment
