@@ -221,7 +221,11 @@ idp-cli deploy \
 | `LambdaSubnetIds` | subnet IDs | Subnets where Lambda functions run (can match ALBSubnetIds) |
 | `EnableMCP` | `false` | Disable Bedrock AgentCore Gateway (requires public endpoint) |
 | `DocumentKnowledgeBase` | `DISABLED` | Disable Knowledge Base (avoids extra VPC endpoints) |
-
+| `UvImage` | ECR URI | *(Air-gapped only)* Internal ECR URI for the `uv` build tool image. Replaces `ghcr.io/astral-sh/uv:0.9.6`. |
+| `LambdaBaseImage` | ECR URI | *(Air-gapped only)* Internal ECR URI for the Lambda Python base image. Replaces `public.ecr.aws/lambda/python:3.12-arm64`. |
+| `UvIndexUrl` | HTTPS URL | *(Air-gapped only)* Internal PyPI index URL (e.g. Artifactory). Replaces `pypi.org` for Lambda dependency installs. |
+| `ArtifactoryDockerUrl` | hostname | *(Air-gapped only)* Artifactory Docker registry hostname. Required when images are stored in Artifactory instead of ECR. |
+| `ArtifactoryCredentialsSecretArn` | secret ARN | *(Air-gapped only)* Secrets Manager secret ARN with Artifactory credentials. Required with `ArtifactoryDockerUrl`. |
 > **`AppSyncVisibility` is immutable** — it cannot be changed after the stack is created. To switch between GLOBAL and PRIVATE, delete and recreate the stack.
 
 ### Enterprise: deploying with a KMS-encrypted artifact bucket
