@@ -129,6 +129,72 @@ idp-cli publish --source-dir . --bucket-basename my-idp-artifacts --prefix idp -
 
 ---
 
+### Air-gapped CodeBuild — Internal Container Registries (optional)
+
+During stack deployment, CodeBuild builds the Lambda container images inside your account. In a **fully air-gapped VPC** where CodeBuild has no internet access, it cannot reach the two public registries used by the build:
+
+| Image | Public source | Used for |
+|-------|--------------|----------|
+| `ghcr.io/astral-sh/uv:0.9.6` | GitHub Container Registry | Python dependency installer inside Dockerfile |
+| `public.ecr.aws/lambda/python:3.12-arm64` | Amazon Public ECR | Lambda base image |
+
+**Solution**: mirror both images to your internal ECR (or Artifactory), then pass their URIs as CloudFormation parameters.
+
+#### Step A: Mirror images to internal ECR
+
+Run the provided helper script — it pulls both images, re-tags them into the deployment account's ECR, and prints the ready-to-paste parameter string:
+
+```bash
+./scripts/setup-airgapped-codebuild.sh \
+  --region <region> \
+  --account-id <account-id>
+```
+
+Example output:
+
+```
+✅ UV image pushed:           123456789012.dkr.ecr.us-east-1.amazonaws.com/idp-build-tools:uv-0.9.6
+✅ Lambda base image pushed:  123456789012.dkr.ecr.us-east-1.amazonaws.com/idp-build-tools:lambda-python-3.12-arm64
+
+Add these parameters to your idp-cli deploy command:
+  UvImage=123456789012.dkr.ecr.us-east-1.amazonaws.com/idp-build-tools:uv-0.9.6,LambdaBaseImage=123456789012.dkr.ecr.us-east-1.amazonaws.com/idp-build-tools:lambda-python-3.12-arm64
+```
+
+#### Step B: Add image parameters to the deploy command
+
+Append the `UvImage` and `LambdaBaseImage` parameters (from the script output) to your `idp-cli deploy --parameters` string (see Step 2 below).
+
+#### Internal PyPI mirror (optional)
+
+If CodeBuild also cannot reach PyPI (`pypi.org`) to install Lambda Python dependencies, pass `UvIndexUrl` pointing to your internal PyPI mirror (e.g. Artifactory):
+
+```
+UvIndexUrl=https://artifactory.company.com/artifactory/api/pypi/pypi-virtual/simple/
+```
+
+#### Artifactory Docker registry (optional)
+
+If the images are stored in Artifactory rather than ECR, you need to provide credentials so CodeBuild can log in before pulling:
+
+1. Create a Secrets Manager secret with your Artifactory credentials (only needed once):
+   ```bash
+   aws secretsmanager create-secret \
+     --name idp/artifactory-docker-creds \
+     --secret-string '{"username":"svc-build","password":"<api-key>"}' \
+     --region <region>
+   ```
+
+2. Add these parameters to your deploy command:
+   ```
+   ArtifactoryDockerUrl=artifactory.company.com,ArtifactoryCredentialsSecretArn=arn:aws:secretsmanager:<region>:<account-id>:secret:idp/artifactory-docker-creds-<suffix>
+   ```
+
+> **Security note**: credentials are fetched at build time via the IAM role — they are never stored in CloudFormation parameters or environment variable logs.
+
+> **See also**: [Artifactory Dependency Workaround](./artifactory-dependency-workaround.md) for a comprehensive guide covering all four dependency resolution options.
+
+---
+
 ## Step 2: Deploy the IDP Stack
 
 Replace the placeholder values and run:
@@ -379,6 +445,7 @@ When `WebUIHosting=ALB` and `AppSyncVisibility=PRIVATE`, the following are handl
 | **`npm error engine Unsupported engine`** | Node.js 22.12+ required. `brew install node@22 && export PATH="/opt/homebrew/opt/node@22/bin:$PATH"` |
 | **Stack fails with `conflicting DNS domain`** | A VPC endpoint already exists for that service. Re-run `check-vpc-endpoints.sh` — it will detect this and set the right `Create*=false` flags. |
 | **UI loads but shows "network error"** | AppSync API is PRIVATE. From outside the VPC you need an SSM tunnel + `/etc/hosts` entry. From inside VPN/VPC it works automatically. |
+| **CodeBuild fails: `pull access denied` / `name unknown` on image pull** | CodeBuild cannot reach public container registries (`ghcr.io`, `public.ecr.aws`). Run `scripts/setup-airgapped-codebuild.sh` to mirror images to ECR, then pass `UvImage=<ecr-uri>` and `LambdaBaseImage=<ecr-uri>` to the deploy command. See [Artifactory Dependency Workaround](./artifactory-dependency-workaround.md). |
 | **CodeBuild fails: `AccessDenied: kms:Decrypt`** | The artifact bucket is KMS-encrypted but `ArtifactsBucketKmsKeyArn` was not passed to the deploy command. Redeploy with `--parameters "...ArtifactsBucketKmsKeyArn=<key-arn>"`. |
 | **`UpdateDefaultConfig` custom resource fails with `NoSuchKey`** | Same root cause as above — `ConfigurationCopyFunction` silently skipped copying config files due to missing `kms:Decrypt`. Pass `ArtifactsBucketKmsKeyArn` and redeploy. |
 | **OCR Lambda times out / Textract calls hang** | Missing `textract` VPC endpoint. Lambda can't reach `com.amazonaws.<region>.textract` — security group only allows port 443 outbound to VPC endpoints. Run `deploy-vpc-endpoints.py` to add the missing endpoint. |
