@@ -1,0 +1,2 @@
+pywin32==311:       platforms: `win32`, `win_amd64`, `win_arm64`
+pywinpty==3.0.3:       environment.

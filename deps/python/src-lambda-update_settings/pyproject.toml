@@ -1,0 +1,11 @@
+[project]
+name = "src-lambda-update_settings"
+version = "0.0.0"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "cfnresponse"
+]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"

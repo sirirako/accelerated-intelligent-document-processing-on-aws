@@ -1,0 +1,12 @@
+[project]
+name = "patterns-unified-src-bda_processresults_function"
+version = "0.0.0"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "pypdfium2>=5.5.0",
+    "boto3"
+]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"

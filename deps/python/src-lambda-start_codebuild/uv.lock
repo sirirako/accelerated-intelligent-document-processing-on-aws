@@ -1,0 +1,23 @@
+version = 1
+revision = 3
+requires-python = ">=3.12, <3.14"
+
+[[package]]
+name = "crhelper"
+version = "2.0.12"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/77/20/afa6690034c127d83e9f5b84e7308f55b76eaacc8120a40a90ea132e450b/crhelper-2.0.12.tar.gz", hash = "sha256:74c8f9653d0a20578481fa12c3b0adce3484b134ed620556be0edde7890c740d", size = 16056, upload-time = "2024-10-29T19:47:25.657Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/35/fe7b963abb523bf1c0095b0bb2a953ddd669576e6d83e34f839306ac6197/crhelper-2.0.12-py3-none-any.whl", hash = "sha256:8788941e94af8e5613f788a8723c0a9158e7139d663896e197acc65d1630f81c", size = 15369, upload-time = "2024-10-29T19:40:28.223Z" },
+]
+
+[[package]]
+name = "src-lambda-start-codebuild"
+version = "0.0.0"
+source = { editable = "." }
+dependencies = [
+    { name = "crhelper" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "crhelper", specifier = "~=2.0.10" }]

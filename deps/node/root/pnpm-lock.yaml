@@ -1,0 +1,34 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    devDependencies:
+      basedpyright:
+        specifier: ^1.32.1
+        version: 1.38.4
+
+packages:
+
+  basedpyright@1.38.4:
+    resolution: {integrity: sha512-V/1X0wW16cpNzZeH5Otd8ybzi5GxrN3Wh//fwksJYOfzd4YMOI0eFv1P7AwHW+mCKDqwFimz/dKQ/alQMBRW/w==}
+    engines: {node: '>=14.0.0'}
+    hasBin: true
+
+  fsevents@2.3.3:
+    resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
+    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+    os: [darwin]
+
+snapshots:
+
+  basedpyright@1.38.4:
+    optionalDependencies:
+      fsevents: 2.3.3
+
+  fsevents@2.3.3:
+    optional: true
