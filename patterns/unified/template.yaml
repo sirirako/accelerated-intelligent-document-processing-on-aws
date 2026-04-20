@@ -196,6 +196,53 @@ Parameters:
     Default: ""
     Description: SageMaker MLflow tracking server ARN
 
+  # ── Air-gapped / private network parameters ───────────────────────────────
+  # Leave these empty for standard internet-connected deployments.
+  # Set them when CodeBuild cannot reach public container registries or PyPI.
+  UvImage:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) Internal ECR URI for the uv build tool image.
+      Replaces ghcr.io/astral-sh/uv:0.9.6 in Dockerfile.optimized.
+      Example: 123456789012.dkr.ecr.us-east-1.amazonaws.com/idp-base:uv-0.9.6
+
+  LambdaBaseImage:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) Internal ECR URI for the Lambda Python base image.
+      Replaces public.ecr.aws/lambda/python:3.12-arm64 in Dockerfile.optimized.
+      Example: 123456789012.dkr.ecr.us-east-1.amazonaws.com/idp-base:lambda-python-3.12-arm64
+
+  UvIndexUrl:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) Internal PyPI index URL for uv to install Lambda requirements.txt packages.
+      Replaces pypi.org when CodeBuild cannot reach the public internet.
+      Example: https://artifactory.company.com/artifactory/api/pypi/pypi-virtual/simple/
+
+  ArtifactoryDockerUrl:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) Artifactory Docker registry hostname that CodeBuild logs into before
+      pulling UV_IMAGE and LAMBDA_BASE_IMAGE. Required when images are stored in Artifactory instead
+      of ECR. Must be used together with ArtifactoryCredentialsSecretArn.
+      Example: artifactory.company.com
+
+  ArtifactoryCredentialsSecretArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) ARN of an AWS Secrets Manager secret containing Artifactory Docker
+      registry credentials. The secret must have JSON format: {"username":"...","password":"..."}.
+      Required when ArtifactoryDockerUrl is set. Create the secret once with:
+        aws secretsmanager create-secret --name idp/artifactory-docker-creds
+          --secret-string '{"username":"svc-build","password":"<api-key>"}'
+    AllowedPattern: "^(|arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+)$"
+
 Conditions:
   HasGuardrailConfig:
     !And [
@@ -212,6 +259,12 @@ Conditions:
   IsPrivateAppSync: !Equals [!Ref UsePrivateAppSync, "true"]
   IsMLflowEnabled: !Equals [!Ref EnableMLflow, "true"]
   HasArtifactsBucketKmsKey: !Not [!Equals [!Ref ArtifactsBucketKmsKeyArn, ""]]
+  # Air-gapped support conditions
+  HasUvImage: !Not [!Equals [!Ref UvImage, ""]]
+  HasLambdaBaseImage: !Not [!Equals [!Ref LambdaBaseImage, ""]]
+  HasUvIndexUrl: !Not [!Equals [!Ref UvIndexUrl, ""]]
+  HasArtifactoryDockerUrl: !Not [!Equals [!Ref ArtifactoryDockerUrl, ""]]
+  HasArtifactoryCredentials: !Not [!Equals [!Ref ArtifactoryCredentialsSecretArn, ""]]
 
 Resources:
 
@@ -2158,6 +2211,15 @@ Resources:
                     - kms:DescribeKey
                   Resource: !Ref ArtifactsBucketKmsKeyArn
                 - !Ref AWS::NoValue
+              # Allow CodeBuild to read Artifactory credentials from Secrets Manager (air-gapped mode)
+              # Only applies when ArtifactoryCredentialsSecretArn is provided
+              - !If
+                - HasArtifactoryCredentials
+                - Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource: !Ref ArtifactoryCredentialsSecretArn
+                - !Ref AWS::NoValue
 
   DockerBuildProject:
     Type: AWS::CodeBuild::Project
@@ -2186,6 +2248,25 @@ Resources:
             Value: !Ref ImageVersion
           - Name: AWS_REGION
             Value: !Ref AWS::Region
+          # ── Air-gapped support ─────────────────────────────────────────────
+          # Set these parameters when CodeBuild cannot reach public registries.
+          # UV_IMAGE: internal ECR URI for ghcr.io/astral-sh/uv:0.9.6
+          # LAMBDA_BASE_IMAGE: internal ECR URI for public.ecr.aws/lambda/python:3.12-arm64
+          # UV_INDEX_URL: Artifactory/internal PyPI URL for Lambda pip installs
+          # Leave empty (default) for standard internet-connected deployments.
+          - Name: UV_IMAGE
+            Value: !If [HasUvImage, !Ref UvImage, ""]
+          - Name: LAMBDA_BASE_IMAGE
+            Value: !If [HasLambdaBaseImage, !Ref LambdaBaseImage, ""]
+          - Name: UV_INDEX_URL
+            Value: !If [HasUvIndexUrl, !Ref UvIndexUrl, ""]
+          # ── Artifactory Docker registry (air-gapped) ───────────────────────
+          # When set, buildspec.yml fetches credentials from Secrets Manager
+          # and logs into Artifactory before pulling UV_IMAGE/LAMBDA_BASE_IMAGE.
+          - Name: ARTIFACTORY_DOCKER_URL
+            Value: !If [HasArtifactoryDockerUrl, !Ref ArtifactoryDockerUrl, ""]
+          - Name: ARTIFACTORY_CREDENTIALS_SECRET_ARN
+            Value: !If [HasArtifactoryCredentials, !Ref ArtifactoryCredentialsSecretArn, ""]
       TimeoutInMinutes: 90
 
   CodeBuildExecutionRole:

@@ -9,11 +9,61 @@ phases:
       - echo "Setting up Docker buildx for cross-platform builds..."
       - docker buildx create --use --name multiarch-builder --driver docker-container || docker buildx use multiarch-builder
       - docker buildx inspect --bootstrap
+      # ── Air-gapped: log into internal base image registry if provided ──────
+      # UV_IMAGE and LAMBDA_BASE_IMAGE env vars may point to an internal ECR
+      # repo instead of ghcr.io / public.ecr.aws. If they are in an ECR
+      # registry in the same account, the ECR login above already covers them.
+      # If they are in a different account, add an extra login here.
+      - |
+        if [ -n "$UV_IMAGE" ]; then
+          echo "Air-gapped mode: using custom UV image: $UV_IMAGE"
+        else
+          UV_IMAGE="ghcr.io/astral-sh/uv:0.9.6"
+          echo "Standard mode: using default UV image: $UV_IMAGE"
+        fi
+      - |
+        if [ -n "$LAMBDA_BASE_IMAGE" ]; then
+          echo "Air-gapped mode: using custom Lambda base image: $LAMBDA_BASE_IMAGE"
+        else
+          LAMBDA_BASE_IMAGE="public.ecr.aws/lambda/python:3.12-arm64"
+          echo "Standard mode: using default Lambda base image: $LAMBDA_BASE_IMAGE"
+        fi
+      - |
+        if [ -n "$UV_INDEX_URL" ]; then
+          echo "Air-gapped mode: uv will use custom PyPI index: $UV_INDEX_URL"
+        else
+          echo "Standard mode: uv will use default PyPI index (pypi.org)"
+        fi
+      # ── Air-gapped: Artifactory Docker registry login ──────────────────────
+      # When ARTIFACTORY_DOCKER_URL + ARTIFACTORY_CREDENTIALS_SECRET_ARN are
+      # set, CodeBuild fetches credentials from AWS Secrets Manager at runtime
+      # (credentials are NEVER hardcoded) and logs in so that docker buildx
+      # build can pull UV_IMAGE and LAMBDA_BASE_IMAGE from Artifactory.
+      # Customer admin creates the secret once:
+      #   aws secretsmanager create-secret --name "idp/artifactory-docker-creds"
+      #     --secret-string '{"username":"svc-build","password":"<api-key>"}'
+      - |
+        if [ -n "$ARTIFACTORY_DOCKER_URL" ] && [ -n "$ARTIFACTORY_CREDENTIALS_SECRET_ARN" ]; then
+          echo "Artifactory mode: logging into $ARTIFACTORY_DOCKER_URL via Secrets Manager"
+          SECRET=$(aws secretsmanager get-secret-value \
+            --secret-id "$ARTIFACTORY_CREDENTIALS_SECRET_ARN" \
+            --query SecretString --output text)
+          AF_USER=$(echo "$SECRET" | python3 -c "import sys,json; print(json.load(sys.stdin)['username'])")
+          AF_PASS=$(echo "$SECRET" | python3 -c "import sys,json; print(json.load(sys.stdin)['password'])")
+          echo "$AF_PASS" | docker login "$ARTIFACTORY_DOCKER_URL" \
+            --username "$AF_USER" --password-stdin
+          echo "Artifactory Docker login successful"
+          unset AF_USER AF_PASS SECRET
+        else
+          echo "Standard mode: no Artifactory Docker registry configured"
+        fi
   build:
     commands:
       - echo "Building Unified Pattern Docker images (BDA + Pipeline)..."
       - echo "Using IMAGE_VERSION from environment (content-based hash)"
       - echo "Image tag will be $IMAGE_VERSION"
+      - echo "UV_IMAGE=${UV_IMAGE:-ghcr.io/astral-sh/uv:0.9.6}"
+      - echo "LAMBDA_BASE_IMAGE=${LAMBDA_BASE_IMAGE:-public.ecr.aws/lambda/python:3.12-arm64}"
       # BDA functions
       - export FUNCTION_bda_invoke="patterns/unified/src/bda_invoke_function"
       - export FUNCTION_bda_completion="patterns/unified/src/bda_completion_function"
@@ -39,10 +89,18 @@ phases:
           if [ "$func_var" = "FUNCTION_mlflow_logger" ]; then
             EXTRA_ARGS="--build-arg INSTALL_GIT=true"
           fi
+          # Build UV_INDEX_URL arg string only when set (air-gapped PyPI mirror)
+          UV_INDEX_ARG=""
+          if [ -n "$UV_INDEX_URL" ]; then
+            UV_INDEX_ARG="--build-arg UV_INDEX_URL=${UV_INDEX_URL}"
+          fi
           docker buildx build \
             --platform linux/arm64 \
             -f Dockerfile.optimized \
             --build-arg FUNCTION_PATH="${func_path}" \
+            --build-arg UV_IMAGE="${UV_IMAGE}" \
+            --build-arg LAMBDA_BASE_IMAGE="${LAMBDA_BASE_IMAGE}" \
+            ${UV_INDEX_ARG} \
             ${EXTRA_ARGS} \
             --tag "${ECR_URI}:${func_name}-${IMAGE_VERSION}" \
             --provenance=false \

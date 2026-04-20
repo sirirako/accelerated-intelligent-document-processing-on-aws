@@ -557,6 +557,53 @@ Parameters:
     Default: ""
     Description: SageMaker MLflow tracking server ARN
 
+  # ── Air-gapped / private network parameters ───────────────────────────────
+  # Leave these empty for standard internet-connected deployments.
+  # Set them when CodeBuild cannot reach public container registries or PyPI.
+  UvImage:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) Internal ECR URI for the uv build tool image.
+      Replaces ghcr.io/astral-sh/uv:0.9.6 in Dockerfile.optimized.
+      Example: 123456789012.dkr.ecr.us-east-1.amazonaws.com/idp-base:uv-0.9.6
+
+  LambdaBaseImage:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) Internal ECR URI for the Lambda Python base image.
+      Replaces public.ecr.aws/lambda/python:3.12-arm64 in Dockerfile.optimized.
+      Example: 123456789012.dkr.ecr.us-east-1.amazonaws.com/idp-base:lambda-python-3.12-arm64
+
+  UvIndexUrl:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) Internal PyPI index URL for uv to install Lambda requirements.txt packages.
+      Replaces pypi.org when CodeBuild cannot reach the public internet.
+      Example: https://artifactory.company.com/artifactory/api/pypi/pypi-virtual/simple/
+
+  ArtifactoryDockerUrl:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) Artifactory Docker registry hostname that CodeBuild logs into before
+      pulling UV_IMAGE and LAMBDA_BASE_IMAGE. Required when images are stored in Artifactory instead
+      of ECR. Must be used together with ArtifactoryCredentialsSecretArn.
+      Example: artifactory.company.com
+
+  ArtifactoryCredentialsSecretArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional — air-gapped) ARN of an AWS Secrets Manager secret containing Artifactory Docker
+      registry credentials. The secret must have JSON format: {"username":"...","password":"..."}.
+      Required when ArtifactoryDockerUrl is set. Create the secret once with:
+        aws secretsmanager create-secret --name idp/artifactory-docker-creds
+          --secret-string '{"username":"svc-build","password":"<api-key>"}'
+    AllowedPattern: "^(|arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+)$"
+
 Rules:
   MLflowTrackingURIRequired:
     RuleCondition: !Equals [ !Ref EnableMLflow, "true" ]
@@ -1526,6 +1573,15 @@ Resources:
         # MLflow Integration
         EnableMLflow: !Ref EnableMLflow
         MlflowTrackingURI: !Ref MlflowTrackingURI
+
+        # ── Air-gapped / private network parameters ────────────────────────
+        # Passed through to the nested unified pattern stack so CodeBuild
+        # can use internal registries and PyPI mirrors when internet is blocked.
+        UvImage: !Ref UvImage
+        LambdaBaseImage: !Ref LambdaBaseImage
+        UvIndexUrl: !Ref UvIndexUrl
+        ArtifactoryDockerUrl: !Ref ArtifactoryDockerUrl
+        ArtifactoryCredentialsSecretArn: !Ref ArtifactoryCredentialsSecretArn
 
   ##########################################################################
   # Encryption key
