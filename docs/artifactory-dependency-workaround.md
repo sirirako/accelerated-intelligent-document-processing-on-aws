@@ -14,10 +14,11 @@ title: "Artifactory Dependency Workaround Guide"
 2. [Complete Dependency Inventory](#2-complete-dependency-inventory)
 3. [Option 1 — Configure Artifactory as a Remote Proxy (Recommended)](#3-option-1--configure-artifactory-as-a-remote-proxy-recommended)
 4. [Option 2 — Bridge Machine: Download & Upload Missing Packages](#4-option-2--bridge-machine-download--upload-missing-packages)
-5. [Option 3 — Vendor Dependencies into the Repository (Fully Air-Gapped)](#5-option-3--vendor-dependencies-into-the-repository-fully-air-gapped)
-6. [Option 4 — Point Build Tools to Artifactory Explicitly](#6-option-4--point-build-tools-to-artifactory-explicitly)
-7. [Decision Guide](#7-decision-guide)
-8. [Quick Reference: Copy-Paste Commands](#8-quick-reference-copy-paste-commands)
+5. [Option 5 — Automated Manifest Generation (Recommended Pre-Step for Option 2)](#5-option-5--automated-manifest-generation-recommended-pre-step-for-option-2)
+6. [Option 3 — Vendor Dependencies into the Repository (Fully Air-Gapped)](#6-option-3--vendor-dependencies-into-the-repository-fully-air-gapped)
+7. [Option 4 — Point Build Tools to Artifactory Explicitly](#7-option-4--point-build-tools-to-artifactory-explicitly)
+8. [Decision Guide](#8-decision-guide)
+9. [Quick Reference: Copy-Paste Commands](#9-quick-reference-copy-paste-commands)
 
 ---
 
@@ -233,15 +234,20 @@ flowchart LR
     AF -->|3. Install packages| Dev
 ```
 
+> **Tip:** Use [Option 5 — Automated Manifest Generation](#5-option-5--automated-manifest-generation-recommended-pre-step-for-option-2) first to get a complete, fully-resolved list of all packages (including transitive dependencies) before running the bridge machine download steps below. This avoids the common mistake of only downloading direct dependencies and missing transitive ones.
+
 ### Python Packages
 
 **On the bridge machine (internet access):**
 
 ```bash
-# Create a directory for wheels
+# If you have run Option 5, use the generated manifest directly:
 mkdir -p ./wheel-cache
+while IFS= read -r pkg; do
+  pip download -d ./wheel-cache "$pkg" 2>/dev/null || echo "WARN: $pkg not downloaded"
+done < deps/python/master/manifest.txt
 
-# Download all Python dependencies as wheel files
+# Alternatively, download specific packages manually:
 # For Linux ARM64 (used by Lambda container images)
 pip download \
   --platform manylinux2014_aarch64 \
@@ -325,7 +331,120 @@ FROM your-artifactory.company.com/docker-local/lambda/python:3.12-arm64 AS build
 
 ---
 
-## 5. Option 3 — Vendor Dependencies into the Repository (Fully Air-Gapped)
+## 5. Option 5 — Automated Manifest Generation *(Recommended Pre-Step for Option 2)*
+
+**Best for:** When you need to seed Artifactory with a complete, verified list of every resolved dependency — including all transitive dependencies — before executing the bridge machine workflow. Run this once on any internet-connected machine to produce authoritative manifests.
+
+**Why this matters:** The manual approach in Option 2 lists only *direct* top-level dependencies. In practice, `boto3` alone pulls in dozens of sub-packages, and multi-platform build tools (esbuild, sharp, rollup) each have 20+ platform-specific optional binaries. Manually enumerating these is error-prone and almost always incomplete. This script uses `uv lock` and `pnpm install --lockfile-only` to perform full dependency-graph resolution and capture every package at its locked version.
+
+```mermaid
+flowchart LR
+    A[Internet-connected machine] -->|Run generate_lockfiles.py| B[Per-component lockfiles\ndeps/python/ and deps/node/]
+    B -->|Merge| C[Master manifests\ndeps/python/master/manifest.txt\ndeps/node/master/manifest.txt]
+    C -->|Input to| D[Option 2: Bridge Machine\nDownload & Upload workflow]
+    D --> E[Artifactory seeded\nBuilds work]
+```
+
+### Prerequisites
+
+```bash
+# Install uv (Python resolver)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install pnpm (Node resolver)
+npm install -g pnpm
+```
+
+### Generate the Manifests
+
+```bash
+# From the repo root on any internet-connected machine
+python3 scripts/generate_lockfiles.py
+
+# Python only (skip Node resolution)
+python3 scripts/generate_lockfiles.py --python-only
+
+# Node only (skip Python resolution)
+python3 scripts/generate_lockfiles.py --node-only
+```
+
+This scans all `requirements.txt`, `pyproject.toml` (in `lib/`), and `package.json` files in the repo. It generates:
+
+| Output | Contents |
+|--------|----------|
+| `deps/python/master/manifest.txt` | Flat list of `name==version` for every resolved Python package (~295 packages) |
+| `deps/node/master/manifest.txt` | Flat list of `name@version` for every resolved Node package (~1,524 packages) |
+| `deps/python/<component>/uv.lock` | Per-component Python lockfiles for traceability |
+| `deps/node/<component>/pnpm-lock.yaml` | Per-component Node lockfiles for traceability |
+
+### Verify Packages Are Accessible from Artifactory
+
+Before running a real build, use the verification scripts to confirm packages are reachable. Set the registry URL to your Artifactory endpoint:
+
+```bash
+# Verify Python packages
+UV_INDEX_URL="https://your-artifactory.company.com/artifactory/api/pypi/pypi-virtual/simple/" \
+  python3 scripts/verify_python_packages.py
+
+# Results written to:
+#   deps/python/master/verify-passed.txt
+#   deps/python/master/verify-failed.txt
+
+# Verify Node packages
+NODE_REGISTRY_URL="https://your-artifactory.company.com/artifactory/api/npm/npm-virtual/" \
+  python3 scripts/verify_node_packages.py
+
+# Results written to:
+#   deps/node/master/verify-passed.txt
+#   deps/node/master/verify-failed.txt
+```
+
+### Use the Manifests with Option 2 (Bridge Machine)
+
+Instead of manually listing packages, use the manifests as input to the bridge machine download step:
+
+```bash
+# On the bridge machine — download all Python packages from the manifest
+mkdir -p ./wheel-cache
+while IFS= read -r pkg; do
+  pip download -d ./wheel-cache "$pkg" 2>/dev/null || echo "WARN: $pkg not downloaded"
+done < deps/python/master/manifest.txt
+
+# Upload all to Artifactory
+ARTIFACTORY_URL="https://your-artifactory.company.com/artifactory"
+REPO="pypi-local"
+AF_CREDS="username:api-key"
+for f in ./wheel-cache/*.whl ./wheel-cache/*.tar.gz; do
+  curl -u "$AF_CREDS" -T "$f" "${ARTIFACTORY_URL}/${REPO}/$(basename $f)"
+done
+```
+
+For Node packages, provide `deps/node/master/manifest.txt` to your Artifactory admin for bulk npm import via the Artifactory web UI or REST API.
+
+### Known Caveats
+
+| Issue | Details |
+|-------|---------|
+| **Windows-only packages** | `pywin32` and `pywinpty` appear in the Python manifest because they are pulled in transitively by Jupyter. These are Windows-only and will fail `pip install` on Linux — skip them if your build agents are Linux-only. They are listed in `deps/python/master/verify-failed.txt`. |
+| **Docker images not included** | The two Docker base images (`ghcr.io/astral-sh/uv:0.9.6` and `public.ecr.aws/lambda/python:3.12-arm64`) are **not** in the manifests. Handle these separately using the Docker section of Option 2. |
+| **Multiple versions of same package** | The master manifest intentionally keeps all versions (e.g., `boto3==1.42.0` and `boto3==1.42.80`) because different Lambda functions pin to different versions. Import all of them. |
+| **Re-run on dependency changes** | When any `requirements.txt` or `pyproject.toml` version is bumped, re-run the script to regenerate the manifests before the next Artifactory seeding operation. |
+
+### Keep Manifests Up to Date
+
+Add this to your workflow when updating dependencies:
+
+```bash
+# After bumping any dependency version, regenerate manifests
+python3 scripts/generate_lockfiles.py
+
+# Review what changed
+git diff deps/python/master/manifest.txt deps/node/master/manifest.txt
+```
+
+---
+
+## 6. Option 3 — Vendor Dependencies into the Repository (Fully Air-Gapped)
 
 **Best for:** Completely air-gapped environments with no internet access whatsoever.
 
@@ -414,7 +533,7 @@ git commit -m "Add vendored dependencies for air-gapped deployment"
 
 ---
 
-## 6. Option 4 — Point Build Tools to Artifactory Explicitly
+## 7. Option 4 — Point Build Tools to Artifactory Explicitly
 
 **Best for:** When Artifactory *does* have the packages but the build tools are not configured to use it (wrong index URL).
 
@@ -477,7 +596,7 @@ echo "registry=https://your-artifactory.company.com/artifactory/api/npm/npm-virt
 
 ---
 
-## 7. Decision Guide
+## 8. Decision Guide
 
 ```mermaid
 flowchart TD
@@ -487,7 +606,8 @@ flowchart TD
     
     B -->|No| D{Is there a bridge machine\nwith internet AND\nArtifactory access?}
     
-    D -->|Yes| E[✅ Option 2\nDownload packages\non bridge machine\nUpload to Artifactory]
+    D -->|Yes| E[Run Option 5 first\ngenerate_lockfiles.py\nGet complete manifest]
+    E --> E2[✅ Option 2\nUse manifest to download\n& upload to Artifactory]
     
     D -->|No| F{Are packages in Artifactory\nbut URL is wrong?}
     
@@ -496,14 +616,26 @@ flowchart TD
     F -->|No / Fully air-gapped| H[✅ Option 3\nVendor dependencies\ninto git repository]
     
     style C fill:#90EE90
-    style E fill:#90EE90
+    style E fill:#87CEEB
+    style E2 fill:#90EE90
     style G fill:#90EE90
     style H fill:#90EE90
 ```
 
 ---
 
-## 8. Quick Reference: Copy-Paste Commands
+## 9. Quick Reference: Copy-Paste Commands
+
+### Option 5 — Generate Complete Dependency Manifests (run this before Option 2)
+
+```bash
+# Requires uv and pnpm installed
+python3 scripts/generate_lockfiles.py
+
+# Outputs:
+#   deps/python/master/manifest.txt   (~295 Python packages)
+#   deps/node/master/manifest.txt     (~1,524 Node packages)
+```
 
 ### Identify Missing Packages (run this first)
 
@@ -525,6 +657,24 @@ export UV_INDEX_URL="${ARTIFACTORY_URL}/api/pypi/pypi-virtual/simple/"
 npm config set registry "${ARTIFACTORY_URL}/api/npm/npm-virtual/"
 
 make setup-venv
+```
+
+### Option 2 — Download + Upload using generated manifest
+
+```bash
+# Download all packages listed in the manifest
+mkdir -p ./wheel-cache
+while IFS= read -r pkg; do
+  pip download -d ./wheel-cache "$pkg" 2>/dev/null || echo "WARN: $pkg"
+done < deps/python/master/manifest.txt
+
+# Upload to Artifactory
+ARTIFACTORY_URL="https://your-artifactory.company.com/artifactory"
+REPO="pypi-local"
+AF_CREDS="username:api-key"
+for f in ./wheel-cache/*.whl ./wheel-cache/*.tar.gz; do
+  curl -u "$AF_CREDS" -T "$f" "${ARTIFACTORY_URL}/${REPO}/$(basename $f)"
+done
 ```
 
 ### Option 2 — Download + Upload specific missing package
@@ -571,16 +721,24 @@ EOF
 
 ## Need Help?
 
-If you are unsure which packages are failing or need help generating a specific package list for your Artifactory admin to upload, run:
+If you are unsure which packages are failing or need to generate a complete package list for your Artifactory admin:
 
 ```bash
-# Generate full resolved dependency list
-cd lib/idp_common_pkg
-pip-compile pyproject.toml --all-extras --output-file /tmp/full-requirements.txt 2>/dev/null
-cat /tmp/full-requirements.txt
+# Generate complete resolved manifests for ALL components (recommended)
+python3 scripts/generate_lockfiles.py
+
+# Outputs a flat list of every package at every version:
+#   deps/python/master/manifest.txt   — hand this to your Artifactory admin
+#   deps/node/master/manifest.txt     — hand this to your Artifactory admin
+
+# Then verify packages are accessible from Artifactory
+UV_INDEX_URL="https://your-artifactory.company.com/artifactory/api/pypi/pypi-virtual/simple/" \
+  python3 scripts/verify_python_packages.py
+NODE_REGISTRY_URL="https://your-artifactory.company.com/artifactory/api/npm/npm-virtual/" \
+  python3 scripts/verify_node_packages.py
 ```
 
-This produces a flat list of every package (and their exact versions) that can be handed to your Artifactory admin for bulk upload.
+This produces a flat, fully-resolved list of every package (including transitive dependencies) across all project components that can be handed to your Artifactory admin for bulk upload.
 
 ---
 
