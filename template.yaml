@@ -1619,7 +1619,7 @@ Resources:
         ArtifactoryCredentialsSecretArn: !Ref ArtifactoryCredentialsSecretArn
         NpmRegistryUrl: !Ref NpmRegistryUrl
         CodeBuildVpcId: !Ref CodeBuildVpcId
-        CodeBuildSubnetIds: !Ref CodeBuildSubnetIds
+        CodeBuildSubnetIds: !Join [",", !Ref CodeBuildSubnetIds]
         CodeBuildSecurityGroupId: !Ref CodeBuildSecurityGroupId
 
   ##########################################################################
