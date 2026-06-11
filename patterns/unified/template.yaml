@@ -137,6 +137,32 @@ Parameters:
     Type: String
     Description: "Content-based version for Lambda container images"
 
+  # ── Private registry parameters (air-gapped builds) ──
+  DockerConfigSecretArn:
+    Type: String
+    Default: ""
+    Description: "(Optional) Secrets Manager ARN for Docker registry credentials (config.json)"
+  UvConfigSecretArn:
+    Type: String
+    Default: ""
+    Description: "(Optional) Secrets Manager ARN for UV config (private PyPI)"
+  PipConfigSecretArn:
+    Type: String
+    Default: ""
+    Description: "(Optional) Secrets Manager ARN for pip config (private PyPI)"
+  UvImage:
+    Type: String
+    Default: "ghcr.io/astral-sh/uv:0.9.6"
+    Description: "Container image for uv tool (override for internal registries)"
+  LambdaBaseImage:
+    Type: String
+    Default: "public.ecr.aws/lambda/python"
+    Description: "Base image for Lambda containers (override for internal registries)"
+  CACertBundleS3Uri:
+    Type: String
+    Default: ""
+    Description: "(Optional) S3 URI for corporate CA cert bundle (e.g., s3://bucket/certs/ca.tar.gz)"
+
   ArtifactBucket:
     Type: String
     Description: "S3 bucket containing deployment artifacts"
@@ -230,6 +256,10 @@ Parameters:
 
 Conditions:
   DeployInVPC: !Not [!Equals [!Ref VpcId, ""]]
+  HasDockerConfigSecret: !Not [!Equals [!Ref DockerConfigSecretArn, ""]]
+  HasUvConfigSecret: !Not [!Equals [!Ref UvConfigSecretArn, ""]]
+  HasPipConfigSecret: !Not [!Equals [!Ref PipConfigSecretArn, ""]]
+  HasCACertBundle: !Not [!Equals [!Ref CACertBundleS3Uri, ""]]
   HasGuardrailConfig:
     !And [
       !Not [!Equals [!Ref BedrockGuardrailId, ""]],
@@ -2534,6 +2564,23 @@ Resources:
                     StringEquals:
                       ec2:AuthorizedService: !Sub "codebuild.${AWS::URLSuffix}"
                 - !Ref AWS::NoValue
+              - !If
+                - HasDockerConfigSecret
+                - Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource:
+                    - !Ref DockerConfigSecretArn
+                    - !If [HasUvConfigSecret, !Ref UvConfigSecretArn, !Ref "AWS::NoValue"]
+                    - !If [HasPipConfigSecret, !Ref PipConfigSecretArn, !Ref "AWS::NoValue"]
+                - !Ref AWS::NoValue
+              - !If
+                - HasCACertBundle
+                - Effect: Allow
+                  Action:
+                    - s3:GetObject
+                  Resource: !Sub "${CACertBundleS3Uri}*"
+                - !Ref AWS::NoValue
 
   DockerBuildProject:
     Type: AWS::CodeBuild::Project
@@ -2570,6 +2617,35 @@ Resources:
             Value: !Ref ImageVersion
           - Name: AWS_REGION
             Value: !Ref AWS::Region
+          - Name: LAMBDA_ARCHITECTURE
+            Value: !Ref LambdaArchitecture
+          - Name: UV_IMAGE
+            Value: !Ref UvImage
+          - Name: LAMBDA_BASE_IMAGE
+            Value: !Ref LambdaBaseImage
+          - !If
+            - HasCACertBundle
+            - Name: CA_CERT_BUNDLE_S3_URI
+              Value: !Ref CACertBundleS3Uri
+            - !Ref AWS::NoValue
+          - !If
+            - HasDockerConfigSecret
+            - Name: DOCKER_CONF
+              Type: SECRETS_MANAGER
+              Value: !Ref DockerConfigSecretArn
+            - !Ref AWS::NoValue
+          - !If
+            - HasPipConfigSecret
+            - Name: PIP_CONF
+              Type: SECRETS_MANAGER
+              Value: !Ref PipConfigSecretArn
+            - !Ref AWS::NoValue
+          - !If
+            - HasUvConfigSecret
+            - Name: UV_CONF
+              Type: SECRETS_MANAGER
+              Value: !Ref UvConfigSecretArn
+            - !Ref AWS::NoValue
       TimeoutInMinutes: 90
 
   CodeBuildExecutionRole:

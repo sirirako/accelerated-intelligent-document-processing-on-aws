@@ -1,0 +1,3 @@
+registry=https://<JFROG_HOST>/artifactory/api/npm/<NPM_REPO>/
+//<JFROG_HOST>/artifactory/api/npm/<NPM_REPO>/:_authToken=<JFROG_TOKEN>
+always-auth=true

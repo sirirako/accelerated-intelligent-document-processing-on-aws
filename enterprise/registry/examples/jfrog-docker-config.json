@@ -1,0 +1,7 @@
+{
+  "auths": {
+    "<JFROG_HOST>": {
+      "auth": "<BASE64_USER_COLON_TOKEN>"
+    }
+  }
+}
