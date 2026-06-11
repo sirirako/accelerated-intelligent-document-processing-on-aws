@@ -1,11 +1,36 @@
 version: 0.2
 phases:
+  install:
+    commands:
+      # ── Private registry setup (optional, no-op when env vars are unset) ──
+      - mkdir -p /root/.config/docker /root/.config/pip /root/.config/uv
+      - |
+        if [ -n "${CA_CERT_BUNDLE_S3_URI:-}" ]; then
+          echo "Installing CA certificate bundle from $CA_CERT_BUNDLE_S3_URI..."
+          aws s3 cp "$CA_CERT_BUNDLE_S3_URI" /tmp/ca-bundle.tar.gz
+          tar xzf /tmp/ca-bundle.tar.gz -C /etc/pki/ca-trust/source/anchors/
+          update-ca-trust extract
+        fi
+      - |
+        if [ -n "${DOCKER_CONF:-}" ]; then
+          echo "Configuring Docker registry credentials..."
+          echo "$DOCKER_CONF" > /root/.config/docker/config.json
+        fi
+      - |
+        if [ -n "${PIP_CONF:-}" ]; then
+          echo "Configuring pip for private PyPI..."
+          echo "$PIP_CONF" > /root/.config/pip/pip.conf
+        fi
+      - |
+        if [ -n "${UV_CONF:-}" ]; then
+          echo "Configuring uv for private PyPI..."
+          echo "$UV_CONF" > /root/.config/uv/uv.toml
+        fi
   pre_build:
     commands:
       - echo "Logging into Amazon ECR..."
-      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_URI
-      - echo "Verifying Docker..."
-      - docker --version
+      - docker --config /root/.config/docker --version || docker --version
+      - aws ecr get-login-password --region $AWS_REGION | docker --config /root/.config/docker login --username AWS --password-stdin $ECR_URI
       - echo "Setting up Docker buildx for cross-platform builds..."
       - docker buildx create --use --name multiarch-builder --driver docker-container || docker buildx use multiarch-builder
       - docker buildx inspect --bootstrap
@@ -31,6 +56,24 @@ phases:
       - export FUNCTION_rule_validation_orchestration="patterns/unified/src/rule-validation-orchestration-function"
       - export FUNCTION_mlflow_logger="patterns/unified/src/mlflow_logger_function"
       - export FUNCTION_rule_validation_policy_classification="patterns/unified/src/rule-validation-policy-classification-function"
+      # ── Platform selection ──
+      - |
+        DOCKER_PLATFORM="linux/${LAMBDA_ARCHITECTURE:-arm64}"
+        if [ "$LAMBDA_ARCHITECTURE" = "x86_64" ]; then
+          DOCKER_PLATFORM="linux/amd64"
+        fi
+      # ── Secret file paths for docker build --secret mounts ──
+      - |
+        SECRET_ARGS=""
+        if [ -f /root/.config/pip/pip.conf ]; then
+          SECRET_ARGS="$SECRET_ARGS --secret id=pipconf,src=/root/.config/pip/pip.conf"
+        fi
+        if [ -f /root/.config/uv/uv.toml ]; then
+          SECRET_ARGS="$SECRET_ARGS --secret id=uvconf,src=/root/.config/uv/uv.toml"
+        fi
+        if [ -f /etc/pki/ca-trust/source/anchors/custom-ca.crt ]; then
+          SECRET_ARGS="$SECRET_ARGS --secret id=cacert,src=/etc/pki/ca-trust/source/anchors/custom-ca.crt"
+        fi
       - |
         for func_var in FUNCTION_bda_invoke FUNCTION_bda_completion FUNCTION_bda_processresults FUNCTION_ocr FUNCTION_classification FUNCTION_extraction FUNCTION_assessment FUNCTION_processresults FUNCTION_summarization FUNCTION_evaluation FUNCTION_test_execution_aggregation FUNCTION_rule_validation FUNCTION_rule_validation_orchestration FUNCTION_mlflow_logger FUNCTION_rule_validation_policy_classification; do
           func_path="${!func_var}"
@@ -40,10 +83,14 @@ phases:
           if [ "$func_var" = "FUNCTION_mlflow_logger" ]; then
             EXTRA_ARGS="--build-arg INSTALL_GIT=true"
           fi
-          docker buildx build \
-            --platform linux/arm64 \
+          docker --config /root/.config/docker buildx build \
+            --platform "$DOCKER_PLATFORM" \
             -f Dockerfile.optimized \
             --build-arg FUNCTION_PATH="${func_path}" \
+            --build-arg BASE_IMAGE_SUFFIX="${LAMBDA_ARCHITECTURE:-arm64}" \
+            --build-arg UV_IMAGE="${UV_IMAGE:-ghcr.io/astral-sh/uv:0.9.6}" \
+            --build-arg BASE_IMAGE_REGISTRY="${LAMBDA_BASE_IMAGE:-public.ecr.aws/lambda/python}" \
+            ${SECRET_ARGS} \
             ${EXTRA_ARGS} \
             --tag "${ECR_URI}:${func_name}-${IMAGE_VERSION}" \
             --provenance=false \
