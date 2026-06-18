@@ -635,6 +635,67 @@ Parameters:
     AllowedPattern: "^(|arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/.+)$"
     ConstraintDescription: Must be empty or a valid KMS key ARN
 
+  # ── Air-gapped / private registry parameters ───────────────────────────
+  # Leave these empty for standard internet-connected deployments.
+  # Set them when CodeBuild must pull dependencies from an internal registry.
+
+  DockerConfigSecretArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) ARN of Secrets Manager secret containing Docker registry config.json
+      for authenticating to private Docker registries during build.
+    AllowedPattern: "^(|arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+)$"
+    ConstraintDescription: Must be empty or a valid Secrets Manager ARN
+
+  UvConfigSecretArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) ARN of Secrets Manager secret containing uv.toml for accessing
+      private Python package repositories during build.
+    AllowedPattern: "^(|arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+)$"
+    ConstraintDescription: Must be empty or a valid Secrets Manager ARN
+
+  PipConfigSecretArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) ARN of Secrets Manager secret containing pip.conf for accessing
+      private PyPI repositories during build.
+    AllowedPattern: "^(|arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+)$"
+    ConstraintDescription: Must be empty or a valid Secrets Manager ARN
+
+  NpmConfigSecretArn:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) ARN of Secrets Manager secret containing .npmrc for accessing
+      private npm registries during Web UI build.
+    AllowedPattern: "^(|arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+)$"
+    ConstraintDescription: Must be empty or a valid Secrets Manager ARN
+
+  UvImage:
+    Type: String
+    Default: "ghcr.io/astral-sh/uv:0.9.6"
+    Description: >-
+      (Optional) Docker image URI for the uv package installer. Override with
+      an internal registry mirror for air-gapped deployments.
+
+  LambdaBaseImage:
+    Type: String
+    Default: "public.ecr.aws/lambda/python"
+    Description: >-
+      (Optional) Base image registry for Lambda container images. Override with
+      an internal registry mirror for air-gapped deployments.
+
+  CACertBundleS3Uri:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) S3 URI of a CA certificate bundle (tar.gz) to install in CodeBuild
+      for trusting internal registry TLS certificates. Example: s3://bucket/certs/ca-bundle.tar.gz
+
   # ------------------------------------------------------------------------
   # Public template version-check (used to surface an "Update available"
   # indicator in the Web UI's Deployment Info nav section).
@@ -1089,6 +1150,10 @@ Conditions:
   DocumentSectionsCrawlerScheduleEnabled:
     !Not [ !Equals [ !Ref DocumentSectionsCrawlerFrequency, "Manual" ] ]
   HasPermissionsBoundary: !Not [ !Equals [ !Ref PermissionsBoundaryArn, "" ] ]
+  HasDockerConfigSecret: !Not [ !Equals [ !Ref DockerConfigSecretArn, "" ] ]
+  HasUvConfigSecret: !Not [ !Equals [ !Ref UvConfigSecretArn, "" ] ]
+  HasPipConfigSecret: !Not [ !Equals [ !Ref PipConfigSecretArn, "" ] ]
+  HasNpmConfigSecret: !Not [ !Equals [ !Ref NpmConfigSecretArn, "" ] ]
   HasCustomConfigPath: !Not [ !Equals [ !Ref CustomConfigPath, "" ] ]
   # The version-check resolver only needs IAM grants when an artifacts
   # bucket is actually configured. When `PublicArtifactsBucket` is empty
@@ -2587,6 +2652,14 @@ Resources:
         # VPC config for CodeBuild (Docker image builds)
         VpcId: !If [DeployInVPC, !Ref VpcId, ""]
         PrivateSubnetIds: !If [DeployInVPC, !Join [",", !Ref PrivateSubnetIds], ""]
+
+        # Private registry support (air-gapped builds)
+        DockerConfigSecretArn: !Ref DockerConfigSecretArn
+        UvConfigSecretArn: !Ref UvConfigSecretArn
+        PipConfigSecretArn: !Ref PipConfigSecretArn
+        UvImage: !Ref UvImage
+        LambdaBaseImage: !Ref LambdaBaseImage
+        CACertBundleS3Uri: !Ref CACertBundleS3Uri
 
         # MLflow Integration
         EnableMLflow: !Ref EnableMLflow
@@ -9374,6 +9447,10 @@ Resources:
         VpcId: !If [DeployInVPC, !Ref VpcId, ""]
         PrivateSubnetIds: !If [DeployInVPC, !Join [",", !Ref PrivateSubnetIds], ""]
         LambdaSecurityGroupId: !If [DeployInVPC, !Ref LambdaSecurityGroupId, ""]
+        DockerConfigSecretArn: !Ref DockerConfigSecretArn
+        PipConfigSecretArn: !Ref PipConfigSecretArn
+        LambdaBaseImage: !Ref LambdaBaseImage
+        CACertBundleS3Uri: !Ref CACertBundleS3Uri
 
   # --- Step Functions State Machine ---
 
