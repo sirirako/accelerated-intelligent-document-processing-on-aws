@@ -137,6 +137,15 @@ Parameters:
     Type: String
     Description: "Content-based version for Lambda container images"
 
+  LambdaArchitecture:
+    Type: String
+    Default: "arm64"
+    AllowedValues: ["arm64", "x86_64"]
+    Description: >-
+      CPU architecture for Lambda container images. Must match the base image
+      used in the Docker build. Use arm64 (Graviton) for best price-performance
+      or x86_64 when using custom base images that only support AMD64.
+
   # ── Private registry parameters (air-gapped builds) ──
   DockerConfigSecretArn:
     Type: String
