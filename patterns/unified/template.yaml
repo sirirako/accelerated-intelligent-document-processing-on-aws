@@ -2903,8 +2903,22 @@ Resources:
                     - secretsmanager:GetSecretValue
                   Resource:
                     - !Ref DockerConfigSecretArn
-                    - !If [HasUvConfigSecret, !Ref UvConfigSecretArn, !Ref "AWS::NoValue"]
-                    - !If [HasPipConfigSecret, !Ref PipConfigSecretArn, !Ref "AWS::NoValue"]
+                - !Ref AWS::NoValue
+              - !If
+                - HasUvConfigSecret
+                - Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource:
+                    - !Ref UvConfigSecretArn
+                - !Ref AWS::NoValue
+              - !If
+                - HasPipConfigSecret
+                - Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource:
+                    - !Ref PipConfigSecretArn
                 - !Ref AWS::NoValue
               - !If
                 - HasCACertBundle
