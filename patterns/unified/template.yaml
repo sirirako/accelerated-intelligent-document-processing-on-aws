@@ -2925,7 +2925,9 @@ Resources:
                 - Effect: Allow
                   Action:
                     - s3:GetObject
-                  Resource: !Sub "${CACertBundleS3Uri}*"
+                  Resource: !Sub
+                    - "arn:${AWS::Partition}:s3:::${BucketAndKey}"
+                    - BucketAndKey: !Select [1, !Split ["s3://", !Ref CACertBundleS3Uri]]
                 - !Ref AWS::NoValue
 
   DockerBuildProject:
