@@ -57,7 +57,7 @@ This add-on enables external systems to integrate with the IDP accelerator progr
 
 ### 1. Ping JWT API Authorization (`EnablePingAuth=true`)
 
-Replaces the Cognito authorizer on the Jobs API with a **PingFederate REQUEST Lambda authorizer**. External systems authenticate directly with PingFederate (deployed in-VPC, privately reachable) using OAuth2 client-credentials, then call the Jobs API with the resulting JWT.
+Switches the Jobs API Gateway to use a **PingFederate REQUEST Lambda authorizer** instead of the default Cognito authorizer. The existing Cognito resources remain in the stack (unchanged, not removed) — they are simply not used when Ping auth is active. External systems authenticate directly with PingFederate (deployed in-VPC, privately reachable) using OAuth2 client-credentials, then call the Jobs API with the resulting JWT.
 
 ```
 External System
