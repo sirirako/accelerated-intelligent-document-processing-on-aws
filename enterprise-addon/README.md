@@ -1,14 +1,57 @@
 # Enterprise Integration Add-on
 
-Enterprise extensions for the IDP accelerator that enable VPC-only system integration without modifying upstream core logic.
+This add-on enables external systems to integrate with the IDP accelerator programmatically — submitting documents, receiving completion notifications, and retrieving results — all within a private network, authenticated via your corporate identity provider (PingFederate).
 
-## What it solves
+## What it provides
 
-In a fully private (no-internet-egress) VPC deployment, two things break:
+1. **API authorization via PingFederate** — External systems (e.g. loan origination, claims management, case management) authenticate with your existing PingFederate using standard OAuth2 client-credentials, then call the IDP Jobs API with the resulting token. No separate credential management needed — you use the same identity infrastructure you already have.
 
-1. **Jobs API authorization** — The upstream Jobs API uses Cognito M2M (client-credentials via `ApiUserPoolDomain`'s `/oauth2/token`). Cognito's OAuth domain **does not work over PrivateLink**. External systems cannot obtain tokens.
+2. **Completion notifications via Amazon MQ** — When a document finishes processing, IDP automatically publishes a message to your RabbitMQ broker. Your downstream systems subscribe and react immediately — no polling required.
 
-2. **Completion notification** — There is no built-in mechanism to notify external systems when a document workflow completes. Customers need to know when results are ready so they can retrieve them programmatically.
+## How it fits together
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Your Environment                                 │
+│                                                                     │
+│  ┌──────────────┐         ┌──────────────┐         ┌────────────┐  │
+│  │ Your App     │         │ PingFederate │         │ Amazon MQ  │  │
+│  │ (API client) │         │ (IdP)        │         │ (RabbitMQ) │  │
+│  └──────┬───────┘         └──────┬───────┘         └─────▲──────┘  │
+│         │                        │                       │          │
+│         │  1. Get token          │                       │          │
+│         │───────────────────────▶│                       │          │
+│         │◀───────────────────────│                       │          │
+│         │     JWT                │                       │          │
+│         │                        │                       │          │
+└─────────┼────────────────────────┼───────────────────────┼──────────┘
+          │                        │                       │
+          │  2. POST /jobs         │                       │
+          │     (Bearer JWT)       │                       │
+          ▼                        │                       │
+┌─────────────────────────────────────────────────────────────────────┐
+│                     IDP Accelerator (AWS)                            │
+│                                                                     │
+│  ┌──────────────┐    ┌───────────┐    ┌──────────────────────────┐  │
+│  │ API Gateway  │───▶│ Jobs API  │───▶│ Processing Pipeline      │  │
+│  │ (Ping auth)  │    │ Handler   │    │ OCR → Classify → Extract │  │
+│  └──────────────┘    └───────────┘    └────────────┬─────────────┘  │
+│                                                    │                │
+│                                                    │ 3. On complete │
+│                                                    ▼                │
+│                                        ┌──────────────────┐        │
+│                                        │ Completion Hook  │────────────▶ MQ
+│                                        │ (Ping OAuth2)    │   4. Publish
+│                                        └──────────────────┘        │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+1. Your application gets a token from PingFederate (standard OAuth2 client-credentials)
+2. Calls the IDP Jobs API with that token to submit documents
+3. IDP processes the documents (OCR, classification, extraction, assessment)
+4. On completion, IDP publishes a notification to your RabbitMQ broker
+5. Your application receives the notification and retrieves results via `GET /jobs/{id}`
 
 ## Solution
 
