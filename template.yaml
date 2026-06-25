@@ -1906,7 +1906,7 @@ Resources:
 
   # Layer: PyJWT + ping_verifier (shared by authorizer and completion hook)
   EnterprisePingVerifierLayer:
-    Type: AWS::Lambda::LayerVersion
+    Type: AWS::Serverless::LayerVersion
     Condition: DeployApiGateway
     Properties:
       LayerName: !Sub "${AWS::StackName}-enterprise-ping-verifier"
@@ -1917,7 +1917,7 @@ Resources:
 
   # Layer: pika (AMQP client for completion hook)
   EnterprisePikaLayer:
-    Type: AWS::Lambda::LayerVersion
+    Type: AWS::Serverless::LayerVersion
     Condition: DeployCompletionHook
     Properties:
       LayerName: !Sub "${AWS::StackName}-enterprise-pika"
