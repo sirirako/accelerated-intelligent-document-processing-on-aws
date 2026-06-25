@@ -40,7 +40,7 @@ GATEWAY_ENDPOINTS=(
   "dynamodb"
 )
 
-# Interface endpoints for Pattern 2 (Textract + Bedrock)
+# Interface endpoints for Pattern 2 (Textract + Bedrock) + Headless API
 INTERFACE_ENDPOINTS=(
   "sqs"
   "states"
@@ -57,6 +57,8 @@ INTERFACE_ENDPOINTS=(
   "ecr.api"
   "ecr.dkr"
   "glue"
+  "execute-api"
+  "secretsmanager"
 )
 
 ALL_INTERFACE=("${INTERFACE_ENDPOINTS[@]}")

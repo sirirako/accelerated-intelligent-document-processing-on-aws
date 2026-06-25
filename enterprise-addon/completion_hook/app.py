@@ -29,7 +29,9 @@ def handler(event, context):
     body = json.dumps(message).encode()
     message_id = message.get("execution_arn") or getattr(context, "aws_request_id", "")
 
-    token = get_token(PING_TOKEN_URL, PING_CLIENT_ID, PING_CLIENT_SECRET_ARN, MQ_OAUTH_SCOPE)
+    token = get_token(
+        PING_TOKEN_URL, PING_CLIENT_ID, PING_CLIENT_SECRET_ARN, MQ_OAUTH_SCOPE
+    )
 
     publish(
         host=MQ_HOST,
@@ -42,4 +44,8 @@ def handler(event, context):
         message_id=message_id,
     )
 
-    return {"published": True, "document_id": message.get("document_id"), "message_id": message_id}
+    return {
+        "published": True,
+        "document_id": message.get("document_id"),
+        "message_id": message_id,
+    }

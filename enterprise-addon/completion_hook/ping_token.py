@@ -28,7 +28,9 @@ def _client_secret(secret_arn: str) -> str:
     return raw
 
 
-def get_token(token_url: str, client_id: str, client_secret_arn: str, scope: str) -> str:
+def get_token(
+    token_url: str, client_id: str, client_secret_arn: str, scope: str
+) -> str:
     now = time.time()
     cached = _cache.get(token_url)
     if cached and cached[0] > now + 30:
@@ -40,7 +42,9 @@ def get_token(token_url: str, client_id: str, client_secret_arn: str, scope: str
     body = urllib.parse.urlencode(form).encode()
 
     req = urllib.request.Request(token_url, data=body, method="POST")
-    basic = base64.b64encode(f"{client_id}:{_client_secret(client_secret_arn)}".encode()).decode()
+    basic = base64.b64encode(
+        f"{client_id}:{_client_secret(client_secret_arn)}".encode()
+    ).decode()
     req.add_header("Authorization", f"Basic {basic}")
     req.add_header("Content-Type", "application/x-www-form-urlencoded")
 
