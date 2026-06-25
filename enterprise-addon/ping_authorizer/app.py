@@ -32,7 +32,9 @@ def _policy(principal, effect, resource, context=None):
         "principalId": principal,
         "policyDocument": {
             "Version": "2012-10-17",
-            "Statement": [{"Action": "execute-api:Invoke", "Effect": effect, "Resource": resource}],
+            "Statement": [
+                {"Action": "execute-api:Invoke", "Effect": effect, "Resource": resource}
+            ],
         },
     }
     if context:

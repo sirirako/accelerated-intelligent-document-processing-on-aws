@@ -39,7 +39,8 @@ def parse_completion(event: dict) -> dict:
     doc = _extract_document(output)
 
     return {
-        "document_id": _first(doc, "id", "object_key", "input_key", "objectKey", "key") or "",
+        "document_id": _first(doc, "id", "object_key", "input_key", "objectKey", "key")
+        or "",
         "status": detail.get("status", "SUCCEEDED"),
         "num_pages": doc.get("num_pages") or doc.get("numPages"),
         "results_location": _first(

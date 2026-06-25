@@ -28,7 +28,9 @@ def token_scopes(claims: dict) -> set:
 
 
 def _matches(scope: str, required: str) -> bool:
-    return scope == required or scope.endswith("/" + required) or scope.endswith(required)
+    return (
+        scope == required or scope.endswith("/" + required) or scope.endswith(required)
+    )
 
 
 def has_scope(claims: dict, required: str) -> bool:
