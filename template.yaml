@@ -1164,7 +1164,6 @@ Conditions:
   ShouldDeployBastionHost: !Equals [!Ref DeployBastionHost, 'true']
 
   # Enterprise integration conditions
-  UsePingAuth: !Equals [!Ref EnablePingAuth, 'true']
   DeployCompletionHook: !Equals [!Ref EnableCompletionHook, 'true']
 
   HasGuardrailConfig:
@@ -1710,7 +1709,7 @@ Resources:
       Domain: !Sub ${AWS::StackName}-api-${AWS::AccountId}
       UserPoolId: !Ref ApiUserPool
 
-  # Private API Gateway with Cognito or Ping Authorization
+  # Private API Gateway with Ping Authorization (enterprise fork)
   ApiGateway:
     Type: AWS::Serverless::Api
     Condition: DeployApiGateway
@@ -1721,19 +1720,11 @@ Resources:
         VPCEndpointIds:
           - !Ref ApiGatewayVpcEndpointId
       Auth:
-        DefaultAuthorizer: !If
-          - UsePingAuth
-          - PingAuthorizer
-          - CognitoAuthorizer
+        DefaultAuthorizer: PingAuthorizer
         Authorizers:
-          CognitoAuthorizer:
-            UserPoolArn: !GetAtt ApiUserPool.Arn
           PingAuthorizer:
             FunctionPayloadType: REQUEST
-            FunctionArn: !If
-              - UsePingAuth
-              - !GetAtt EnterprisePingAuthorizerFunction.Arn
-              - !Ref AWS::NoValue
+            FunctionArn: !GetAtt EnterprisePingAuthorizerFunction.Arn
             Identity:
               Headers:
                 - Authorization
@@ -1814,14 +1805,7 @@ Resources:
             Path: /jobs
             Method: POST
             Auth:
-              Authorizer: !If
-                - UsePingAuth
-                - PingAuthorizer
-                - CognitoAuthorizer
-              AuthorizationScopes: !If
-                - UsePingAuth
-                - !Ref AWS::NoValue
-                - - idp-api/jobs.write
+              Authorizer: PingAuthorizer
         GetJob:
           Type: Api
           Properties:
@@ -1829,14 +1813,7 @@ Resources:
             Path: /jobs/{job_id}
             Method: GET
             Auth:
-              Authorizer: !If
-                - UsePingAuth
-                - PingAuthorizer
-                - CognitoAuthorizer
-              AuthorizationScopes: !If
-                - UsePingAuth
-                - !Ref AWS::NoValue
-                - - idp-api/jobs.read
+              Authorizer: PingAuthorizer
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackingTable
@@ -1930,7 +1907,7 @@ Resources:
   # Layer: PyJWT + ping_verifier (shared by authorizer and completion hook)
   EnterprisePingVerifierLayer:
     Type: AWS::Lambda::LayerVersion
-    Condition: UsePingAuth
+    Condition: DeployApiGateway
     Properties:
       LayerName: !Sub "${AWS::StackName}-enterprise-ping-verifier"
       Description: "PyJWT + PingFederate OIDC JWT verifier"
@@ -1952,7 +1929,7 @@ Resources:
   # Ping JWT REQUEST authorizer — replaces CognitoAuthorizer on Jobs API
   EnterprisePingAuthorizerFunction:
     Type: AWS::Serverless::Function
-    Condition: UsePingAuth
+    Condition: DeployApiGateway
     Properties:
       PermissionsBoundary:
         !If [
