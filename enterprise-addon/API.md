@@ -159,7 +159,86 @@ Check job status and retrieve results when complete.
 }
 ```
 
-The `downloadUrl` is a presigned S3 URL that expires after the indicated time. The `results.zip` contains the extraction output for each document in the submission.
+The `downloadUrl` is a presigned S3 URL that expires after the indicated time. The `results.zip` contains all processing outputs for each document in the submission.
+
+---
+
+## Results ZIP structure
+
+The downloaded `results.zip` contains three types of data per document:
+
+```
+jobs/{job_id}/{filename}/
+├── sections/
+│   └── {section_number}/
+│       └── result.json          ← Structured extraction (key-value pairs)
+└── pages/
+    └── {page_number}/
+        ├── result.json          ← Raw OCR text for this page
+        └── image.jpg            ← Rendered page image
+```
+
+### Structured extraction (`sections/{N}/result.json`)
+
+Contains the classified document type and extracted fields:
+
+```json
+{
+  "document_class": {
+    "type": "W2"
+  },
+  "split_document": {
+    "page_indices": [0, 1]
+  },
+  "inference_result": {
+    "employee_name": "Jane Smith",
+    "employer_name": "Acme Corp",
+    "wages": "85000.00",
+    "federal_tax_withheld": "12750.00"
+  },
+  "metadata": {
+    "extraction_time_seconds": 3.2,
+    "extraction_method": "agentic",
+    "parsing_succeeded": true
+  }
+}
+```
+
+### Raw OCR text (`pages/{N}/result.json`)
+
+Contains the full text extracted from each page by OCR (Textract or Bedrock):
+
+```json
+{
+  "text": "FORM W-2 Wage and Tax Statement 2024\nEmployee: Jane Smith\nSSN: XXX-XX-1234\nEmployer: Acme Corp\nEIN: 12-3456789\nWages: $85,000.00\n..."
+}
+```
+
+### Page images (`pages/{N}/image.jpg`)
+
+The rendered page image (JPEG). Useful for visual verification or display alongside extracted data.
+
+### Multi-document example
+
+A zip containing a lending package (loan application + W2 + bank statement) produces:
+
+```
+jobs/a3b2c1d4-.../lending_package.pdf/
+├── sections/
+│   ├── 0/result.json    ← loan application extraction
+│   ├── 1/result.json    ← W2 extraction
+│   └── 2/result.json    ← bank statement extraction
+└── pages/
+    ├── 0/
+    │   ├── result.json  ← page 1 OCR text
+    │   └── image.jpg
+    ├── 1/
+    │   ├── result.json  ← page 2 OCR text
+    │   └── image.jpg
+    └── 2/
+        ├── result.json  ← page 3 OCR text
+        └── image.jpg
+```
 
 ---
 
