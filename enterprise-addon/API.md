@@ -60,6 +60,7 @@ Submit a document for processing. Returns a presigned upload URL.
 ```json
 {
   "fileName": "loan-application.zip",
+  "configurationVersion": "lending-v2",
   "metadata": {
     "source": "loan-origination-system"
   }
@@ -69,6 +70,7 @@ Submit a document for processing. Returns a presigned upload URL.
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `fileName` | string | Yes | Filename with `.zip` extension. The zip should contain the document(s) to process. |
+| `configurationVersion` | string | No | Processing configuration version to use (e.g. `v1`, `lending-v2`). If omitted, the stack's active/default configuration is used. Max 128 chars, alphanumeric + `.` `_` `-` only. |
 | `metadata` | object | No | Optional metadata attached to the job. |
 | `metadata.source` | string | Yes (if metadata provided) | Identifier for the calling system. |
 
@@ -129,6 +131,7 @@ Check job status and retrieve results when complete.
 {
   "jobId": "a3b2c1d4-5678-9012-abcd-ef3456789012",
   "status": "IN_PROGRESS",
+  "configurationVersion": "lending-v2",
   "timestamps": {
     "createdAt": "2026-06-24T10:00:00Z",
     "updatedAt": "2026-06-24T10:02:30Z"
@@ -145,6 +148,7 @@ Check job status and retrieve results when complete.
 {
   "jobId": "a3b2c1d4-5678-9012-abcd-ef3456789012",
   "status": "SUCCEEDED",
+  "configurationVersion": "lending-v2",
   "timestamps": {
     "createdAt": "2026-06-24T10:00:00Z",
     "updatedAt": "2026-06-24T10:05:15Z"
@@ -293,6 +297,7 @@ Errors follow a standard structure:
 | 401 | Unauthorized (missing or invalid token) |
 | 403 | Forbidden (valid token but insufficient scope) |
 | 404 | Job not found (or belongs to a different client) |
+| 422 | Validation error (e.g. invalid `configurationVersion` format) |
 | 500 | Internal server error |
 
 ---
@@ -305,12 +310,12 @@ TOKEN=$(curl -s -X POST https://sso.corp.example.com/as/token \
   -d "grant_type=client_credentials&scope=jobs.read jobs.write" \
   -u "my-client-id:my-client-secret" | jq -r .access_token)
 
-# 2. Submit a job
+# 2. Submit a job (with optional configurationVersion)
 RESPONSE=$(curl -s -X POST \
   https://{api-id}-{vpce-id}.execute-api.us-east-1.amazonaws.com/beta/jobs \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"fileName": "documents.zip", "metadata": {"source": "my-system"}}')
+  -d '{"fileName": "documents.zip", "configurationVersion": "lending-v2", "metadata": {"source": "my-system"}}')
 
 JOB_ID=$(echo $RESPONSE | jq -r .jobId)
 UPLOAD_URL=$(echo $RESPONSE | jq -r .upload.uploadUrl)
