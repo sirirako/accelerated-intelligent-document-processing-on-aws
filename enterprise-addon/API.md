@@ -19,7 +19,7 @@ The token can be provided in any of these headers:
 | Header | Format |
 |---|---|
 | `Authorization` | `Bearer <token>` |
-| `Fhlmcjwt` | `<token>` (raw JWT) |
+| Custom header | `<token>` (raw JWT) — configurable via `CUSTOM_TOKEN_HEADER` env var |
 | `x-jwt-token` | `<token>` (raw JWT) |
 
 **How to obtain a token:**

@@ -2,7 +2,7 @@
 
 Validates Ping JWT tokens against multiple issuers and checks role/group
 membership. Supports TOKEN authorizer (authorizationToken) and REQUEST
-authorizer (headers: Authorization Bearer, Fhlmcjwt, x-jwt-token).
+authorizer (headers: Authorization Bearer, custom token header, x-jwt-token).
 """
 
 import json
@@ -58,7 +58,7 @@ def _extract_token(event):
     """Extract JWT from authorizer event.
 
     Supports TOKEN authorizer (authorizationToken) and REQUEST authorizer (headers).
-    Checks Fhlmcjwt, Authorization Bearer, and x-jwt-token headers.
+    Checks custom token header, Authorization Bearer, and x-jwt-token headers.
     """
     # TOKEN type authorizer
     auth_token = event.get("authorizationToken", "")
@@ -69,8 +69,10 @@ def _extract_token(event):
     headers = event.get("headers") or {}
     lower_headers = {k.lower(): v for k, v in headers.items()}
 
-    if lower_headers.get("fhlmcjwt"):
-        return lower_headers["fhlmcjwt"]
+    # Custom JWT header (configure via CUSTOM_TOKEN_HEADER env var if needed)
+    custom_header = os.getenv("CUSTOM_TOKEN_HEADER", "").lower()
+    if custom_header and lower_headers.get(custom_header):
+        return lower_headers[custom_header]
 
     auth_header = lower_headers.get("authorization", "")
     if auth_header.lower().startswith("bearer "):

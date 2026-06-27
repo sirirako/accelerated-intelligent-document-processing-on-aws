@@ -62,7 +62,7 @@ When the headless Jobs API is enabled, it uses a **PingFederate Lambda authorize
 The authorizer supports:
 - **Multiple issuers** — configure up to two Ping environments (e.g. dev + prod, or two separate Ping instances)
 - **Role/group-based access** — validates that the token's `userRoles` or `memberOf` claim contains at least one of the required roles
-- **Multiple token formats** — accepts `Authorization: Bearer`, `Fhlmcjwt` header, or `x-jwt-token` header
+- **Multiple token formats** — accepts `Authorization: Bearer`, custom header (configurable), or `x-jwt-token` header
 - **RS256, ES256, HS256** signing algorithms
 
 ```
