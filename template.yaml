@@ -976,35 +976,40 @@ Parameters:
   # === Enterprise Integration (optional) ===================================
   # =========================================================================
 
-  EnablePingAuth:
-    Type: String
-    Default: 'false'
-    AllowedValues: ['true', 'false']
-    Description: >-
-      Set to 'true' to replace the Jobs API Cognito authorizer with a
-      PingFederate JWT REQUEST authorizer. Required for VPC-only deployments
-      where Cognito's OAuth domain is unavailable over PrivateLink. Requires
-      EnableHeadless=true.
-
-  PingIssuer:
+  PingIssuer1:
     Type: String
     Default: ""
     Description: >-
-      PingFederate OIDC issuer URL (e.g. https://sso.corp.example.com).
-      Required when EnablePingAuth=true.
+      Primary PingFederate issuer identifier (e.g. https://sso.corp.example.com).
+      Required when EnableHeadless=true.
 
-  PingJwksUri:
+  PingJwksUri1:
     Type: String
     Default: ""
     Description: >-
-      PingFederate JWKS endpoint URL. Required when EnablePingAuth=true.
+      JWKS endpoint URL for the primary issuer. Required when EnableHeadless=true.
 
-  PingAudience:
+  PingIssuer2:
     Type: String
     Default: ""
     Description: >-
-      Expected audience (aud/azp/client_id) in Ping tokens presented to the
-      Jobs API. Required when EnablePingAuth=true.
+      (Optional) Secondary PingFederate issuer identifier. Leave empty if
+      only one issuer is used.
+
+  PingJwksUri2:
+    Type: String
+    Default: ""
+    Description: >-
+      JWKS endpoint URL for the secondary issuer. Required when PingIssuer2
+      is set.
+
+  PingRequiredRoles:
+    Type: String
+    Default: ""
+    Description: >-
+      Comma-separated list of required roles/groups in the token's userRoles
+      or memberOf claim. If empty, role check is skipped (any valid token is
+      allowed).
 
   EnableCompletionHook:
     Type: String
@@ -1437,10 +1442,11 @@ Metadata:
       - Label:
           default: "Enterprise Integration — Ping Auth (Jobs API)"
         Parameters:
-          - EnablePingAuth
-          - PingIssuer
-          - PingJwksUri
-          - PingAudience
+          - PingIssuer1
+          - PingJwksUri1
+          - PingIssuer2
+          - PingJwksUri2
+          - PingRequiredRoles
       - Label:
           default: "Enterprise Integration — Completion Hook (Amazon MQ)"
         Parameters:
@@ -1916,11 +1922,11 @@ Resources:
         - !Ref AWS::NoValue
       Environment:
         Variables:
-          PING_ISSUER: !Ref PingIssuer
-          PING_JWKS_URI: !Ref PingJwksUri
-          PING_API_AUDIENCE: !Ref PingAudience
-          READ_SCOPE: "jobs.read"
-          WRITE_SCOPE: "jobs.write"
+          ISSUER1: !Ref PingIssuer1
+          JWKSURI1: !Ref PingJwksUri1
+          ISSUER2: !Ref PingIssuer2
+          JWKSURI2: !Ref PingJwksUri2
+          REQUIRED_ROLES: !Ref PingRequiredRoles
       Tracing: Active
 
   # Completion hook — publishes to Amazon MQ (RabbitMQ + Ping OAuth2)
@@ -11423,8 +11429,8 @@ Outputs:
     Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${ApiStageName}"
   ApiClientId:
     Condition: DeployApiGateway
-    Description: Ping audience for API authentication (enterprise fork — no Cognito client)
-    Value: !Ref PingAudience
+    Description: Primary Ping issuer for API authentication (enterprise fork)
+    Value: !Ref PingIssuer1
   MCPConnectorClientId:
     Condition: CreateAgentCoreLambda
     Description: Cognito client ID used by the MCP Connector for machine-to-machine (M2M) authentication with the IDP system
