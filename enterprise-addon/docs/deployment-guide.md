@@ -156,11 +156,11 @@ OAuth domain is unavailable over PrivateLink.
 Reply **yes** or **no**."
 
 If **yes**, collect (one at a time):
-- `PING_ISSUER1`: "What is your primary PingFederate issuer identifier? (e.g. https://ping.example.com)"
-- `PING_JWKSURI1`: "What is the JWKS endpoint URL for that issuer? (e.g. https://ping.example.com/pf/JWKS)"
+- `PING_ISSUER1`: "What is your primary PingFederate issuer identifier? (e.g. https://sso.corp.example.com)"
+- `PING_JWKSURI1`: "What is the JWKS endpoint URL for that issuer? (e.g. https://sso.corp.example.com/pf/JWKS)"
 - `PING_ISSUER2`: "Do you have a second Ping issuer? If yes, what is the issuer identifier? (leave empty if only one)"
 - `PING_JWKSURI2`: (only if ISSUER2 provided) "What is the JWKS endpoint for the second issuer?"
-- `REQUIRED_ROLES`: "What role(s) must the caller have in their token? Comma-separated. (e.g. mf_lihtc_ai_user_np_gg,modp_mflihtc_tm_gg — leave empty to skip role check)"
+- `REQUIRED_ROLES`: "What role(s) must the caller have in their token? Comma-separated. (e.g. idp_api_users,idp_api_admins — leave empty to skip role check)"
 
 Save these and add to the deploy parameters:
 `PingIssuer1=<ISSUER1>,PingJwksUri1=<JWKSURI1>,PingIssuer2=<ISSUER2>,PingJwksUri2=<JWKSURI2>,PingRequiredRoles=<ROLES>`
@@ -679,8 +679,8 @@ These are only needed when enabling the enterprise features.
 
 | Parameter | Required | Description |
 |---|---|---|
-| `PingIssuer1` | Yes | Primary Ping issuer identifier (e.g. `https://ping.example.com`) |
-| `PingJwksUri1` | Yes | JWKS endpoint for the primary issuer (e.g. `https://ping.example.com/pf/JWKS`) |
+| `PingIssuer1` | Yes | Primary Ping issuer identifier (e.g. `https://sso.corp.example.com`) |
+| `PingJwksUri1` | Yes | JWKS endpoint for the primary issuer (e.g. `https://sso.corp.example.com/pf/JWKS`) |
 | `PingIssuer2` | No | Secondary Ping issuer (leave empty if only one) |
 | `PingJwksUri2` | No | JWKS endpoint for secondary issuer |
 | `PingRequiredRoles` | No | Comma-separated required roles in `userRoles`/`memberOf` claims. Empty = any valid token allowed |
