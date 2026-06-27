@@ -156,12 +156,14 @@ OAuth domain is unavailable over PrivateLink.
 Reply **yes** or **no**."
 
 If **yes**, collect (one at a time):
-- `PING_ISSUER`: "What is your PingFederate issuer URL? (e.g. https://sso.corp.example.com)"
-- `PING_JWKS_URI`: "What is the Ping JWKS endpoint URL? (e.g. https://sso.corp.example.com/pf/JWKS)"
-- `PING_AUDIENCE`: "What audience/client_id should be expected in the Ping tokens? (e.g. idp-api)"
+- `PING_ISSUER1`: "What is your primary PingFederate issuer identifier? (e.g. https://authdev.fhlmc.com)"
+- `PING_JWKSURI1`: "What is the JWKS endpoint URL for that issuer? (e.g. https://authdev.fhlmc.com/pf/JWKS)"
+- `PING_ISSUER2`: "Do you have a second Ping issuer? If yes, what is the issuer identifier? (leave empty if only one)"
+- `PING_JWKSURI2`: (only if ISSUER2 provided) "What is the JWKS endpoint for the second issuer?"
+- `REQUIRED_ROLES`: "What role(s) must the caller have in their token? Comma-separated. (e.g. mf_lihtc_ai_user_np_gg,modp_mflihtc_tm_gg — leave empty to skip role check)"
 
 Save these and add to the deploy parameters:
-`EnablePingAuth=true,PingIssuer=<PING_ISSUER>,PingJwksUri=<PING_JWKS_URI>,PingAudience=<PING_AUDIENCE>`
+`PingIssuer1=<ISSUER1>,PingJwksUri1=<JWKSURI1>,PingIssuer2=<ISSUER2>,PingJwksUri2=<JWKSURI2>,PingRequiredRoles=<ROLES>`
 
 **Q5 — Enterprise Integration (Completion Hook → Amazon MQ):**
 "Do you need IDP to publish a notification to Amazon MQ (RabbitMQ) when a document
@@ -252,7 +254,7 @@ source .venv/bin/activate   # or .venv\Scripts\activate on Windows
 
 #### Build enterprise layers (required before publish)
 
-If enterprise integration features will be enabled (`EnablePingAuth=true` or
+If enterprise integration features will be enabled (`EnableHeadless=true` or
 `EnableCompletionHook=true`), install the enterprise Lambda layer dependencies
 before publishing:
 
@@ -671,16 +673,17 @@ parameters.
 
 #### Enterprise Integration Parameters
 
-These are only needed when enabling the enterprise features. Both are default-off.
+These are only needed when enabling the enterprise features.
 
-**Ping API Auth** (switches Jobs API from Cognito to PingFederate authorization):
+**Ping API Auth** (active when `EnableHeadless=true` — Ping replaces Cognito):
 
 | Parameter | Required | Description |
 |---|---|---|
-| `EnablePingAuth` | Yes | `true` to enable |
-| `PingIssuer` | Yes | Ping OIDC issuer URL (e.g. `https://sso.corp.example.com`) |
-| `PingJwksUri` | Yes | Ping JWKS endpoint (e.g. `https://sso.corp.example.com/pf/JWKS`) |
-| `PingAudience` | Yes | Expected `aud`/`azp`/`client_id` in Ping tokens |
+| `PingIssuer1` | Yes | Primary Ping issuer identifier (e.g. `https://authdev.fhlmc.com`) |
+| `PingJwksUri1` | Yes | JWKS endpoint for the primary issuer (e.g. `https://authdev.fhlmc.com/pf/JWKS`) |
+| `PingIssuer2` | No | Secondary Ping issuer (leave empty if only one) |
+| `PingJwksUri2` | No | JWKS endpoint for secondary issuer |
+| `PingRequiredRoles` | No | Comma-separated required roles in `userRoles`/`memberOf` claims. Empty = any valid token allowed |
 
 **Completion Hook** (publishes to Amazon MQ on document completion):
 
@@ -708,10 +711,10 @@ After deploying with enterprise features enabled, verify they work:
 ```bash
 # 1. Get a token from PingFederate
 TOKEN=$(curl -s -X POST <PING_TOKEN_URL> \
-  -d "grant_type=client_credentials&scope=jobs.read jobs.write" \
+  -d "grant_type=client_credentials" \
   -u "<CLIENT_ID>:<CLIENT_SECRET>" | jq -r .access_token)
 
-# 2. Call the Jobs API
+# 2. Call the Jobs API (any of these header formats work)
 curl -s https://<API_ID>-<VPCE_ID>.execute-api.<REGION>.amazonaws.com/<STAGE>/jobs \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
@@ -733,8 +736,8 @@ Expected: 200 with `jobId` and presigned upload URL.
 | Error | Cause | Fix |
 |-------|-------|-----|
 | 401 on all Jobs API calls | Lambda can't reach Ping JWKS endpoint | Check Lambda SG allows outbound HTTPS to Ping |
-| 401 with valid token | Audience mismatch | Ensure `PingAudience` matches `aud`/`azp`/`client_id` in the token |
-| 403 on POST /jobs | Token missing `jobs.write` scope | Request token with `jobs.write` scope |
+| 401 with valid token | Unknown issuer | Ensure `PingIssuer1` (or `PingIssuer2`) matches the `iss` claim in the token |
+| 401 "lacks required entitlements" | Token missing required role | Ensure token's `userRoles` or `memberOf` contains one of `PingRequiredRoles` |
 | Completion hook Lambda timeout | Lambda can't reach MQ broker | Check Lambda SG allows outbound to port 5671 |
 | Completion hook "access refused" | RabbitMQ OAuth2 rejects Ping token | Verify broker OAuth2 backend has correct issuer/JWKS + scope mapping |
 | No completion notification | No document processed yet | Submit a document and wait for SUCCEEDED status |
