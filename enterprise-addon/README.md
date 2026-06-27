@@ -55,29 +55,38 @@ This add-on enables external systems to integrate with the IDP accelerator progr
 
 ## Solution
 
-### 1. Ping JWT API Authorization (`EnablePingAuth=true`)
+### 1. Ping JWT API Authorization (automatic with `EnableHeadless=true`)
 
-Switches the Jobs API Gateway to use a **PingFederate REQUEST Lambda authorizer** instead of the default Cognito authorizer. The existing Cognito resources remain in the stack (unchanged, not removed) — they are simply not used when Ping auth is active. External systems authenticate directly with PingFederate (deployed in-VPC, privately reachable) using OAuth2 client-credentials, then call the Jobs API with the resulting JWT.
+When the headless Jobs API is enabled, it uses a **PingFederate Lambda authorizer** — no Cognito OAuth domain is involved (which doesn't work over PrivateLink). External systems authenticate with PingFederate and call the Jobs API with the resulting JWT.
+
+The authorizer supports:
+- **Multiple issuers** — configure up to two Ping environments (e.g. dev + prod, or two separate Ping instances)
+- **Role/group-based access** — validates that the token's `userRoles` or `memberOf` claim contains at least one of the required roles
+- **Multiple token formats** — accepts `Authorization: Bearer`, `Fhlmcjwt` header, or `x-jwt-token` header
+- **RS256, ES256, HS256** signing algorithms
 
 ```
 External System
-  │  1. POST /token (client_credentials) → PingFederate (in-VPC)
-  │  2. Receives Ping JWT
+  │  1. Authenticate with PingFederate (client_credentials or user login)
+  │  2. Receives Ping JWT (with userRoles/memberOf claims)
   │
   │  Authorization: Bearer <Ping JWT>
   ▼
 Private API Gateway
-  │  Ping REQUEST authorizer validates JWT (signature, issuer, audience, scopes)
-  │  Enforces jobs.read / jobs.write by HTTP method
+  │  Lambda authorizer:
+  │    • Resolves signing key from JWKS (tries each configured issuer)
+  │    • Validates JWT signature + issuer
+  │    • Checks required roles in userRoles/memberOf claims
+  │    • Returns Allow for all API methods if valid
   ▼
 Jobs API Handler (unchanged)
-  POST /jobs        → submit documents (requires jobs.write)
-  GET  /jobs/{id}   → check status / retrieve results (requires jobs.read)
+  POST /jobs        → submit documents
+  GET  /jobs/{id}   → check status / retrieve results
 ```
 
 **What changes:** Only the authorizer. The Jobs API handler, DynamoDB tracking, S3 buckets, and processing pipeline are untouched.
 
-**Scope enforcement:** GET requests require `jobs.read`; POST/PUT/PATCH/DELETE require `jobs.write`. A token with `jobs.write` also satisfies `jobs.read`. Scopes can be plain (`jobs.read`) or namespaced (`idp-api/jobs.read`).
+**Authorization model:** If the token is valid (signature, issuer) and the user has at least one of the required roles → full access to all Jobs API methods. If `PingRequiredRoles` is left empty, any valid token is allowed (role check is skipped).
 
 ### 2. Completion Hook → Amazon MQ (`EnableCompletionHook=true`)
 

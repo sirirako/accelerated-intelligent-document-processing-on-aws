@@ -14,15 +14,19 @@ The API is a **Private API Gateway** — it is only reachable through the config
 
 All requests (except where noted) require a Bearer token in the `Authorization` header.
 
-```
-Authorization: Bearer <token>
-```
+The token can be provided in any of these headers:
+
+| Header | Format |
+|---|---|
+| `Authorization` | `Bearer <token>` |
+| `Fhlmcjwt` | `<token>` (raw JWT) |
+| `x-jwt-token` | `<token>` (raw JWT) |
 
 **How to obtain a token:**
 
 ```bash
 curl -X POST https://your-ping-server.example.com/as/token \
-  -d "grant_type=client_credentials&scope=jobs.read jobs.write" \
+  -d "grant_type=client_credentials" \
   -u "<client_id>:<client_secret>"
 ```
 
@@ -31,19 +35,22 @@ Response:
 {
   "access_token": "eyJhbGciOiJSUzI1NiIs...",
   "token_type": "Bearer",
-  "expires_in": 3600,
-  "scope": "jobs.read jobs.write"
+  "expires_in": 3600
 }
 ```
 
-**Scopes:**
+**Authorization model:**
 
-| Scope | Grants access to |
-|---|---|
-| `jobs.write` | `POST /jobs` (submit documents) |
-| `jobs.read` | `GET /jobs/{job_id}` (check status, retrieve results) |
+The authorizer validates:
+1. **JWT signature** — verified against the issuer's JWKS endpoint (RS256, ES256, or HS256)
+2. **Issuer** — must match one of the configured Ping issuers
+3. **Role membership** (if `PingRequiredRoles` is configured) — the token's `userRoles` or `memberOf` claim must contain at least one of the required roles
 
-A token with `jobs.write` also satisfies `jobs.read`.
+If all checks pass, the caller has full access to all Jobs API endpoints. There is no per-method scope differentiation — a valid token with the required role can call both `POST /jobs` and `GET /jobs/{id}`.
+
+**Multiple issuers:**
+
+The authorizer supports up to two Ping environments (configured via `PingIssuer1`/`PingJwksUri1` and optionally `PingIssuer2`/`PingJwksUri2`). It tries each issuer's JWKS to find the signing key, so tokens from either environment are accepted.
 
 ---
 
