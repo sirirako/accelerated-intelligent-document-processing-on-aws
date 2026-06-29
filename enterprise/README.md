@@ -1,40 +1,89 @@
 # IDP Enterprise Extensions
 
-Enterprise deployment features for the GenAI IDP Accelerator. These extend the upstream community version with support for:
+Enterprise deployment features for the GenAI IDP Accelerator. These extend the upstream with support for:
 
-- **Private artifact registries** — Pull dependencies from internal JFrog, CodeArtifact, or Nexus instead of public registries
-- **Integration REST API** — Programmatic document submission and result retrieval (planned)
-- **IAM team separation** — Distinct roles for infra, dev, and API consumers (planned)
+- **Private artifact registries** — Pull all dependencies from internal registries (JFrog, CodeArtifact, Nexus) instead of public sources
+- **PingFederate API authorization** — External systems call the Jobs API authenticated via Ping JWT (replaces Cognito in VPC-only deployments)
+- **Completion notifications** — Publishes to Amazon MQ (RabbitMQ) when document processing completes
+- **Per-job configuration** — Callers specify which processing config version to use per submission
 
-## Quick Start
+All features are optional and default-off. Deploying without enterprise parameters behaves identically to upstream.
 
-If you don't need enterprise features, deploy exactly as documented in the upstream [Deployment Guide](../docs/deployment.md) — all enterprise parameters are optional and default to off.
+## How it fits together
 
-### Private Registry Deployment
-
-```bash
-# 1. Create secrets with your registry configs (one-time)
-aws cloudformation deploy --stack-name IDP-Registry-Secrets \
-  --template-file enterprise/registry/secrets-setup.yaml \
-  --parameter-overrides \
-    PipConfig="$(cat enterprise/registry/examples/jfrog-pip.conf)" \
-    UvConfig="$(cat enterprise/registry/examples/jfrog-uv.toml)" \
-    NpmConfig="$(cat enterprise/registry/examples/jfrog-npmrc)" \
-    DockerConfig="$(cat enterprise/registry/examples/jfrog-docker-config.json)"
-
-# 2. Deploy IDP with registry params
-idp-cli deploy --stack-name IDP-PROD \
-  --admin-email admin@example.com \
-  --parameters "DockerConfigSecretArn=$(aws cloudformation describe-stacks --stack-name IDP-Registry-Secrets --query 'Stacks[0].Outputs[?OutputKey==`DockerConfigSecretArn`].OutputValue' --output text),\
-UvConfigSecretArn=$(aws cloudformation describe-stacks --stack-name IDP-Registry-Secrets --query 'Stacks[0].Outputs[?OutputKey==`UvConfigSecretArn`].OutputValue' --output text),\
-PipConfigSecretArn=$(aws cloudformation describe-stacks --stack-name IDP-Registry-Secrets --query 'Stacks[0].Outputs[?OutputKey==`PipConfigSecretArn`].OutputValue' --output text),\
-NpmConfigSecretArn=$(aws cloudformation describe-stacks --stack-name IDP-Registry-Secrets --query 'Stacks[0].Outputs[?OutputKey==`NpmConfigSecretArn`].OutputValue' --output text),\
-UvImage=your-registry.com/docker/uv:0.9.6,\
-LambdaBaseImage=your-registry.com/docker/lambda/python"
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Your Environment                                 │
+│                                                                     │
+│  ┌──────────────┐         ┌──────────────┐         ┌────────────┐  │
+│  │ Your App     │         │ PingFederate │         │ Amazon MQ  │  │
+│  │ (API client) │         │ (IdP)        │         │ (RabbitMQ) │  │
+│  └──────┬───────┘         └──────┬───────┘         └─────▲──────┘  │
+│         │                        │                       │          │
+│         │  1. Get token          │                       │          │
+│         │───────────────────────▶│                       │          │
+│         │◀───────────────────────│                       │          │
+│         │     JWT                │                       │          │
+│         │                        │                       │          │
+└─────────┼────────────────────────┼───────────────────────┼──────────┘
+          │                        │                       │
+          │  2. POST /jobs         │                       │
+          │     (Bearer JWT)       │                       │
+          ▼                        │                       │
+┌─────────────────────────────────────────────────────────────────────┐
+│                     IDP Accelerator (AWS)                            │
+│                                                                     │
+│  ┌──────────────┐    ┌───────────┐    ┌──────────────────────────┐  │
+│  │ API Gateway  │───▶│ Jobs API  │───▶│ Processing Pipeline      │  │
+│  │ (Ping auth)  │    │ Handler   │    │ OCR → Classify → Extract │  │
+│  └──────────────┘    └───────────┘    └────────────┬─────────────┘  │
+│                                                    │                │
+│                                                    │ 3. On complete │
+│                                                    ▼                │
+│                                        ┌──────────────────┐        │
+│                                        │ Completion Hook  │───────────▶ MQ
+│                                        │ (Ping OAuth2)    │   4. Publish
+│                                        └──────────────────┘        │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-## Staying in Sync with Upstream
+## Deploy
 
-This fork syncs weekly from [upstream](https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws). Enterprise features are additive — core IDP processing (OCR, classification, extraction, evaluation) is unchanged.
+```bash
+# 1. Build enterprise layers (one-time before publish)
+./enterprise/build.sh
 
-See `.github/workflows/sync-upstream.yml` for the automated merge workflow.
+# 2. Publish and deploy (same as upstream, with additional parameters)
+idp-cli publish --source-dir . --region us-east-1
+idp-cli deploy --stack-name IDP --template-url <URL> --parameters "..."
+```
+
+See [docs/deployment-guide.md](docs/deployment-guide.md) for the full walkthrough.
+
+## Structure
+
+```
+enterprise/
+├── ping_authorizer/        # Ping JWT Lambda authorizer (multi-issuer, role-based)
+├── completion_hook/        # Amazon MQ publisher (Ping OAuth2 for broker auth)
+├── layers/
+│   ├── ping_verifier/      # PyJWT + shared JWT verification
+│   └── pika/               # AMQP client for RabbitMQ
+├── registry/               # Private registry config (secrets setup + examples)
+├── docs/
+│   ├── deployment-guide.md # Full AI-guided deployment walkthrough
+│   └── upstream-sync-guide.md  # Conflict resolution when syncing from upstream
+├── API.md                  # Jobs API reference for downstream consumers
+├── build.sh                # Layer dependency installer
+└── README.md               # This file
+```
+
+## Documentation
+
+| Document | Audience |
+|---|---|
+| [API.md](API.md) | Downstream developers — endpoint reference, auth, examples |
+| [docs/deployment-guide.md](docs/deployment-guide.md) | Operations — build, publish, deploy, verify |
+| [docs/upstream-sync-guide.md](docs/upstream-sync-guide.md) | Maintainers — conflict resolution on upstream sync |
+| [registry/README.md](registry/README.md) | Operations — private registry setup |
