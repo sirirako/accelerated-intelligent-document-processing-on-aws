@@ -97,6 +97,22 @@ Parameters:
       Optional KMS key ARN for the artifacts S3 bucket (if KMS-encrypted). When provided,
       the CodeBuildRole receives kms:Decrypt permission so it can download source zips.
     Default: ""
+  DockerConfigSecretArn:
+    Type: String
+    Default: ""
+    Description: "(Optional) Secrets Manager ARN for Docker registry config.json."
+  PipConfigSecretArn:
+    Type: String
+    Default: ""
+    Description: "(Optional) Secrets Manager ARN for pip.conf (private PyPI)."
+  LambdaBaseImage:
+    Type: String
+    Default: "public.ecr.aws/lambda/python"
+    Description: "(Optional) Base image registry for Lambda container images."
+  CACertBundleS3Uri:
+    Type: String
+    Default: ""
+    Description: "(Optional) S3 URI of CA cert bundle for internal registry TLS."
 
 Conditions:
   HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
@@ -104,6 +120,8 @@ Conditions:
   HasBedrockHubRole: !Not [!Equals [!Ref BedrockHubRoleArn, ""]]
   HasBedrockHubRoleExternalId: !Not [!Equals [!Ref BedrockHubRoleExternalId, ""]]
   HasBedrockHubRoleSessionName: !Not [!Equals [!Ref BedrockHubRoleSessionName, ""]]
+  HasDockerConfigSecret: !Not [!Equals [!Ref DockerConfigSecretArn, ""]]
+  HasPipConfigSecret: !Not [!Equals [!Ref PipConfigSecretArn, ""]]
   HasArtifactsBucketKmsKey: !Not [!Equals [!Ref ArtifactsBucketKmsKeyArn, ""]]
 
 Resources:
@@ -237,6 +255,20 @@ Resources:
                     - kms:DescribeKey
                   Resource: !Ref ArtifactsBucketKmsKeyArn
                 - !Ref AWS::NoValue
+              - !If
+                - HasDockerConfigSecret
+                - Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource: !Ref DockerConfigSecretArn
+                - !Ref AWS::NoValue
+              - !If
+                - HasPipConfigSecret
+                - Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource: !Ref PipConfigSecretArn
+                - !Ref AWS::NoValue
 
   DockerBuildProject:
     Type: AWS::CodeBuild::Project
@@ -267,12 +299,47 @@ Resources:
             Value: !GetAtt ECRRepository.RepositoryUri
           - Name: IMAGE_TAG
             Value: latest
+          - Name: LAMBDA_BASE_IMAGE
+            Value: !Ref LambdaBaseImage
+          - Name: CA_CERT_S3_URI
+            Value: !Ref CACertBundleS3Uri
+          - !If
+            - HasDockerConfigSecret
+            - Name: DOCKER_CONF
+              Type: SECRETS_MANAGER
+              Value: !Ref DockerConfigSecretArn
+            - !Ref AWS::NoValue
+          - !If
+            - HasPipConfigSecret
+            - Name: PIP_CONF
+              Type: SECRETS_MANAGER
+              Value: !Ref PipConfigSecretArn
+            - !Ref AWS::NoValue
       Source:
         Type: S3
         Location: !Sub "${ArtifactBucket}/${SourceZipfile}"
         BuildSpec: |
           version: 0.2
           phases:
+            install:
+              commands:
+                - |
+                  if [ -n "${CA_CERT_S3_URI:-}" ]; then
+                    echo "Installing CA certificates..."
+                    aws s3 cp "$CA_CERT_S3_URI" /tmp/ca-bundle.tar.gz
+                    tar xzf /tmp/ca-bundle.tar.gz -C /etc/pki/ca-trust/source/anchors/
+                    update-ca-trust extract
+                  fi
+                - |
+                  if [ -n "${DOCKER_CONF:-}" ]; then
+                    mkdir -p /root/.config/docker
+                    echo "$DOCKER_CONF" > /root/.config/docker/config.json
+                  fi
+                - |
+                  if [ -n "${PIP_CONF:-}" ]; then
+                    mkdir -p /root/.config/pip
+                    echo "$PIP_CONF" > /root/.config/pip/pip.conf
+                  fi
             pre_build:
               commands:
                 - echo Logging in to Amazon ECR...
@@ -297,25 +364,35 @@ Resources:
                   REQS
                 - echo "Creating Dockerfile..."
                 - |
-                  cat > Dockerfile << 'DOCKERFILE'
-                  FROM public.ecr.aws/lambda/python:3.12 AS builder
+                  cat > Dockerfile << DOCKERFILE
+                  FROM ${LAMBDA_BASE_IMAGE}:3.12 AS builder
                   RUN dnf install -y gcc gcc-c++ make && dnf clean all
                   COPY requirements.txt /tmp/requirements.txt
-                  RUN pip install --no-cache-dir --target /opt/python -r /tmp/requirements.txt
+                  RUN --mount=type=secret,id=pipconf,target=/etc/pip.conf \
+                    PIP_CONFIG_FILE=/etc/pip.conf pip install --no-cache-dir --target /opt/python -r /tmp/requirements.txt
                   COPY lib/idp_common_pkg /tmp/idp_common_pkg
-                  RUN pip install --no-cache-dir --no-deps --target /opt/python /tmp/idp_common_pkg
-                  FROM public.ecr.aws/lambda/python:3.12
-                  COPY --from=builder /opt/python ${LAMBDA_TASK_ROOT}/../opt/python
-                  ENV PYTHONPATH="${LAMBDA_TASK_ROOT}/../opt/python:${LAMBDA_TASK_ROOT}"
-                  COPY src/lambda/multi_doc_discovery/*.py ${LAMBDA_TASK_ROOT}/
+                  RUN --mount=type=secret,id=pipconf,target=/etc/pip.conf \
+                    PIP_CONFIG_FILE=/etc/pip.conf pip install --no-cache-dir --no-deps --target /opt/python /tmp/idp_common_pkg
+                  FROM ${LAMBDA_BASE_IMAGE}:3.12
+                  COPY --from=builder /opt/python \${LAMBDA_TASK_ROOT}/../opt/python
+                  ENV PYTHONPATH="\${LAMBDA_TASK_ROOT}/../opt/python:\${LAMBDA_TASK_ROOT}"
+                  COPY src/lambda/multi_doc_discovery/*.py \${LAMBDA_TASK_ROOT}/
                   CMD ["embed_handler.handler"]
                   DOCKERFILE
                 - echo "Building Docker image..."
-                - docker build -t $ECR_REPO_URI:$IMAGE_TAG .
+                - |
+                  DOCKER_SECRET_ARGS=""
+                  if [ -f /root/.config/pip/pip.conf ]; then
+                    DOCKER_SECRET_ARGS="--secret id=pipconf,src=/root/.config/pip/pip.conf"
+                  fi
+                  docker buildx build \
+                    $DOCKER_SECRET_ARGS \
+                    -t $ECR_REPO_URI:$IMAGE_TAG \
+                    --provenance=false \
+                    --push \
+                    .
             post_build:
               commands:
-                - echo Pushing Docker image to ECR...
-                - docker push $ECR_REPO_URI:$IMAGE_TAG
                 - echo Build completed on `date`
       TimeoutInMinutes: 30
       EncryptionKey: !Ref CustomerManagedEncryptionKeyArn
