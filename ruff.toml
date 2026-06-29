@@ -13,6 +13,7 @@ extend-exclude = [
     "patterns",
     "src",
     "scripts",
+    "enterprise-addon/layers/*/python",
 ]
 
 # Exclude a variety of commonly ignored directories.
