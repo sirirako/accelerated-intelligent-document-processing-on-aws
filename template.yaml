@@ -983,6 +983,115 @@ Parameters:
   # === Feature Platform (optional) — END ==================================
   # =========================================================================
 
+  # =========================================================================
+  # === Enterprise Integration (optional) ===================================
+  # =========================================================================
+
+  PingIssuer1:
+    Type: String
+    Default: ""
+    Description: >-
+      Primary PingFederate issuer identifier (e.g. https://sso.corp.example.com).
+      Required when EnableHeadless=true.
+
+  PingJwksUri1:
+    Type: String
+    Default: ""
+    Description: >-
+      JWKS endpoint URL for the primary issuer. Required when EnableHeadless=true.
+
+  PingIssuer2:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) Secondary PingFederate issuer identifier. Leave empty if
+      only one issuer is used.
+
+  PingJwksUri2:
+    Type: String
+    Default: ""
+    Description: >-
+      JWKS endpoint URL for the secondary issuer. Required when PingIssuer2
+      is set.
+
+  PingRequiredRoles:
+    Type: String
+    Default: ""
+    Description: >-
+      Comma-separated list of required roles/groups in the token's userRoles
+      or memberOf claim. If empty, role check is skipped (any valid token is
+      allowed).
+
+  EnableCompletionHook:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: >-
+      Set to 'true' to deploy a completion hook Lambda that publishes to
+      Amazon MQ (RabbitMQ) when a document workflow completes. Auth to the
+      broker is PingFederate OAuth2 (client-credentials JWT).
+
+  CompletionHookMQHost:
+    Type: String
+    Default: ""
+    Description: >-
+      Amazon MQ broker hostname (e.g. b-xxxx.mq.us-east-1.amazonaws.com).
+      Required when EnableCompletionHook=true.
+
+  CompletionHookMQPort:
+    Type: String
+    Default: "5671"
+    Description: "AMQPS port for the RabbitMQ broker."
+
+  CompletionHookMQVhost:
+    Type: String
+    Default: "/"
+    Description: "RabbitMQ virtual host."
+
+  CompletionHookMQExchange:
+    Type: String
+    Default: ""
+    Description: "RabbitMQ exchange to publish to (empty = default exchange)."
+
+  CompletionHookMQRoutingKey:
+    Type: String
+    Default: "idp.document.completed"
+    Description: "RabbitMQ routing key for completion messages."
+
+  CompletionHookMQOAuthScope:
+    Type: String
+    Default: ""
+    Description: >-
+      OAuth2 scope to request from Ping for the MQ connection (e.g.
+      idp-mq.write:%2F/idp-events).
+
+  CompletionHookPingTokenUrl:
+    Type: String
+    Default: ""
+    Description: >-
+      Ping token endpoint URL for client-credentials grant (e.g.
+      https://sso.corp.example.com/as/token). Required when
+      EnableCompletionHook=true.
+
+  CompletionHookPingClientId:
+    Type: String
+    Default: ""
+    Description: >-
+      Ping OAuth2 client ID for the completion hook. Required when
+      EnableCompletionHook=true.
+
+  CompletionHookPingClientSecretArn:
+    Type: String
+    Default: ""
+    AllowedPattern: "^(|arn:aws[a-z-]*:secretsmanager:.*)$"
+    Description: >-
+      Secrets Manager ARN containing the Ping client secret for the
+      completion hook. Required when EnableCompletionHook=true.
+
+  # =========================================================================
+  # === Enterprise Integration — END ========================================
+  # =========================================================================
+
 Rules:
   MLflowTrackingURIRequired:
     RuleCondition: !Equals [ !Ref EnableMLflow, "true" ]
@@ -1070,6 +1179,9 @@ Conditions:
   DeployApiGateway: !Equals [!Ref EnableHeadless, 'true']
   ShouldDeployBastionHost: !Equals [!Ref DeployBastionHost, 'true']
 
+  # Enterprise integration conditions
+  DeployCompletionHook: !Equals [!Ref EnableCompletionHook, 'true']
+
   HasGuardrailConfig:
     !And [
       !Not [ !Equals [ !Ref BedrockGuardrailId, "" ] ],
@@ -1089,7 +1201,9 @@ Conditions:
     !Not [ !Equals [ !Ref AllowedSignUpEmailDomain, "" ] ]
   ShouldEnableGeoRestriction: !Not [ !Equals [ !Ref CloudFrontAllowedGeos, "" ] ]
   ShouldEnablePostProcessingLambdaHook:
-    !Not [ !Equals [ !Ref PostProcessingLambdaHookFunctionArn, "" ] ]
+    !Or
+      - !Not [ !Equals [ !Ref PostProcessingLambdaHookFunctionArn, "" ] ]
+      - !Equals [ !Ref EnableCompletionHook, 'true' ]
   ShouldCreateEvaluationBaselineBucket:
     !Equals [ !Ref EvaluationBaselineBucketName, "" ]
   ShouldCreateReportingBucket: !Equals [ !Ref ReportingBucketName, "" ]
@@ -1341,6 +1455,27 @@ Metadata:
           - ExecutionTimeThresholdMs
           - LogLevel
           - LogRetentionDays
+      - Label:
+          default: "Enterprise Integration — Ping Auth (Jobs API)"
+        Parameters:
+          - PingIssuer1
+          - PingJwksUri1
+          - PingIssuer2
+          - PingJwksUri2
+          - PingRequiredRoles
+      - Label:
+          default: "Enterprise Integration — Completion Hook (Amazon MQ)"
+        Parameters:
+          - EnableCompletionHook
+          - CompletionHookMQHost
+          - CompletionHookMQPort
+          - CompletionHookMQVhost
+          - CompletionHookMQExchange
+          - CompletionHookMQRoutingKey
+          - CompletionHookMQOAuthScope
+          - CompletionHookPingTokenUrl
+          - CompletionHookPingClientId
+          - CompletionHookPingClientSecretArn
 
     ParameterLabels:
       # --- Feature Platform ---
@@ -1554,49 +1689,11 @@ Resources:
       KmsKeyId: !GetAtt CustomerManagedEncryptionKey.Arn
       RetentionInDays: !Ref LogRetentionDays
 
-  # API Authentication - Cognito User Pool for M2M (client credentials)
-  ApiUserPool:
-    Type: AWS::Cognito::UserPool
-    Condition: DeployApiGateway
-    Properties:
-      UserPoolName: !Sub ${AWS::StackName}-api
+  # NOTE: Cognito M2M resources (ApiUserPool, ApiResourceServer, ApiAppClient,
+  # ApiUserPoolDomain) removed — this fork uses PingFederate for Jobs API auth.
+  # The Cognito OAuth domain doesn't work over PrivateLink, so Ping replaces it.
 
-  ApiResourceServer:
-    Type: AWS::Cognito::UserPoolResourceServer
-    Condition: DeployApiGateway
-    Properties:
-      Identifier: idp-api
-      Name: IDP API
-      UserPoolId: !Ref ApiUserPool
-      Scopes:
-        - ScopeName: jobs.read
-          ScopeDescription: Read job status
-        - ScopeName: jobs.write
-          ScopeDescription: Create and manage jobs
-
-  ApiAppClient:
-    Type: AWS::Cognito::UserPoolClient
-    Condition: DeployApiGateway
-    DependsOn: ApiResourceServer
-    Properties:
-      ClientName: !Sub ${AWS::StackName}-api-client
-      UserPoolId: !Ref ApiUserPool
-      GenerateSecret: true
-      AllowedOAuthFlows:
-        - client_credentials
-      AllowedOAuthFlowsUserPoolClient: true
-      AllowedOAuthScopes:
-        - idp-api/jobs.read
-        - idp-api/jobs.write
-
-  ApiUserPoolDomain:
-    Type: AWS::Cognito::UserPoolDomain
-    Condition: DeployApiGateway
-    Properties:
-      Domain: !Sub ${AWS::StackName}-api-${AWS::AccountId}
-      UserPoolId: !Ref ApiUserPool
-
-  # Private API Gateway with Cognito Authorization
+  # Private API Gateway with Ping Authorization (enterprise fork)
   ApiGateway:
     Type: AWS::Serverless::Api
     Condition: DeployApiGateway
@@ -1607,10 +1704,15 @@ Resources:
         VPCEndpointIds:
           - !Ref ApiGatewayVpcEndpointId
       Auth:
-        DefaultAuthorizer: CognitoAuthorizer
+        DefaultAuthorizer: PingAuthorizer
         Authorizers:
-          CognitoAuthorizer:
-            UserPoolArn: !GetAtt ApiUserPool.Arn
+          PingAuthorizer:
+            FunctionPayloadType: REQUEST
+            FunctionArn: !GetAtt EnterprisePingAuthorizerFunction.Arn
+            Identity:
+              Headers:
+                - Authorization
+              ReauthorizeEvery: 0
         ResourcePolicy:
           CustomStatements:
             - Effect: Deny
@@ -1687,9 +1789,7 @@ Resources:
             Path: /jobs
             Method: POST
             Auth:
-              Authorizer: CognitoAuthorizer
-              AuthorizationScopes:
-                - idp-api/jobs.write
+              Authorizer: PingAuthorizer
         GetJob:
           Type: Api
           Properties:
@@ -1697,9 +1797,7 @@ Resources:
             Path: /jobs/{job_id}
             Method: GET
             Auth:
-              Authorizer: CognitoAuthorizer
-              AuthorizationScopes:
-                - idp-api/jobs.read
+              Authorizer: PingAuthorizer
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TrackingTable
@@ -1785,6 +1883,113 @@ Resources:
                 - kms:Decrypt
                 - kms:GenerateDataKey*
               Resource: !GetAtt CustomerManagedEncryptionKey.Arn
+
+  ##########################################################################
+  # Enterprise Integration — Ping Authorizer + Completion Hook
+  ##########################################################################
+
+  # Layer: PyJWT + ping_verifier (shared by authorizer and completion hook)
+  EnterprisePingVerifierLayer:
+    Type: AWS::Serverless::LayerVersion
+    Condition: DeployApiGateway
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-enterprise-ping-verifier"
+      Description: "PyJWT + PingFederate OIDC JWT verifier"
+      ContentUri: enterprise-addon/layers/ping_verifier/
+      CompatibleRuntimes:
+        - python3.12
+
+  # Layer: pika (AMQP client for completion hook)
+  EnterprisePikaLayer:
+    Type: AWS::Serverless::LayerVersion
+    Condition: DeployCompletionHook
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-enterprise-pika"
+      Description: "pika AMQP client for RabbitMQ"
+      ContentUri: enterprise-addon/layers/pika/
+      CompatibleRuntimes:
+        - python3.12
+
+  # Ping JWT REQUEST authorizer — replaces CognitoAuthorizer on Jobs API
+  EnterprisePingAuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Condition: DeployApiGateway
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      CodeUri: enterprise-addon/ping_authorizer/
+      Handler: app.handler
+      Runtime: python3.12
+      MemorySize: 256
+      Timeout: 10
+      Architectures:
+        - arm64
+      Layers:
+        - !Ref EnterprisePingVerifierLayer
+      VpcConfig: !If
+        - DeployInVPC
+        - SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+          SubnetIds: !Ref PrivateSubnetIds
+        - !Ref AWS::NoValue
+      Environment:
+        Variables:
+          ISSUER1: !Ref PingIssuer1
+          JWKSURI1: !Ref PingJwksUri1
+          ISSUER2: !Ref PingIssuer2
+          JWKSURI2: !Ref PingJwksUri2
+          REQUIRED_ROLES: !Ref PingRequiredRoles
+      Tracing: Active
+
+  # Completion hook — publishes to Amazon MQ (RabbitMQ + Ping OAuth2)
+  EnterpriseCompletionHookFunction:
+    Type: AWS::Serverless::Function
+    Condition: DeployCompletionHook
+    Properties:
+      PermissionsBoundary:
+        !If [
+          HasPermissionsBoundary,
+          !Ref PermissionsBoundaryArn,
+          !Ref AWS::NoValue,
+        ]
+      FunctionName: !Sub "${AWS::StackName}-CompletionHook"
+      CodeUri: enterprise-addon/completion_hook/
+      Handler: app.handler
+      Runtime: python3.12
+      MemorySize: 256
+      Timeout: 30
+      Architectures:
+        - arm64
+      Layers:
+        - !Ref EnterprisePikaLayer
+      VpcConfig: !If
+        - DeployInVPC
+        - SecurityGroupIds:
+            - !Ref LambdaSecurityGroupId
+          SubnetIds: !Ref PrivateSubnetIds
+        - !Ref AWS::NoValue
+      Environment:
+        Variables:
+          PING_TOKEN_URL: !Ref CompletionHookPingTokenUrl
+          PING_CLIENT_ID: !Ref CompletionHookPingClientId
+          PING_CLIENT_SECRET_ARN: !Ref CompletionHookPingClientSecretArn
+          MQ_OAUTH_SCOPE: !Ref CompletionHookMQOAuthScope
+          MQ_HOST: !Ref CompletionHookMQHost
+          MQ_PORT: !Ref CompletionHookMQPort
+          MQ_VHOST: !Ref CompletionHookMQVhost
+          MQ_EXCHANGE: !Ref CompletionHookMQExchange
+          MQ_ROUTING_KEY: !Ref CompletionHookMQRoutingKey
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref CompletionHookPingClientSecretArn
+      Tracing: Active
 
   ##########################################################################
   # Bastion Host (optional - for testing Private API Gateway)
@@ -5807,7 +6012,10 @@ Resources:
       Environment:
         Variables:
           LOG_LEVEL: !Ref LogLevel
-          CUSTOM_POST_PROCESSOR_ARN: !Ref PostProcessingLambdaHookFunctionArn
+          CUSTOM_POST_PROCESSOR_ARN: !If
+            - DeployCompletionHook
+            - !GetAtt EnterpriseCompletionHookFunction.Arn
+            - !Ref PostProcessingLambdaHookFunctionArn
           WORKING_BUCKET: !Ref WorkingBucket
       Policies:
         - S3CrudPolicy:
@@ -5816,7 +6024,10 @@ Resources:
             - Effect: Allow
               Action:
                 - lambda:InvokeFunction
-              Resource: !Ref PostProcessingLambdaHookFunctionArn
+              Resource: !If
+                - DeployCompletionHook
+                - !GetAtt EnterpriseCompletionHookFunction.Arn
+                - !Ref PostProcessingLambdaHookFunctionArn
             - Effect: Allow
               Action:
                 - kms:Encrypt
@@ -11243,8 +11454,8 @@ Outputs:
     Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${ApiStageName}"
   ApiClientId:
     Condition: DeployApiGateway
-    Description: App client ID for API authentication
-    Value: !Ref ApiAppClient
+    Description: Primary Ping issuer for API authentication (enterprise fork)
+    Value: !Ref PingIssuer1
   MCPConnectorClientId:
     Condition: CreateAgentCoreLambda
     Description: Cognito client ID used by the MCP Connector for machine-to-machine (M2M) authentication with the IDP system
