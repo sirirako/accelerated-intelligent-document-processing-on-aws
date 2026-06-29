@@ -715,5 +715,753 @@ classes:
       Auto Claims, Accidents, and Violations:
         $ref: "#/$defs/Auto Claims, Accidents, and Violations"
         x-aws-idp-evaluation-method: LLM
+
+  - $schema: https://json-schema.org/draft/2020-12/schema
+    $id: Closing-Disclosure
+    type: object
+    x-aws-idp-document-type: Closing-Disclosure
+    description: >-
+      A standardized five-page form (TRID/TILA-RESPA) provided to borrowers at
+      least three business days before closing a mortgage loan, detailing the
+      final loan terms, projected payments, closing costs, and summaries of
+      transactions between borrower and seller.
+    $defs:
+      Address:
+        type: object
+        description: A street address with city, state, and zip code.
+        properties:
+          streetAddress:
+            type: string
+            description: The street address line.
+            x-aws-idp-evaluation-method: EXACT
+          city:
+            type: string
+            description: The city name.
+            x-aws-idp-evaluation-method: EXACT
+          stateCode:
+            type: string
+            description: The two-letter state abbreviation.
+            x-aws-idp-evaluation-method: EXACT
+          zipCode:
+            type: string
+            description: The postal zip code.
+            x-aws-idp-evaluation-method: EXACT
+      NamedParty:
+        type: object
+        description: A named party in the transaction with their address.
+        properties:
+          fullName:
+            type: string
+            description: The full name of the party.
+            x-aws-idp-evaluation-method: EXACT
+          address:
+            description: The address of the party.
+            $ref: "#/$defs/Address"
+            x-aws-idp-evaluation-method: LLM
+      LenderParty:
+        type: object
+        description: The lending institution information.
+        properties:
+          name:
+            type: string
+            description: The name of the lending institution.
+            x-aws-idp-evaluation-method: EXACT
+          address:
+            description: The address of the lender.
+            $ref: "#/$defs/Address"
+            x-aws-idp-evaluation-method: LLM
+      YearsPayment:
+        type: object
+        description: Projected payment breakdown for a year range.
+        properties:
+          principalAndInterest:
+            type: string
+            description: Monthly principal and interest payment amount.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          mortgageInsurance:
+            type: string
+            description: Monthly mortgage insurance amount.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          estimatedEscrow:
+            type: string
+            description: Estimated monthly escrow amount.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          estimatedTotalMonthlyPayment:
+            type: string
+            description: Estimated total monthly payment.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+      EstimatedTaxesInsuranceAssessments:
+        type: object
+        description: Estimated taxes, insurance, and assessments details.
+        properties:
+          estimatedTotalMonthly:
+            type: string
+            description: Estimated total monthly amount for taxes, insurance, and assessments.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          includesPropertyTaxes:
+            type: string
+            description: Whether property taxes are included (Yes/No).
+            x-aws-idp-evaluation-method: EXACT
+          includesHomeownersInsurance:
+            type: string
+            description: Whether homeowners insurance is included (Yes/No).
+            x-aws-idp-evaluation-method: EXACT
+          other:
+            type: string
+            description: Other included assessments description.
+            x-aws-idp-evaluation-method: EXACT
+          inEscrowPropertyTaxes:
+            type: string
+            description: Whether property taxes are held in escrow (Yes/No).
+            x-aws-idp-evaluation-method: EXACT
+          inEscrowHomeownersInsurance:
+            type: string
+            description: Whether homeowners insurance is held in escrow (Yes/No).
+            x-aws-idp-evaluation-method: EXACT
+      ClosingCostItem:
+        type: object
+        description: A single line item in the closing cost details.
+        properties:
+          label:
+            type: string
+            description: Description of the cost item.
+            x-aws-idp-evaluation-method: EXACT
+          to:
+            type: string
+            description: The party to whom the fee is paid.
+            x-aws-idp-evaluation-method: EXACT
+          months:
+            type: string
+            description: Number of months applicable (for prepaid/escrow items).
+            x-aws-idp-evaluation-method: EXACT
+          perDay:
+            type: string
+            description: Per diem rate if applicable.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          dateRange:
+            type: string
+            description: Date range covered by this item.
+            x-aws-idp-evaluation-method: EXACT
+          borrowerAtClosing:
+            type: string
+            description: Amount paid by borrower at closing.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          borrowerBeforeClosing:
+            type: string
+            description: Amount paid by borrower before closing.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          sellerAtClosing:
+            type: string
+            description: Amount paid by seller at closing.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          sellerBeforeClosing:
+            type: string
+            description: Amount paid by seller before closing.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          othersAmount:
+            type: string
+            description: Amount paid by others.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+      PayoffItem:
+        type: object
+        description: A payoff or payment item at closing.
+        properties:
+          to:
+            type: string
+            description: The party to whom the payoff is made.
+            x-aws-idp-evaluation-method: EXACT
+          amount:
+            type: string
+            description: The payoff amount.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+      CalculatingCashToCloseRow:
+        type: object
+        description: A row in the Calculating Cash to Close comparison table.
+        properties:
+          label:
+            type: string
+            description: Description of the row item.
+            x-aws-idp-evaluation-method: EXACT
+          loanEstimate:
+            type: string
+            description: Amount from the Loan Estimate.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          final:
+            type: string
+            description: Final amount at closing.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          didChange:
+            type: string
+            description: Whether the amount changed from the estimate (Yes/No).
+            x-aws-idp-evaluation-method: EXACT
+          changeReason:
+            type: string
+            description: Reason for the change if applicable.
+            x-aws-idp-evaluation-method: EXACT
+      TransactionLineItem:
+        type: object
+        description: A line item in the summaries of transactions.
+        properties:
+          lineNumber:
+            type: string
+            description: The line number on the form (e.g., 01, 02).
+            x-aws-idp-evaluation-method: EXACT
+          label:
+            type: string
+            description: Description of the transaction line item.
+            x-aws-idp-evaluation-method: EXACT
+          amount:
+            type: string
+            description: The dollar amount for this line item.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+      TransactionLineGroup:
+        type: object
+        description: A group of transaction line items with a section total.
+        properties:
+          total:
+            type: string
+            description: The section total amount.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          lineItems:
+            type: array
+            x-aws-idp-list-item-description: Each item represents a transaction line entry
+            items:
+              $ref: "#/$defs/TransactionLineItem"
+            x-aws-idp-evaluation-method: LLM
+      CashToCloseSummary:
+        type: object
+        description: Summary of cash to close for a party.
+        properties:
+          direction:
+            type: string
+            description: Whether cash is from or to the party (From/To).
+            x-aws-idp-evaluation-method: EXACT
+          amount:
+            type: string
+            description: The cash to close amount.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+      LicensedContact:
+        type: object
+        description: Contact information for a licensed party (lender, broker, or settlement agent).
+        properties:
+          name:
+            type: string
+            description: Name of the organization.
+            x-aws-idp-evaluation-method: EXACT
+          address:
+            type: string
+            description: Address of the organization.
+            x-aws-idp-evaluation-method: EXACT
+          nmlsId:
+            type: string
+            description: NMLS ID number of the organization.
+            x-aws-idp-evaluation-method: EXACT
+          stateLicenseId:
+            type: string
+            description: State license ID of the organization.
+            x-aws-idp-evaluation-method: EXACT
+          contactName:
+            type: string
+            description: Name of the individual contact person.
+            x-aws-idp-evaluation-method: EXACT
+          contactNmlsId:
+            type: string
+            description: NMLS ID of the individual contact person.
+            x-aws-idp-evaluation-method: EXACT
+          contactStateLicenseId:
+            type: string
+            description: State license ID of the individual contact person.
+            x-aws-idp-evaluation-method: EXACT
+          email:
+            type: string
+            description: Email address of the contact.
+            x-aws-idp-evaluation-method: EXACT
+          phone:
+            type: string
+            description: Phone number of the contact.
+            x-aws-idp-evaluation-method: EXACT
+      RealEstateBrokerContact:
+        type: object
+        description: Contact information for a real estate broker.
+        properties:
+          name:
+            type: string
+            description: Name of the brokerage firm.
+            x-aws-idp-evaluation-method: EXACT
+          address:
+            type: string
+            description: Address of the brokerage firm.
+            x-aws-idp-evaluation-method: EXACT
+          licenseId:
+            type: string
+            description: License ID of the brokerage.
+            x-aws-idp-evaluation-method: EXACT
+          contactName:
+            type: string
+            description: Name of the individual agent.
+            x-aws-idp-evaluation-method: EXACT
+          email:
+            type: string
+            description: Email address of the agent.
+            x-aws-idp-evaluation-method: EXACT
+          phone:
+            type: string
+            description: Phone number of the agent.
+            x-aws-idp-evaluation-method: EXACT
+    properties:
+      closingInformation:
+        type: object
+        description: Key dates, settlement agent, file number, property, and sale price.
+        properties:
+          dateIssued:
+            type: string
+            format: date
+            description: The date the Closing Disclosure was issued.
+            x-aws-idp-evaluation-method: EXACT
+          closingDate:
+            type: string
+            format: date
+            description: The scheduled closing date.
+            x-aws-idp-evaluation-method: EXACT
+          disbursementDate:
+            type: string
+            format: date
+            description: The date loan funds are disbursed.
+            x-aws-idp-evaluation-method: EXACT
+          settlementAgent:
+            type: string
+            description: Name of the settlement or closing agent.
+            x-aws-idp-evaluation-method: EXACT
+          fileNumber:
+            type: string
+            description: The file or case number assigned by the settlement agent.
+            x-aws-idp-evaluation-method: EXACT
+          property:
+            description: The property address for the transaction.
+            $ref: "#/$defs/Address"
+            x-aws-idp-evaluation-method: LLM
+          salePrice:
+            type: string
+            description: The sale price of the property.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          estimatedPropertyValue:
+            type: string
+            description: The estimated value of the property (for non-purchase transactions).
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+        x-aws-idp-evaluation-method: LLM
+      transactionInformation:
+        type: object
+        description: Identifies the borrower, seller, and lender in the transaction.
+        properties:
+          borrower:
+            description: The borrower (buyer) in the transaction.
+            $ref: "#/$defs/NamedParty"
+            x-aws-idp-evaluation-method: LLM
+          seller:
+            description: The seller in the transaction.
+            $ref: "#/$defs/NamedParty"
+            x-aws-idp-evaluation-method: LLM
+          lender:
+            description: The lending institution.
+            $ref: "#/$defs/LenderParty"
+            x-aws-idp-evaluation-method: LLM
+        x-aws-idp-evaluation-method: LLM
+      loanInformation:
+        type: object
+        description: Core loan terms including term, type, rate, and monthly payment.
+        properties:
+          loanTermYears:
+            type: string
+            description: The loan term in years.
+            x-aws-idp-evaluation-method: EXACT
+          purpose:
+            type: string
+            description: The purpose of the loan (Purchase, Refinance, etc.).
+            x-aws-idp-evaluation-method: EXACT
+          product:
+            type: string
+            description: The loan product type (Fixed Rate, Adjustable Rate, etc.).
+            x-aws-idp-evaluation-method: EXACT
+          loanType:
+            type: string
+            description: The loan program type (Conventional, FHA, VA, USDA-RHS).
+            x-aws-idp-evaluation-method: EXACT
+          loanId:
+            type: string
+            description: The unique loan identification number.
+            x-aws-idp-evaluation-method: EXACT
+          micNumber:
+            type: string
+            description: Mortgage Insurance Case number.
+            x-aws-idp-evaluation-method: EXACT
+          loanAmount:
+            type: string
+            description: The total loan amount.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          interestRate:
+            type: string
+            description: The annual interest rate as a percentage.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          monthlyPrincipalAndInterest:
+            type: string
+            description: The monthly principal and interest payment.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          prepaymentPenalty:
+            type: string
+            description: Whether a prepayment penalty applies (Yes/No).
+            x-aws-idp-evaluation-method: EXACT
+          balloonPayment:
+            type: string
+            description: Whether a balloon payment applies (Yes/No).
+            x-aws-idp-evaluation-method: EXACT
+          canLoanAmountIncreaseAfterClosing:
+            type: string
+            description: Whether the loan amount can increase after closing (Yes/No).
+            x-aws-idp-evaluation-method: EXACT
+          canInterestRateIncreaseAfterClosing:
+            type: string
+            description: Whether the interest rate can increase after closing (Yes/No).
+            x-aws-idp-evaluation-method: EXACT
+          canMonthlyPrincipalAndInterestIncreaseAfterClosing:
+            type: string
+            description: Whether the monthly P&I can increase after closing (Yes/No).
+            x-aws-idp-evaluation-method: EXACT
+        x-aws-idp-evaluation-method: LLM
+      projectedPayments:
+        type: object
+        description: Projected monthly payments and estimated taxes/insurance/assessments.
+        properties:
+          years1to30:
+            description: Projected payment components for years 1 through 30.
+            $ref: "#/$defs/YearsPayment"
+            x-aws-idp-evaluation-method: LLM
+          estimatedTaxesInsuranceAssessments:
+            description: Breakdown of estimated taxes, insurance, and assessments.
+            $ref: "#/$defs/EstimatedTaxesInsuranceAssessments"
+            x-aws-idp-evaluation-method: LLM
+        x-aws-idp-evaluation-method: LLM
+      costsAtClosing:
+        type: object
+        description: Summary totals for closing costs and cash to close.
+        properties:
+          closingCosts:
+            type: string
+            description: Total closing costs.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          loanCosts:
+            type: string
+            description: Total loan costs (subset of closing costs).
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          otherCosts:
+            type: string
+            description: Total other costs (subset of closing costs).
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          lenderCredits:
+            type: string
+            description: Total lender credits applied.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          cashToClose:
+            type: string
+            description: Total cash required to close.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          cashToCloseDirection:
+            type: string
+            description: Whether cash is from or to borrower (From/To Borrower).
+            x-aws-idp-evaluation-method: EXACT
+        x-aws-idp-evaluation-method: LLM
+      closingCostDetails:
+        type: object
+        description: Detailed breakdown of all closing costs by section (A through J).
+        properties:
+          sectionAOriginationCharges:
+            type: object
+            description: Section A - Origination charges from the lender.
+            properties:
+              sectionTotal:
+                type: string
+                description: Total origination charges.
+                x-aws-idp-evaluation-method: NUMERIC_EXACT
+              items:
+                type: array
+                x-aws-idp-list-item-description: Each item represents an origination charge line item
+                items:
+                  $ref: "#/$defs/ClosingCostItem"
+                x-aws-idp-evaluation-method: LLM
+            x-aws-idp-evaluation-method: LLM
+          sectionBServicesBorrowerDidNotShopFor:
+            type: object
+            description: Section B - Services the borrower did not shop for.
+            properties:
+              sectionTotal:
+                type: string
+                description: Total for services borrower did not shop for.
+                x-aws-idp-evaluation-method: NUMERIC_EXACT
+              items:
+                type: array
+                x-aws-idp-list-item-description: Each item represents a service the borrower did not shop for
+                items:
+                  $ref: "#/$defs/ClosingCostItem"
+                x-aws-idp-evaluation-method: LLM
+            x-aws-idp-evaluation-method: LLM
+          sectionCServicesBorrowerDidShopFor:
+            type: object
+            description: Section C - Services the borrower did shop for.
+            properties:
+              sectionTotal:
+                type: string
+                description: Total for services borrower did shop for.
+                x-aws-idp-evaluation-method: NUMERIC_EXACT
+              items:
+                type: array
+                x-aws-idp-list-item-description: Each item represents a service the borrower did shop for
+                items:
+                  $ref: "#/$defs/ClosingCostItem"
+                x-aws-idp-evaluation-method: LLM
+            x-aws-idp-evaluation-method: LLM
+          sectionDTotalLoanCosts:
+            type: string
+            description: Section D - Total loan costs (borrower-paid at and before closing).
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          sectionETaxesAndGovernmentFees:
+            type: object
+            description: Section E - Taxes and other government fees.
+            properties:
+              sectionTotal:
+                type: string
+                description: Total taxes and government fees.
+                x-aws-idp-evaluation-method: NUMERIC_EXACT
+              items:
+                type: array
+                x-aws-idp-list-item-description: Each item represents a tax or government fee
+                items:
+                  $ref: "#/$defs/ClosingCostItem"
+                x-aws-idp-evaluation-method: LLM
+            x-aws-idp-evaluation-method: LLM
+          sectionFPrepaids:
+            type: object
+            description: Section F - Prepaid items (interest, insurance premiums, etc.).
+            properties:
+              sectionTotal:
+                type: string
+                description: Total prepaids.
+                x-aws-idp-evaluation-method: NUMERIC_EXACT
+              items:
+                type: array
+                x-aws-idp-list-item-description: Each item represents a prepaid expense
+                items:
+                  $ref: "#/$defs/ClosingCostItem"
+                x-aws-idp-evaluation-method: LLM
+            x-aws-idp-evaluation-method: LLM
+          sectionGInitialEscrowPaymentAtClosing:
+            type: object
+            description: Section G - Initial escrow payment collected at closing.
+            properties:
+              sectionTotal:
+                type: string
+                description: Total initial escrow payment.
+                x-aws-idp-evaluation-method: NUMERIC_EXACT
+              items:
+                type: array
+                x-aws-idp-list-item-description: Each item represents an escrow payment component
+                items:
+                  $ref: "#/$defs/ClosingCostItem"
+                x-aws-idp-evaluation-method: LLM
+            x-aws-idp-evaluation-method: LLM
+          sectionHOther:
+            type: object
+            description: Section H - Other costs not categorized elsewhere.
+            properties:
+              sectionTotal:
+                type: string
+                description: Total other costs.
+                x-aws-idp-evaluation-method: NUMERIC_EXACT
+              items:
+                type: array
+                x-aws-idp-list-item-description: Each item represents a miscellaneous closing cost
+                items:
+                  $ref: "#/$defs/ClosingCostItem"
+                x-aws-idp-evaluation-method: LLM
+            x-aws-idp-evaluation-method: LLM
+          sectionITotalOtherCosts:
+            type: string
+            description: Section I - Total other costs (borrower-paid at and before closing).
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          sectionJTotalClosingCosts:
+            type: object
+            description: Section J - Total closing costs combining all sections.
+            properties:
+              total:
+                type: string
+                description: Grand total closing costs (borrower-paid).
+                x-aws-idp-evaluation-method: NUMERIC_EXACT
+              closingCostSubtotalsDIAtClosing:
+                type: string
+                description: Subtotal of sections D and I paid at closing.
+                x-aws-idp-evaluation-method: NUMERIC_EXACT
+              closingCostsSubtotalsDIBeforeClosing:
+                type: string
+                description: Subtotal of sections D and I paid before closing.
+                x-aws-idp-evaluation-method: NUMERIC_EXACT
+              lenderCredits:
+                type: string
+                description: Lender credits applied to closing costs.
+                x-aws-idp-evaluation-method: NUMERIC_EXACT
+            x-aws-idp-evaluation-method: LLM
+        x-aws-idp-evaluation-method: LLM
+      payoffsAndPayments:
+        type: object
+        description: Payoffs and payments made from loan proceeds at closing.
+        properties:
+          items:
+            type: array
+            x-aws-idp-list-item-description: Each item represents a payoff or payment to a creditor
+            items:
+              $ref: "#/$defs/PayoffItem"
+            x-aws-idp-evaluation-method: LLM
+          sectionKTotalPayoffsAndPayments:
+            type: string
+            description: Total payoffs and payments amount.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+        x-aws-idp-evaluation-method: LLM
+      calculatingCashToClose:
+        type: object
+        description: Comparison of Loan Estimate vs. final figures for cash to close.
+        properties:
+          rows:
+            type: array
+            x-aws-idp-list-item-description: Each row compares a Loan Estimate figure to its final closing figure
+            items:
+              $ref: "#/$defs/CalculatingCashToCloseRow"
+            x-aws-idp-evaluation-method: LLM
+          cashToCloseLoanEstimate:
+            type: string
+            description: Cash to close from the Loan Estimate.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          cashToCloseFinal:
+            type: string
+            description: Final cash to close amount.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          cashToCloseDirectionLoanEstimate:
+            type: string
+            description: Direction of cash to close on the Loan Estimate (From/To Borrower).
+            x-aws-idp-evaluation-method: EXACT
+          cashToCloseDirectionFinal:
+            type: string
+            description: Direction of final cash to close (From/To Borrower).
+            x-aws-idp-evaluation-method: EXACT
+          closingCostsFinancedPaidFromLoanAmount:
+            type: string
+            description: Amount of closing costs financed through the loan.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+        x-aws-idp-evaluation-method: LLM
+      summariesOfTransactions:
+        type: object
+        description: Detailed summaries of borrower and seller transaction amounts.
+        properties:
+          borrower:
+            type: object
+            description: Borrower's transaction summary.
+            properties:
+              sectionKDueFromBorrowerAtClosing:
+                description: Amounts due from the borrower at closing.
+                $ref: "#/$defs/TransactionLineGroup"
+                x-aws-idp-evaluation-method: LLM
+              sectionLPaidAlreadyByOrOnBehalfOfBorrowerAtClosing:
+                description: Amounts already paid by or on behalf of the borrower.
+                $ref: "#/$defs/TransactionLineGroup"
+                x-aws-idp-evaluation-method: LLM
+              cashToClose:
+                description: Net cash to close for the borrower.
+                $ref: "#/$defs/CashToCloseSummary"
+                x-aws-idp-evaluation-method: LLM
+            x-aws-idp-evaluation-method: LLM
+          seller:
+            type: object
+            description: Seller's transaction summary.
+            properties:
+              sectionMDueToSellerAtClosing:
+                description: Amounts due to the seller at closing.
+                $ref: "#/$defs/TransactionLineGroup"
+                x-aws-idp-evaluation-method: LLM
+              sectionNDueFromSellerAtClosing:
+                description: Amounts due from the seller at closing.
+                $ref: "#/$defs/TransactionLineGroup"
+                x-aws-idp-evaluation-method: LLM
+              cashToClose:
+                description: Net cash to close for the seller.
+                $ref: "#/$defs/CashToCloseSummary"
+                x-aws-idp-evaluation-method: LLM
+            x-aws-idp-evaluation-method: LLM
+        x-aws-idp-evaluation-method: LLM
+      loanCalculations:
+        type: object
+        description: Loan calculation totals including APR and total interest percentage.
+        properties:
+          totalOfPayments:
+            type: string
+            description: Total of all payments over the life of the loan.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          financeCharge:
+            type: string
+            description: Total finance charge (total cost of credit as a dollar amount).
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          amountFinanced:
+            type: string
+            description: Amount financed (loan amount minus prepaid finance charges).
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          apr:
+            type: string
+            description: Annual Percentage Rate.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+          tip:
+            type: string
+            description: Total Interest Percentage over the loan term.
+            x-aws-idp-evaluation-method: NUMERIC_EXACT
+        x-aws-idp-evaluation-method: LLM
+      contactInformation:
+        type: object
+        description: Contact details for all parties involved in the closing.
+        properties:
+          lender:
+            description: Lender contact information.
+            $ref: "#/$defs/LicensedContact"
+            x-aws-idp-evaluation-method: LLM
+          mortgageBroker:
+            description: Mortgage broker contact information.
+            $ref: "#/$defs/LicensedContact"
+            x-aws-idp-evaluation-method: LLM
+          realEstateBrokerBuyer:
+            description: Buyer's real estate broker contact information.
+            $ref: "#/$defs/RealEstateBrokerContact"
+            x-aws-idp-evaluation-method: LLM
+          realEstateBrokerSeller:
+            description: Seller's real estate broker contact information.
+            $ref: "#/$defs/RealEstateBrokerContact"
+            x-aws-idp-evaluation-method: LLM
+          settlementAgent:
+            description: Settlement agent contact information.
+            $ref: "#/$defs/LicensedContact"
+            x-aws-idp-evaluation-method: LLM
+        x-aws-idp-evaluation-method: LLM
+      confirmReceipt:
+        type: object
+        description: Borrower confirmation of receipt of the Closing Disclosure.
+        properties:
+          borrowerName:
+            type: string
+            description: Name of the borrower confirming receipt.
+            x-aws-idp-evaluation-method: EXACT
+          date:
+            type: string
+            format: date
+            description: Date the borrower confirmed receipt.
+            x-aws-idp-evaluation-method: EXACT
+        x-aws-idp-evaluation-method: LLM
+    required:
+      - closingInformation
+      - loanInformation
+      - costsAtClosing
+      - loanCalculations
+
 rule_validation:
   enabled: false
