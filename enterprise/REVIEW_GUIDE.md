@@ -41,13 +41,13 @@ On SUCCEEDED: CompletionHook Lambda
 ```
 
 **Key files:**
-- `enterprise-addon/ping_authorizer/app.py` — REQUEST authorizer handler
-- `enterprise-addon/ping_authorizer/scopes.py` — scope enforcement logic
-- `enterprise-addon/layers/ping_verifier/python/ping_verifier.py` — shared JWT validation
-- `enterprise-addon/completion_hook/app.py` — completion hook handler
-- `enterprise-addon/completion_hook/ping_token.py` — Ping client-credentials token fetcher
-- `enterprise-addon/completion_hook/mq_rabbitmq.py` — AMQPS publisher
-- `enterprise-addon/completion_hook/event.py` — EventBridge event → message payload
+- `enterprise/ping_authorizer/app.py` — Lambda authorizer (multi-issuer, role-based)
+- `enterprise/ping_authorizer/scopes.py` — scope enforcement logic (retained for optional use)
+- `enterprise/layers/ping_verifier/python/ping_verifier.py` — shared JWT validation (PyJWT)
+- `enterprise/completion_hook/app.py` — completion hook handler
+- `enterprise/completion_hook/ping_token.py` — Ping client-credentials token fetcher
+- `enterprise/completion_hook/mq_rabbitmq.py` — AMQPS publisher
+- `enterprise/completion_hook/event.py` — EventBridge event → message payload
 - `patterns/unified/src/pipeline_hooks_function/index.py` — pipeline hooks dispatcher
 
 ---
@@ -61,13 +61,13 @@ answer them before writing code.
 
 | Question | What "good" looks like |
 |----------|----------------------|
-| Does it preserve Cognito as a fallback? | Cognito resources remain in the stack, untouched. Only the API authorizer reference switches. |
 | Is the authorizer stateless? | No DynamoDB, no session store. Validation is JWT signature + claims only. |
-| Is JWKS resolution cacheable? | `PyJWKClient(lifespan=600)` or equivalent. No per-request JWKS fetch. |
-| Are scopes the sole authorization mechanism? | Method → scope mapping is declarative (`GET→read`, mutating→`write`). No role-based or group-based logic in the authorizer. |
-| Is audience matching flexible? | Must check `aud` OR `azp` OR `client_id` — Ping tokens vary by configuration. |
-| Is the layer shared correctly? | `ping_verifier` layer used by both the authorizer AND the completion hook (single source of truth for validation logic). |
-| Is the feature toggleable? | `EnablePingAuth=true/false` — no side effects when disabled; same template, same deploy command. |
+| Does it support multiple issuers? | `ISSUER_CONFIG` dict maps issuer → JWKS URL. Tries each until one matches. |
+| Is JWKS resolution cacheable? | `PyJWKClient(cache_keys=True, lifespan=3600)`. No per-request JWKS fetch. |
+| Is authorization role-based? | Checks `userRoles` or `memberOf` claims against `REQUIRED_ROLES`. If no roles configured, any valid token is allowed. |
+| Does it support multiple token headers? | `Authorization: Bearer`, custom header (configurable via env var), `x-jwt-token`. |
+| Does it allow all methods on success? | Returns Allow for `{stage}/*` — no per-method granularity. |
+| Is it always active when Jobs API is deployed? | Yes — `EnableHeadless=true` deploys the Jobs API with Ping auth. No separate toggle. |
 
 ### 1.2 Amazon MQ Completion Hook Design
 
