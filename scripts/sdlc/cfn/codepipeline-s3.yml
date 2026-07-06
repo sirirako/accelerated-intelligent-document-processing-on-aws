@@ -45,10 +45,46 @@ Parameters:
     Description: '(Optional) Security group for CodeBuild VPC config'
     Default: ''
 
+  # ── Air-gapped / private registry parameters ──
+  DockerConfigSecretArn:
+    Type: String
+    Default: ''
+    Description: '(Optional) Secrets Manager ARN for Docker registry credentials (config.json)'
+  UvConfigSecretArn:
+    Type: String
+    Default: ''
+    Description: '(Optional) Secrets Manager ARN for UV config (private PyPI)'
+  PipConfigSecretArn:
+    Type: String
+    Default: ''
+    Description: '(Optional) Secrets Manager ARN for pip config (private PyPI)'
+  NpmConfigSecretArn:
+    Type: String
+    Default: ''
+    Description: '(Optional) Secrets Manager ARN for .npmrc (private npm registry)'
+  CACertBundleS3Uri:
+    Type: String
+    Default: ''
+    Description: '(Optional) S3 URI for corporate CA cert bundle (e.g., s3://bucket/certs/ca.tar.gz)'
+  PipelineConfigKey:
+    Type: String
+    Default: 'deploy/pipeline-config.yaml'
+    Description: 'S3 key of the pipeline config file in the source bucket (per-environment deployment parameters)'
+
 Conditions:
   CreateKMSKey: !Equals [!Ref KMSKeyArn, '']
   CreateCodeBuildRole: !Equals [!Ref CodeBuildRoleArn, '']
   DeployInVPC: !Not [!Equals [!Ref VpcId, '']]
+  HasDockerConfigSecret: !Not [!Equals [!Ref DockerConfigSecretArn, '']]
+  HasUvConfigSecret: !Not [!Equals [!Ref UvConfigSecretArn, '']]
+  HasPipConfigSecret: !Not [!Equals [!Ref PipConfigSecretArn, '']]
+  HasNpmConfigSecret: !Not [!Equals [!Ref NpmConfigSecretArn, '']]
+  HasCACertBundle: !Not [!Equals [!Ref CACertBundleS3Uri, '']]
+  HasAnyRegistrySecret: !Or
+    - !Not [!Equals [!Ref DockerConfigSecretArn, '']]
+    - !Not [!Equals [!Ref UvConfigSecretArn, '']]
+    - !Not [!Equals [!Ref PipConfigSecretArn, '']]
+    - !Not [!Equals [!Ref NpmConfigSecretArn, '']]
 
 Resources:
   PipelineKMSKey:
@@ -159,9 +195,8 @@ Resources:
               - Effect: Allow
                 Action:
                   - cloudformation:*
-                Resource: 
-                  - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/idp-*'
-                  - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/idp-*/*'
+                Resource:
+                  - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/*'
               # ValidateTemplate doesn't support resource-level permissions
               - Effect: Allow
                 Action:
@@ -177,19 +212,19 @@ Resources:
                   - iam:Get*
                   - iam:List*
                 Resource: '*'
-              # Write IAM operations (scoped to IDP resources)
+              # Write IAM operations for stack-created roles
               - Effect: Allow
                 Action:
                   - iam:*
                 Resource:
-                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/idp-*'
-                  - !Sub 'arn:aws:iam::${AWS::AccountId}:policy/idp-*'
-                  - !Sub 'arn:aws:iam::${AWS::AccountId}:instance-profile/idp-*'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/*'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:policy/*'
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:instance-profile/*'
               # PassRole for CloudFormation service role
               - Effect: Allow
                 Action:
                   - iam:PassRole
-                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/idp-*'
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/*'
                 Condition:
                   StringEquals:
                     iam:PassedToService: 
@@ -214,15 +249,15 @@ Resources:
                 Action:
                   - s3:*
                 Resource:
-                  - !Sub 'arn:aws:s3:::genaiic-sdlc-sourcecode-${AWS::AccountId}-${AWS::Region}'
-                  - !Sub 'arn:aws:s3:::genaiic-sdlc-sourcecode-${AWS::AccountId}-${AWS::Region}/*'
-              # IDP stack buckets
+                  - !Sub 'arn:aws:s3:::${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}'
+                  - !Sub 'arn:aws:s3:::${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}/*'
+              # Stack-created buckets (any name — customer controls stack name)
               - Effect: Allow
                 Action:
                   - s3:*
                 Resource:
-                  - 'arn:aws:s3:::idp-*'
-                  - 'arn:aws:s3:::idp-*/*'
+                  - 'arn:aws:s3:::*'
+                  - 'arn:aws:s3:::*/*'
         - PolicyName: MonitoringAndCleanupAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -231,7 +266,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - lambda:*
-                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:idp-*'
+                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*'
               # Lambda ListFunctions - required for Test Studio to discover TestRunnerFunction
               # Note: AWS does not support resource-level permissions for ListFunctions
               - Effect: Allow
@@ -242,16 +277,16 @@ Resources:
               - Effect: Allow
                 Action:
                   - dynamodb:*
-                Resource: 
-                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/idp-*'
-                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/idp-*/index/*'
+                Resource:
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*'
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*/index/*'
               # Step Functions
               - Effect: Allow
                 Action:
                   - states:*
                 Resource:
-                  - !Sub 'arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:idp-*'
-                  - !Sub 'arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:idp-*:*'
+                  - !Sub 'arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:*'
+                  - !Sub 'arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:*:*'
               # AppSync - required for cleanup
               - Effect: Allow
                 Action:
@@ -415,6 +450,37 @@ Resources:
         EnvironmentVariables:
           - Name: SOURCE_BUCKET
             Value: !Sub '${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}'
+          - Name: PIPELINE_CONFIG_KEY
+            Value: !Ref PipelineConfigKey
+          - !If
+            - HasCACertBundle
+            - Name: CA_CERT_BUNDLE_S3_URI
+              Value: !Ref CACertBundleS3Uri
+            - !Ref AWS::NoValue
+          - !If
+            - HasDockerConfigSecret
+            - Name: DOCKER_CONF
+              Type: SECRETS_MANAGER
+              Value: !Ref DockerConfigSecretArn
+            - !Ref AWS::NoValue
+          - !If
+            - HasPipConfigSecret
+            - Name: PIP_CONF
+              Type: SECRETS_MANAGER
+              Value: !Ref PipConfigSecretArn
+            - !Ref AWS::NoValue
+          - !If
+            - HasUvConfigSecret
+            - Name: UV_CONF
+              Type: SECRETS_MANAGER
+              Value: !Ref UvConfigSecretArn
+            - !Ref AWS::NoValue
+          - !If
+            - HasNpmConfigSecret
+            - Name: NPM_CONF
+              Type: SECRETS_MANAGER
+              Value: !Ref NpmConfigSecretArn
+            - !Ref AWS::NoValue
       Source:
         Type: CODEPIPELINE
         BuildSpec: |
@@ -424,6 +490,36 @@ Resources:
               runtime-versions:
                 python: 3.12
               commands:
+                # ── Private registry setup (optional, no-op when env vars are unset) ──
+                - mkdir -p /root/.config/pip /root/.config/uv /root/.config/docker
+                - |
+                  if [ -n "${CA_CERT_BUNDLE_S3_URI:-}" ]; then
+                    echo "Installing CA certificate bundle from $CA_CERT_BUNDLE_S3_URI..."
+                    aws s3 cp "$CA_CERT_BUNDLE_S3_URI" /tmp/ca-bundle.tar.gz
+                    tar xzf /tmp/ca-bundle.tar.gz -C /etc/pki/ca-trust/source/anchors/
+                    update-ca-trust extract
+                  fi
+                - |
+                  if [ -n "${DOCKER_CONF:-}" ]; then
+                    echo "Configuring Docker registry credentials..."
+                    echo "$DOCKER_CONF" > /root/.config/docker/config.json
+                  fi
+                - |
+                  if [ -n "${PIP_CONF:-}" ]; then
+                    echo "Configuring pip for private PyPI..."
+                    echo "$PIP_CONF" > /root/.config/pip/pip.conf
+                  fi
+                - |
+                  if [ -n "${UV_CONF:-}" ]; then
+                    echo "Configuring uv for private PyPI..."
+                    echo "$UV_CONF" > /root/.config/uv/uv.toml
+                  fi
+                - |
+                  if [ -n "${NPM_CONF:-}" ]; then
+                    echo "Configuring npm for private registry..."
+                    echo "$NPM_CONF" > ~/.npmrc
+                  fi
+                # ── Standard install (uses private registry if configured above) ──
                 - n 22.14.0 && node --version || { echo "Node setup failed"; exit 1; }
                 - npm install -g npm@11 || echo "npm upgrade skipped, using bundled $(npm --version)"
                 - pip install uv || { echo "uv installation failed"; exit 1; }
@@ -592,6 +688,63 @@ Resources:
             Action:
               - 'kms:*'
             Resource: '*'
+
+  CodeBuildSecretsManagerPolicy:
+    Type: 'AWS::IAM::Policy'
+    Condition: HasAnyRegistrySecret
+    Properties:
+      PolicyName: CodeBuildSecretsManagerAccess
+      Roles:
+        - !Ref CodeBuildRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - !If
+            - HasDockerConfigSecret
+            - Effect: Allow
+              Action:
+                - 'secretsmanager:GetSecretValue'
+              Resource: !Ref DockerConfigSecretArn
+            - !Ref AWS::NoValue
+          - !If
+            - HasUvConfigSecret
+            - Effect: Allow
+              Action:
+                - 'secretsmanager:GetSecretValue'
+              Resource: !Ref UvConfigSecretArn
+            - !Ref AWS::NoValue
+          - !If
+            - HasPipConfigSecret
+            - Effect: Allow
+              Action:
+                - 'secretsmanager:GetSecretValue'
+              Resource: !Ref PipConfigSecretArn
+            - !Ref AWS::NoValue
+          - !If
+            - HasNpmConfigSecret
+            - Effect: Allow
+              Action:
+                - 'secretsmanager:GetSecretValue'
+              Resource: !Ref NpmConfigSecretArn
+            - !Ref AWS::NoValue
+
+  CodeBuildCACertPolicy:
+    Type: 'AWS::IAM::Policy'
+    Condition: HasCACertBundle
+    Properties:
+      PolicyName: CodeBuildCACertAccess
+      Roles:
+        - !If [CreateCodeBuildRole, !Ref CodeBuildRole, !Ref 'AWS::NoValue']
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - 's3:GetObject'
+            Resource:
+              - !Sub
+                - 'arn:${AWS::Partition}:s3:::${BucketAndKey}'
+                - BucketAndKey: !Select [1, !Split ["s3://", !Ref CACertBundleS3Uri]]
 
   # CloudWatch Events Rule to trigger pipeline on S3 changes
   PipelineTriggerRule:

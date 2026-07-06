@@ -5,7 +5,6 @@ membership. Supports TOKEN authorizer (authorizationToken) and REQUEST
 authorizer (headers: Authorization Bearer, custom token header, x-jwt-token).
 """
 
-import json
 import logging
 import os
 
@@ -25,9 +24,7 @@ ISSUER_CONFIG = {
 ISSUER_CONFIG = {k: v for k, v in ISSUER_CONFIG.items() if k and v}
 
 REQUIRED_ROLES = [
-    r.strip()
-    for r in os.getenv("REQUIRED_ROLES", "").split(",")
-    if r.strip()
+    r.strip() for r in os.getenv("REQUIRED_ROLES", "").split(",") if r.strip()
 ]
 ALGORITHMS = ["ES256", "RS256", "HS256"]
 
@@ -63,7 +60,9 @@ def _extract_token(event):
     # TOKEN type authorizer
     auth_token = event.get("authorizationToken", "")
     if auth_token:
-        return auth_token[7:] if auth_token.lower().startswith("bearer ") else auth_token
+        return (
+            auth_token[7:] if auth_token.lower().startswith("bearer ") else auth_token
+        )
 
     # REQUEST type authorizer — check headers
     headers = event.get("headers") or {}
