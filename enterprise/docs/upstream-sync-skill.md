@@ -30,6 +30,12 @@ These upstream files have enterprise modifications. During sync, conflicts here 
 | `patterns/unified/buildspec.yml` (install phase) | Added config file guards (`if [ -n "${PIP_CONF:-}" ]`) | Keep ours at the end of install phase. If upstream modifies install commands, keep both — ours are independent. |
 | `Dockerfile.optimized` (FROM lines + RUN) | Parameterized `UV_IMAGE`, `BASE_IMAGE_REGISTRY`, `BASE_IMAGE_SUFFIX` build args + `--mount=type=secret` | Keep ours. If upstream changes the FROM image tag or adds stages, update our ARG defaults to match. |
 | `nested/multi-doc-discovery/template.yaml` | Same registry pattern as unified | Same resolution approach. |
+| `scripts/sdlc/codebuild_deployment.py` (`publish_templates()`) | Changed bucket derivation from hardcoded account ID to `SOURCE_BUCKET` env var | Keep ours — upstream may still have the hardcoded default. If upstream fixes this too, accept theirs (same intent). |
+| `scripts/sdlc/cfn/codepipeline-s3.yml` (params) | Added `DockerConfigSecretArn`, `UvConfigSecretArn`, `PipConfigSecretArn`, `NpmConfigSecretArn`, `CACertBundleS3Uri` params | Keep both — our params are grouped under `# ── Air-gapped / private registry parameters ──`. Accept any new upstream params above ours. |
+| `scripts/sdlc/cfn/codepipeline-s3.yml` (conditions) | Added `HasDockerConfigSecret`, `HasUvConfigSecret`, `HasPipConfigSecret`, `HasNpmConfigSecret`, `HasCACertBundle` | Keep both — our conditions are additive. |
+| `scripts/sdlc/cfn/codepipeline-s3.yml` (CodeBuild env vars) | Added `DOCKER_CONF`, `PIP_CONF`, `UV_CONF`, `NPM_CONF`, `CA_CERT_BUNDLE_S3_URI` with `Type: SECRETS_MANAGER` conditionals | Keep ours. If upstream adds new env vars, keep both. |
+| `scripts/sdlc/cfn/codepipeline-s3.yml` (buildspec install) | Added private registry config-writing guards before standard installs | Keep ours at the start of install phase. If upstream modifies install commands, keep both — ours are independent guards. |
+| `scripts/sdlc/cfn/codepipeline-s3.yml` (IAM policies) | Added `CodeBuildSecretsManagerPolicy` and `CodeBuildCACertPolicy` resources | Keep ours — they are standalone resources that don't conflict with upstream policies. |
 | `CHANGELOG.md` | Our entries under `[Unreleased]` | Keep both — our entries + upstream's entries, both under `[Unreleased]` or appropriate version. |
 
 ## Files we own exclusively (never conflict)
@@ -97,6 +103,13 @@ idp-cli publish --source-dir . --bucket-basename <bucket> --prefix idp --region 
 ### Upstream adds a new function to buildspec.yml
 - Auto-merges cleanly (they add to the function list, our install phase is separate)
 - If conflict: keep their function list AND our install phase
+
+### Upstream modifies scripts/sdlc/cfn/codepipeline-s3.yml
+- Check what changed (new CodeBuild env var? IAM policy update? buildspec change?)
+- Keep our private registry params, conditions, and env var conditionals
+- Keep our `CodeBuildSecretsManagerPolicy` and `CodeBuildCACertPolicy` resources
+- Keep our buildspec install-phase guards (the `if [ -n "${VAR:-}" ]` blocks)
+- If upstream adds new buildspec install commands, place them after our registry setup block
 
 ### Upstream releases a new version
 - CHANGELOG conflict guaranteed

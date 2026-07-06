@@ -28,7 +28,9 @@ def run_command(cmd, check=True, timeout=None):
         timeout: Timeout in seconds (default: None for no timeout)
     """
     print(f"Running: {cmd}")
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)  # nosec B602 nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true - hardcoded commands, no user input
+    result = subprocess.run(
+        cmd, shell=True, capture_output=True, text=True, timeout=timeout
+    )  # nosec B602 nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true - hardcoded commands, no user input
     if result.stdout:
         print(result.stdout)
     if result.stderr:
@@ -53,35 +55,80 @@ def generate_stack_name():
     return f"idp-{timestamp}"
 
 
+def load_pipeline_config():
+    """Load deployment config from S3 (PIPELINE_CONFIG_KEY) or local fallback."""
+    import yaml
+
+    source_bucket = os.environ.get("SOURCE_BUCKET", "")
+    config_key = os.environ.get("PIPELINE_CONFIG_KEY", "deploy/pipeline-config.yaml")
+    local_path = "/tmp/pipeline-config.yaml"  # nosec B108
+
+    # Try S3 first (the canonical source for per-environment config)
+    if source_bucket and config_key:
+        try:
+            s3 = boto3.client("s3")
+            s3.download_file(source_bucket, config_key, local_path)
+            with open(local_path) as f:
+                config = yaml.safe_load(f) or {}
+            print(f"✅ Loaded pipeline config from s3://{source_bucket}/{config_key}")
+            return config
+        except s3.exceptions.NoSuchKey:
+            print(f"ℹ️ No config at s3://{source_bucket}/{config_key}")
+        except Exception as e:
+            print(f"⚠️ Failed to download config from S3: {e}")
+
+    # Fallback: check if config exists inside the code zip
+    for local_fallback in [
+        "enterprise/deploy/pipeline-config.yaml",
+        "deploy/pipeline-config.yaml",
+    ]:
+        if not os.path.exists(local_fallback):
+            continue
+        try:
+            with open(local_fallback) as f:
+                config = yaml.safe_load(f) or {}
+            print(f"✅ Loaded pipeline config from {local_fallback} (local fallback)")
+            return config
+        except Exception as e:
+            print(f"⚠️ Failed to load local pipeline config: {e}")
+
+    print("ℹ️ No pipeline config found, using defaults")
+    return {}
+
+
 def cleanup_stale_bda_blueprints():
     """Delete BDA projects, blueprint versions, and blueprints whose stacks are no longer active"""
     print("🧹 Cleaning up stale BDA blueprints...")
     try:
-        bda_client = boto3.client('bedrock-data-automation')
-        cf_client = boto3.client('cloudformation')
+        bda_client = boto3.client("bedrock-data-automation")
+        cf_client = boto3.client("cloudformation")
 
         active_statuses = {
-            'CREATE_IN_PROGRESS', 'CREATE_COMPLETE',
-            'UPDATE_IN_PROGRESS', 'UPDATE_COMPLETE',
-            'UPDATE_ROLLBACK_COMPLETE', 'UPDATE_ROLLBACK_IN_PROGRESS',
-            'IMPORT_IN_PROGRESS', 'IMPORT_COMPLETE',
+            "CREATE_IN_PROGRESS",
+            "CREATE_COMPLETE",
+            "UPDATE_IN_PROGRESS",
+            "UPDATE_COMPLETE",
+            "UPDATE_ROLLBACK_COMPLETE",
+            "UPDATE_ROLLBACK_IN_PROGRESS",
+            "IMPORT_IN_PROGRESS",
+            "IMPORT_COMPLETE",
         }
 
         # Collect all idp- blueprints and projects
-        paginator = bda_client.get_paginator('list_blueprints')
+        paginator = bda_client.get_paginator("list_blueprints")
         blueprints = []
-        for page in paginator.paginate(blueprintStageFilter='LIVE'):
-            for bp in page.get('blueprints', []):
-                name = bp.get('blueprintName', '')
-                arn = bp.get('blueprintArn', '')
-                if name.startswith('idp-') and 'aws:blueprint' not in arn:
+        for page in paginator.paginate(blueprintStageFilter="LIVE"):
+            for bp in page.get("blueprints", []):
+                name = bp.get("blueprintName", "")
+                arn = bp.get("blueprintArn", "")
+                if name.startswith("idp-") and "aws:blueprint" not in arn:
                     blueprints.append((name, arn))
 
         projects = []
-        for p in bda_client.list_data_automation_projects().get('projects', []):
-            name = p.get('projectName', '')
-            arn = p.get('projectArn', '')
-            if name.startswith('idp-'):
+        for p in bda_client.list_data_automation_projects().get("projects", []):
+            name = p.get("projectName", "")
+            arn = p.get("projectArn", "")
+            if name.startswith("idp-"):
                 projects.append((name, arn))
 
         if not blueprints and not projects:
@@ -91,19 +138,19 @@ def cleanup_stale_bda_blueprints():
         # Check stack status for each unique stack prefix
         stack_cache = {}
         for name, _ in blueprints + projects:
-            parts = name.split('-')
+            parts = name.split("-")
             if len(parts) >= 3:
                 prefix = f"{parts[0]}-{parts[1]}-{parts[2]}"
                 if prefix not in stack_cache:
                     try:
                         resp = cf_client.describe_stacks(StackName=prefix)
-                        status = resp['Stacks'][0]['StackStatus']
+                        status = resp["Stacks"][0]["StackStatus"]
                         stack_cache[prefix] = status in active_statuses
                     except cf_client.exceptions.ClientError:
                         stack_cache[prefix] = False
 
         def _is_stale(name):
-            parts = name.split('-')
+            parts = name.split("-")
             if len(parts) >= 3:
                 return not stack_cache.get(f"{parts[0]}-{parts[1]}-{parts[2]}", False)
             return False
@@ -128,7 +175,9 @@ def cleanup_stale_bda_blueprints():
             if _is_stale(name):
                 try:
                     try:
-                        bda_client.delete_blueprint(blueprintArn=arn, blueprintVersion='1')
+                        bda_client.delete_blueprint(
+                            blueprintArn=arn, blueprintVersion="1"
+                        )
                     except Exception:
                         pass
                     time.sleep(0.3)
@@ -138,7 +187,9 @@ def cleanup_stale_bda_blueprints():
                     print(f"  ⚠️ Failed to delete blueprint {name}: {e}")
                     time.sleep(0.5)
 
-        print(f"✅ Cleaned up {deleted_projects} projects, {deleted_bps} blueprints (skipped active stacks)")
+        print(
+            f"✅ Cleaned up {deleted_projects} projects, {deleted_bps} blueprints (skipped active stacks)"
+        )
     except Exception as e:
         print(f"⚠️ BDA blueprint cleanup failed: {e}")
 
@@ -147,13 +198,12 @@ def publish_templates():
     """Run publish.py to build and upload templates to S3"""
     print("📦 Publishing templates to S3...")
 
-    # Get AWS account ID and region
-    account_id = get_env_var("IDP_ACCOUNT_ID", "020432867916")
     region = get_env_var("AWS_DEFAULT_REGION", "us-east-1")
-
-    # Generate bucket name and prefix
-    bucket_basename = f"genaiic-sdlc-sourcecode-{account_id}"
+    source_bucket = get_env_var("SOURCE_BUCKET")
     prefix = f"codebuild-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+
+    # Derive bucket basename by stripping the region suffix (publish appends -<region>)
+    bucket_basename = source_bucket.removesuffix(f"-{region}")
 
     # Run idp-cli publish
     cmd = f"idp-cli publish --source-dir . --bucket-basename {bucket_basename} --prefix {prefix} --region {region}"
@@ -161,9 +211,9 @@ def publish_templates():
 
     # Extract template URL from output - match S3 URLs only
     template_url_pattern = r"https://s3\..*?idp-main\.yaml"
-    
+
     # Remove line breaks that might split the URL in terminal output
-    clean_stdout = result.stdout.replace('\n', '').replace('\r', '')
+    clean_stdout = result.stdout.replace("\n", "").replace("\r", "")
     template_url_match = re.search(template_url_pattern, clean_stdout)
 
     if template_url_match:
@@ -178,75 +228,76 @@ def publish_templates():
 def create_iam_resources(stack_name):
     """Create IAM role and permission boundary using CloudFormation template"""
     print(f"[{stack_name}] Creating IAM resources...")
-    
+
     try:
-        cf_client = boto3.client('cloudformation')
+        cf_client = boto3.client("cloudformation")
         iam_stack_name = f"{stack_name}-iam"
-        
+
         # Deploy IAM CloudFormation stack
-        with open('iam-roles/cloudformation-management/IDP-Cloudformation-Service-Role.yaml', 'r') as f:
+        with open(
+            "iam-roles/cloudformation-management/IDP-Cloudformation-Service-Role.yaml",
+            "r",
+        ) as f:
             template_body = f.read()
-        
+
         try:
             cf_client.create_stack(
                 StackName=iam_stack_name,
                 TemplateBody=template_body,
-                Capabilities=['CAPABILITY_NAMED_IAM']
+                Capabilities=["CAPABILITY_NAMED_IAM"],
             )
-            
+
             # Wait for stack creation to complete
-            waiter = cf_client.get_waiter('stack_create_complete')
-            waiter.wait(StackName=iam_stack_name, WaiterConfig={'MaxAttempts': 30, 'Delay': 10})
-            
+            waiter = cf_client.get_waiter("stack_create_complete")
+            waiter.wait(
+                StackName=iam_stack_name, WaiterConfig={"MaxAttempts": 30, "Delay": 10}
+            )
+
             print(f"[{stack_name}] ✅ Created IAM stack: {iam_stack_name}")
-            
+
         except cf_client.exceptions.AlreadyExistsException:
             print(f"[{stack_name}] ℹ️ IAM stack already exists: {iam_stack_name}")
-        
+
         # Get outputs from the stack
         response = cf_client.describe_stacks(StackName=iam_stack_name)
-        outputs = response['Stacks'][0].get('Outputs', [])
-        
+        outputs = response["Stacks"][0].get("Outputs", [])
+
         role_arn = None
         for output in outputs:
-            if output['OutputKey'] == 'ServiceRoleArn':
-                role_arn = output['OutputValue']
+            if output["OutputKey"] == "ServiceRoleArn":
+                role_arn = output["OutputValue"]
                 break
-        
+
         if not role_arn:
             raise Exception("Could not find ServiceRoleArn in stack outputs")
-        
+
         # Create permission boundary policy
-        iam_client = boto3.client('iam')
+        iam_client = boto3.client("iam")
         boundary_name = f"{stack_name}-PermissionsBoundary"
         boundary_policy = {
             "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Action": "*",
-                    "Resource": "*"
-                }
-            ]
+            "Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}],
         }
-        
+
         try:
             iam_client.create_policy(
                 PolicyName=boundary_name,
                 PolicyDocument=json.dumps(boundary_policy),
-                Description=f"Permissions boundary for {stack_name} IDP deployment"
+                Description=f"Permissions boundary for {stack_name} IDP deployment",
             )
             print(f"[{stack_name}] ✅ Created permissions boundary: {boundary_name}")
         except iam_client.exceptions.EntityAlreadyExistsException:
-            print(f"[{stack_name}] ℹ️ Permissions boundary already exists: {boundary_name}")
-        
+            print(
+                f"[{stack_name}] ℹ️ Permissions boundary already exists: {boundary_name}"
+            )
+
         # Get account ID for boundary ARN
-        sts_client = boto3.client('sts')
-        account_id = sts_client.get_caller_identity()['Account']
+        sts_client = boto3.client("sts")
+        account_id = sts_client.get_caller_identity()["Account"]
         boundary_arn = f"arn:aws:iam::{account_id}:policy/{boundary_name}"
-        
+
         return role_arn, boundary_arn
-        
+
     except Exception as e:
         print(f"[{stack_name}] ❌ Failed to create IAM resources: {e}")
         return None, None
@@ -255,25 +306,27 @@ def create_iam_resources(stack_name):
 def cleanup_iam_resources(stack_name):
     """Clean up IAM CloudFormation stack"""
     print(f"[{stack_name}] Cleaning up IAM stack...")
-    
+
     try:
         # Clean up IAM CloudFormation stack
-        cf_client = boto3.client('cloudformation')
+        cf_client = boto3.client("cloudformation")
         iam_stack_name = f"{stack_name}-iam"
         try:
             cf_client.delete_stack(StackName=iam_stack_name)
-            
+
             # Wait for stack deletion to complete
-            waiter = cf_client.get_waiter('stack_delete_complete')
-            waiter.wait(StackName=iam_stack_name, WaiterConfig={'MaxAttempts': 30, 'Delay': 10})
-            
+            waiter = cf_client.get_waiter("stack_delete_complete")
+            waiter.wait(
+                StackName=iam_stack_name, WaiterConfig={"MaxAttempts": 30, "Delay": 10}
+            )
+
             print(f"[{stack_name}] ✅ Deleted IAM stack: {iam_stack_name}")
         except cf_client.exceptions.ClientError as e:
-            if 'does not exist' in str(e):
+            if "does not exist" in str(e):
                 print(f"[{stack_name}] ℹ️ IAM stack not found: {iam_stack_name}")
             else:
                 print(f"[{stack_name}] ⚠️ Failed to delete IAM stack: {e}")
-            
+
     except Exception as e:
         print(f"[{stack_name}] ❌ Failed to cleanup IAM stack: {e}")
 
@@ -288,34 +341,53 @@ def test_step3_default_config(stack_name):
     content_path = "text"
 
     def verify_extraction(json_data):
-        inference_result = json_data.get('inference_result', {})
+        inference_result = json_data.get("inference_result", {})
         if not inference_result:
             return False, "No inference_result found"
         total_fields = len(inference_result)
         if total_fields == 0:
             return False, "inference_result is empty"
-        populated_fields = sum(1 for v in inference_result.values() if v not in [None, [], {}])
+        populated_fields = sum(
+            1 for v in inference_result.values() if v not in [None, [], {}]
+        )
         min_expected_fields = 3
         if total_fields < min_expected_fields:
-            return False, f"Expected at least {min_expected_fields} fields, found {total_fields}"
+            return (
+                False,
+                f"Expected at least {min_expected_fields} fields, found {total_fields}",
+            )
         if populated_fields == 0:
             return False, "No fields contain extracted data (all null/empty)"
         return True, f"{populated_fields}/{total_fields} fields populated"
 
     def verify_classification(json_data):
-        doc_class = json_data.get('document_class', {}).get('type')
+        doc_class = json_data.get("document_class", {}).get("type")
         if not doc_class:
             return False, "No document_class.type found"
-        if doc_class == 'none':
+        if doc_class == "none":
             return False, "Document classified as 'none' (no class detected)"
         return True, f"Classified as '{doc_class}'"
 
     additional_checks = [
         ("Extraction verification", "sections/1/result.json", verify_extraction),
-        ("Classification verification", "sections/1/result.json", verify_classification),
+        (
+            "Classification verification",
+            "sections/1/result.json",
+            verify_classification,
+        ),
     ]
 
-    if not run_inference_test(stack_name, sample_file, batch_id, verify_string, result_location, content_path, None, "samples", additional_checks):
+    if not run_inference_test(
+        stack_name,
+        sample_file,
+        batch_id,
+        verify_string,
+        result_location,
+        content_path,
+        None,
+        "samples",
+        additional_checks,
+    ):
         return {"success": False, "error": "Default config test failed"}
 
     return {"success": True}
@@ -327,12 +399,12 @@ def test_step4_bda_mode(stack_name):
     config_version = "test-bda"
     config_path = "config_library/unified/lending-package-sample/config.yaml"
 
-    with open(config_path, 'r') as f:
+    with open(config_path, "r") as f:
         config_content = f.read()
 
-    bda_config_content = config_content.replace('use_bda: false', 'use_bda: true')
+    bda_config_content = config_content.replace("use_bda: false", "use_bda: true")
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
         tmp.write(bda_config_content)
         bda_config_path = tmp.name
 
@@ -353,23 +425,42 @@ def test_step4_bda_mode(stack_name):
         content_path = "text"
 
         def verify_bda_extraction(json_data):
-            inference_result = json_data.get('inference_result', {})
+            inference_result = json_data.get("inference_result", {})
             if not inference_result:
                 return False, "No inference_result found in BDA output"
             total_fields = len(inference_result)
-            populated_fields = sum(1 for v in inference_result.values() if v not in [None, [], {}])
+            populated_fields = sum(
+                1 for v in inference_result.values() if v not in [None, [], {}]
+            )
             min_expected_fields = 3
             if total_fields < min_expected_fields:
-                return False, f"Expected at least {min_expected_fields} fields, found {total_fields}"
+                return (
+                    False,
+                    f"Expected at least {min_expected_fields} fields, found {total_fields}",
+                )
             if populated_fields == 0:
                 return False, "No fields contain extracted data (all null/empty)"
             return True, f"{populated_fields}/{total_fields} fields populated by BDA"
 
         bda_additional_checks = [
-            ("BDA extraction verification", "sections/1/result.json", verify_bda_extraction),
+            (
+                "BDA extraction verification",
+                "sections/1/result.json",
+                verify_bda_extraction,
+            ),
         ]
 
-        if not run_inference_test(stack_name, sample_file, batch_id, verify_string, bda_result_location, content_path, config_version, "samples", bda_additional_checks):
+        if not run_inference_test(
+            stack_name,
+            sample_file,
+            batch_id,
+            verify_string,
+            bda_result_location,
+            content_path,
+            config_version,
+            "samples",
+            bda_additional_checks,
+        ):
             return {"success": False, "error": "BDA config test failed"}
 
         return {"success": True}
@@ -394,7 +485,7 @@ def test_step5_rule_validation(stack_name):
     run_command(cmd)
 
     def verify_rule_results(json_data):
-        responses = json_data.get('responses', {})
+        responses = json_data.get("responses", {})
         if not responses:
             return False, "No rule responses found"
         total_rules = 0
@@ -404,20 +495,37 @@ def test_step5_rule_validation(stack_name):
             if isinstance(rule_list, list):
                 for rule in rule_list:
                     total_rules += 1
-                    result = rule.get('result', '').lower()
-                    if 'pass' in result:
+                    result = rule.get("result", "").lower()
+                    if "pass" in result:
                         passed_rules += 1
-                    elif 'fail' in result:
+                    elif "fail" in result:
                         failed_rules += 1
         if total_rules == 0:
             return False, "No rules were evaluated"
-        return True, f"{total_rules} rules evaluated ({passed_rules} passed, {failed_rules} failed)"
+        return (
+            True,
+            f"{total_rules} rules evaluated ({passed_rules} passed, {failed_rules} failed)",
+        )
 
     rule_additional_checks = [
-        ("Rule validation results", "rule_validation/sections/section_1_responses.json", verify_rule_results),
+        (
+            "Rule validation results",
+            "rule_validation/sections/section_1_responses.json",
+            verify_rule_results,
+        ),
     ]
 
-    if not run_inference_test(stack_name, sample_file, batch_id, verify_string, result_location, content_path, config_version, sample_dir, rule_additional_checks):
+    if not run_inference_test(
+        stack_name,
+        sample_file,
+        batch_id,
+        verify_string,
+        result_location,
+        content_path,
+        config_version,
+        sample_dir,
+        rule_additional_checks,
+    ):
         return {"success": False, "error": "Rule validation test failed"}
 
     return {"success": True}
@@ -446,14 +554,22 @@ def test_step6_multi_document(stack_name):
 
         if extraction_count < 3:
             print(f"❌ Expected 3 documents processed, found {extraction_count}")
-            return {"success": False, "error": f"Multi-document batch test failed: only {extraction_count}/3 documents processed"}
+            return {
+                "success": False,
+                "error": f"Multi-document batch test failed: only {extraction_count}/3 documents processed",
+            }
 
-        print(f"✅ Multi-document batch test passed: {extraction_count} documents processed successfully")
+        print(
+            f"✅ Multi-document batch test passed: {extraction_count} documents processed successfully"
+        )
         return {"success": True}
 
     except Exception as e:
         print(f"❌ Multi-document batch test failed: {e}")
-        return {"success": False, "error": f"Multi-document batch test failed: {str(e)}"}
+        return {
+            "success": False,
+            "error": f"Multi-document batch test failed: {str(e)}",
+        }
 
 
 def test_step7_test_studio(stack_name):
@@ -461,40 +577,51 @@ def test_step7_test_studio(stack_name):
     print("Step 7: Testing Test Studio with pre-deployed test set...")
 
     try:
-        cf_client = boto3.client('cloudformation')
+        cf_client = boto3.client("cloudformation")
         stack_response = cf_client.describe_stacks(StackName=stack_name)
-        outputs = stack_response['Stacks'][0].get('Outputs', [])
+        outputs = stack_response["Stacks"][0].get("Outputs", [])
 
         test_set_bucket = None
         for output in outputs:
-            if output['OutputKey'] == 'S3TestSetBucketName':
-                test_set_bucket = output['OutputValue']
+            if output["OutputKey"] == "S3TestSetBucketName":
+                test_set_bucket = output["OutputValue"]
                 break
 
         if not test_set_bucket:
-            print("⚠️  S3TestSetBucketName not found in stack outputs, skipping Test Studio test")
+            print(
+                "⚠️  S3TestSetBucketName not found in stack outputs, skipping Test Studio test"
+            )
             return {"success": True}
 
-        s3_client = boto3.client('s3')
+        s3_client = boto3.client("s3")
         try:
-            response = s3_client.list_objects_v2(Bucket=test_set_bucket, Delimiter='/', MaxKeys=10)
-            test_sets = [prefix['Prefix'].rstrip('/') for prefix in response.get('CommonPrefixes', [])]
+            response = s3_client.list_objects_v2(
+                Bucket=test_set_bucket, Delimiter="/", MaxKeys=10
+            )
+            test_sets = [
+                prefix["Prefix"].rstrip("/")
+                for prefix in response.get("CommonPrefixes", [])
+            ]
 
             if not test_sets:
-                print(f"⚠️  No test sets found in {test_set_bucket}, skipping Test Studio test")
+                print(
+                    f"⚠️  No test sets found in {test_set_bucket}, skipping Test Studio test"
+                )
                 return {"success": True}
 
             print(f"Found test sets: {', '.join(test_sets)}")
 
             test_set_name = None
-            for preferred in ['fake-w2', 'realkie-fcc-verified']:
+            for preferred in ["fake-w2", "realkie-fcc-verified"]:
                 if preferred in test_sets:
                     test_set_name = preferred
                     break
             if not test_set_name:
                 test_set_name = test_sets[0]
 
-            print(f"Running test against test set: {test_set_name} (limited to 3 documents)")
+            print(
+                f"Running test against test set: {test_set_name} (limited to 3 documents)"
+            )
             print(f"Using config version: {test_set_name}")
 
             # Run test inference
@@ -503,17 +630,22 @@ def test_step7_test_studio(stack_name):
 
             if result.returncode != 0:
                 print("⚠️  Test set processing failed")
-                return {"success": False, "error": f"Test Studio test failed for {test_set_name}"}
+                return {
+                    "success": False,
+                    "error": f"Test Studio test failed for {test_set_name}",
+                }
 
             # Extract test run ID from output
             test_run_id = None
-            for line in result.stdout.split('\n'):
-                if 'Test run started:' in line:
-                    test_run_id = line.split('Test run started:')[1].strip()
+            for line in result.stdout.split("\n"):
+                if "Test run started:" in line:
+                    test_run_id = line.split("Test run started:")[1].strip()
                     break
 
             if not test_run_id:
-                print("⚠️  Could not extract test run ID from output, skipping result verification")
+                print(
+                    "⚠️  Could not extract test run ID from output, skipping result verification"
+                )
                 return {"success": True}
 
             print(f"Test run ID: {test_run_id}")
@@ -525,16 +657,19 @@ def test_step7_test_studio(stack_name):
 
             if result.returncode != 0:
                 print("❌ Test result retrieval failed")
-                return {"success": False, "error": "Test Studio test result retrieval failed"}
+                return {
+                    "success": False,
+                    "error": "Test Studio test result retrieval failed",
+                }
 
             # Parse output for accuracy check
             overall_accuracy = None
-            for line in result.stdout.split('\n'):
-                if 'Overall Accuracy:' in line:
+            for line in result.stdout.split("\n"):
+                if "Overall Accuracy:" in line:
                     # Extract percentage (e.g., "Overall Accuracy: 95.45%")
-                    parts = line.split(':')
+                    parts = line.split(":")
                     if len(parts) >= 2:
-                        accuracy_str = parts[1].strip().rstrip('%')
+                        accuracy_str = parts[1].strip().rstrip("%")
                         try:
                             overall_accuracy = float(accuracy_str) / 100.0
                         except ValueError:
@@ -543,9 +678,13 @@ def test_step7_test_studio(stack_name):
 
             if overall_accuracy is not None:
                 if overall_accuracy > 0.30:
-                    print(f"✅ Test Studio test completed: {test_set_name} with {overall_accuracy:.2%} accuracy")
+                    print(
+                        f"✅ Test Studio test completed: {test_set_name} with {overall_accuracy:.2%} accuracy"
+                    )
                 else:
-                    print(f"⚠️  Low accuracy detected: {overall_accuracy:.2%} (threshold: 30%)")
+                    print(
+                        f"⚠️  Low accuracy detected: {overall_accuracy:.2%} (threshold: 30%)"
+                    )
                 return {"success": True}
             else:
                 print("⚠️  Could not parse accuracy from output, but test completed")
@@ -570,7 +709,9 @@ def test_step8_agentic_extraction(stack_name):
         cmd = f"idp-cli config-upload --stack-name {stack_name} --config-file scripts/sdlc/config/nuveen.yaml --config-version agentic-nuveen --no-validate"
         run_command(cmd, check=False)
 
-        print("Running agentic extraction on samples/Nuveen.pdf (this will take ~9 minutes)...")
+        print(
+            "Running agentic extraction on samples/Nuveen.pdf (this will take ~9 minutes)..."
+        )
         cmd = f"idp-cli run-inference --stack-name {stack_name} --dir samples/ --file-pattern Nuveen.pdf --config-version agentic-nuveen --monitor"
         result = run_command(cmd, check=False)
 
@@ -579,9 +720,9 @@ def test_step8_agentic_extraction(stack_name):
             return {"success": False, "error": "Agentic extraction command failed"}
 
         batch_id = None
-        for line in result.stdout.split('\n'):
-            if 'Batch ID:' in line:
-                batch_id = line.split('Batch ID:')[1].strip()
+        for line in result.stdout.split("\n"):
+            if "Batch ID:" in line:
+                batch_id = line.split("Batch ID:")[1].strip()
                 break
 
         if batch_id:
@@ -590,7 +731,9 @@ def test_step8_agentic_extraction(stack_name):
             cmd = f"idp-cli download-results --stack-name {stack_name} --batch-id {batch_id} --output-dir {result_dir}"
             run_command(cmd, check=False)
 
-            cmd = f"find {result_dir} -path '*/sections/*/result.json' -type f | head -1"
+            cmd = (
+                f"find {result_dir} -path '*/sections/*/result.json' -type f | head -1"
+            )
             find_result = run_command(cmd, check=False)
             result_file = find_result.stdout.strip()
 
@@ -603,23 +746,39 @@ def test_step8_agentic_extraction(stack_name):
                     print(f"  ✓ Document class correct: {doc_class}")
                 else:
                     print(f"❌ Unexpected document class: {doc_class}")
-                    return {"success": False, "error": f"Agentic extraction test failed: unexpected document class '{doc_class}'"}
+                    return {
+                        "success": False,
+                        "error": f"Agentic extraction test failed: unexpected document class '{doc_class}'",
+                    }
 
-                fund_info = result_json.get("inference_result", {}).get("FundInformation", [])
+                fund_info = result_json.get("inference_result", {}).get(
+                    "FundInformation", []
+                )
                 fund_count = len(fund_info)
                 if fund_count == 532:
                     print(f"  ✓ FundInformation count correct: {fund_count} items")
                     print("✅ Agentic extraction test completed successfully")
                     return {"success": True}
                 else:
-                    print(f"❌ FundInformation count mismatch: expected 532, got {fund_count}")
-                    return {"success": False, "error": f"Agentic extraction test failed: expected 532 fund items, got {fund_count}"}
+                    print(
+                        f"❌ FundInformation count mismatch: expected 532, got {fund_count}"
+                    )
+                    return {
+                        "success": False,
+                        "error": f"Agentic extraction test failed: expected 532 fund items, got {fund_count}",
+                    }
             else:
                 print("❌ Result file not found")
-                return {"success": False, "error": "Agentic extraction test failed: result file not found"}
+                return {
+                    "success": False,
+                    "error": "Agentic extraction test failed: result file not found",
+                }
         else:
             print("❌ Could not extract batch ID from output")
-            return {"success": False, "error": "Agentic extraction test failed: could not extract batch ID"}
+            return {
+                "success": False,
+                "error": "Agentic extraction test failed: could not extract batch ID",
+            }
 
     except Exception as e:
         print(f"❌ Agentic extraction test failed: {e}")
@@ -638,7 +797,7 @@ def test_step9_single_doc_discovery(stack_name):
         print("This will take approximately 3-5 minutes...")
 
         cmd = f"idp-cli discover --stack-name {stack_name} -d {sample_file} --config-version {config_version}"
-        result = run_command(cmd, check=True, timeout=300)
+        run_command(cmd, check=True, timeout=300)
 
         print("Verifying discovered class saved to configuration...")
 
@@ -647,25 +806,34 @@ def test_step9_single_doc_discovery(stack_name):
         run_command(cmd, check=True)
 
         import yaml
-        with open(config_file, 'r') as f:
+
+        with open(config_file, "r") as f:
             config_data = yaml.safe_load(f)
 
-        classes = config_data.get('classes', [])
+        classes = config_data.get("classes", [])
         if len(classes) == 0:
             print(f"❌ No classes found in config version {config_version}")
-            return {"success": False, "error": f"Single-document discovery test failed: no classes found in config version {config_version}"}
+            return {
+                "success": False,
+                "error": f"Single-document discovery test failed: no classes found in config version {config_version}",
+            }
 
         discovered_class = classes[0]
-        doc_class = discovered_class.get('$id', 'Unknown')
-        num_properties = len(discovered_class.get('properties', {}))
+        doc_class = discovered_class.get("$id", "Unknown")
+        num_properties = len(discovered_class.get("properties", {}))
         print(f"  ✓ Discovered class: {doc_class}")
         print(f"  ✓ Properties: {num_properties} top-level fields")
-        print(f"✅ Discovery test completed: schema saved to config version {config_version}")
+        print(
+            f"✅ Discovery test completed: schema saved to config version {config_version}"
+        )
         return {"success": True}
 
     except Exception as e:
         print(f"❌ Single-document discovery test failed: {e}")
-        return {"success": False, "error": f"Single-document discovery test failed: {str(e)}"}
+        return {
+            "success": False,
+            "error": f"Single-document discovery test failed: {str(e)}",
+        }
 
 
 def test_step10_multi_doc_discovery(stack_name):
@@ -699,7 +867,9 @@ def test_step10_multi_doc_discovery(stack_name):
         print(f"  ✓ Copied {copied_files} sample documents to {test_dir}")
 
         if copied_files != len(sample_files):
-            raise RuntimeError(f"Expected {len(sample_files)} files but found {copied_files}")
+            raise RuntimeError(
+                f"Expected {len(sample_files)} files but found {copied_files}"
+            )
 
         print(f"Running multi-document discovery on {test_dir}...")
         print("This will take approximately 2-3 minutes...")
@@ -709,11 +879,16 @@ def test_step10_multi_doc_discovery(stack_name):
 
         cmd = "find /tmp/multidoc-schemas -name '*.json' | wc -l"
         count_result = run_command(cmd, check=True)
-        schema_count = int(count_result.stdout.strip()) if count_result.stdout.strip() else 0
+        schema_count = (
+            int(count_result.stdout.strip()) if count_result.stdout.strip() else 0
+        )
 
         if schema_count == 0:
             print("❌ Multi-document discovery completed but no schemas found")
-            return {"success": False, "error": "Multi-document discovery test failed: no schemas generated"}
+            return {
+                "success": False,
+                "error": "Multi-document discovery test failed: no schemas generated",
+            }
 
         print(f"  ✓ Generated {schema_count} schema(s)")
 
@@ -721,14 +896,20 @@ def test_step10_multi_doc_discovery(stack_name):
         first_schema = run_command(cmd, check=True).stdout.strip()
         if not first_schema:
             print("❌ Could not find generated schema file")
-            return {"success": False, "error": "Multi-document discovery test failed: could not find generated schema file"}
+            return {
+                "success": False,
+                "error": "Multi-document discovery test failed: could not find generated schema file",
+            }
 
         with open(first_schema, "r") as f:
             schema_json = json.load(f)
 
         if "$schema" not in schema_json or "properties" not in schema_json:
             print("❌ Generated schema missing required fields ($schema, properties)")
-            return {"success": False, "error": "Multi-document discovery test failed: schema missing required fields"}
+            return {
+                "success": False,
+                "error": "Multi-document discovery test failed: schema missing required fields",
+            }
 
         print("  ✓ Schema structure validated")
         print("✅ Multi-document discovery test completed")
@@ -736,7 +917,10 @@ def test_step10_multi_doc_discovery(stack_name):
 
     except Exception as e:
         print(f"❌ Multi-document discovery test failed: {e}")
-        return {"success": False, "error": f"Multi-document discovery test failed: {str(e)}"}
+        return {
+            "success": False,
+            "error": f"Multi-document discovery test failed: {str(e)}",
+        }
 
 
 def test_step11_test_compare(stack_name):
@@ -744,80 +928,101 @@ def test_step11_test_compare(stack_name):
     print("Step 11: Testing test-compare command...")
 
     try:
-        cf_client = boto3.client('cloudformation')
+        cf_client = boto3.client("cloudformation")
         stack_response = cf_client.describe_stacks(StackName=stack_name)
-        outputs = stack_response['Stacks'][0].get('Outputs', [])
+        outputs = stack_response["Stacks"][0].get("Outputs", [])
 
         test_set_bucket = None
         for output in outputs:
-            if output['OutputKey'] == 'S3TestSetBucketName':
-                test_set_bucket = output['OutputValue']
+            if output["OutputKey"] == "S3TestSetBucketName":
+                test_set_bucket = output["OutputValue"]
                 break
 
         if not test_set_bucket:
-            print("⚠️  S3TestSetBucketName not found in stack outputs, skipping test-compare test")
+            print(
+                "⚠️  S3TestSetBucketName not found in stack outputs, skipping test-compare test"
+            )
             return {"success": True}
 
-        s3_client = boto3.client('s3')
+        s3_client = boto3.client("s3")
         try:
-            response = s3_client.list_objects_v2(Bucket=test_set_bucket, Delimiter='/', MaxKeys=10)
-            test_sets = [prefix['Prefix'].rstrip('/') for prefix in response.get('CommonPrefixes', [])]
+            response = s3_client.list_objects_v2(
+                Bucket=test_set_bucket, Delimiter="/", MaxKeys=10
+            )
+            test_sets = [
+                prefix["Prefix"].rstrip("/")
+                for prefix in response.get("CommonPrefixes", [])
+            ]
 
             if not test_sets:
-                print(f"⚠️  No test sets found in {test_set_bucket}, skipping test-compare test")
+                print(
+                    f"⚠️  No test sets found in {test_set_bucket}, skipping test-compare test"
+                )
                 return {"success": True}
 
             print(f"Found test sets: {', '.join(test_sets)}")
 
             test_set_name = None
-            for preferred in ['fake-w2', 'realkie-fcc-verified']:
+            for preferred in ["fake-w2", "realkie-fcc-verified"]:
                 if preferred in test_sets:
                     test_set_name = preferred
                     break
             if not test_set_name:
                 test_set_name = test_sets[0]
 
-            print(f"Running 2 test inferences against test set: {test_set_name} (limited to 2 documents each)")
+            print(
+                f"Running 2 test inferences against test set: {test_set_name} (limited to 2 documents each)"
+            )
 
             # Run first test inference
             test_run_ids = []
             for i in range(2):
-                print(f"\nRunning test inference {i+1}/2...")
-                cmd = f"idp-cli run-inference --stack-name {stack_name} --test-set {test_set_name} --config-version {test_set_name} --context 'CI/CD test-compare test {i+1}' --number-of-files 2"
+                print(f"\nRunning test inference {i + 1}/2...")
+                cmd = f"idp-cli run-inference --stack-name {stack_name} --test-set {test_set_name} --config-version {test_set_name} --context 'CI/CD test-compare test {i + 1}' --number-of-files 2"
                 result = run_command(cmd, check=False)
 
                 if result.returncode != 0:
-                    print(f"⚠️  Test inference {i+1} failed")
-                    return {"success": False, "error": f"Test inference {i+1} failed for test-compare"}
+                    print(f"⚠️  Test inference {i + 1} failed")
+                    return {
+                        "success": False,
+                        "error": f"Test inference {i + 1} failed for test-compare",
+                    }
 
                 # Extract test run ID from output
                 test_run_id = None
-                for line in result.stdout.split('\n'):
-                    if 'Test run started:' in line:
-                        test_run_id = line.split('Test run started:')[1].strip()
+                for line in result.stdout.split("\n"):
+                    if "Test run started:" in line:
+                        test_run_id = line.split("Test run started:")[1].strip()
                         break
 
                 if not test_run_id:
-                    print(f"⚠️  Could not extract test run ID {i+1} from output")
-                    return {"success": False, "error": f"Could not extract test run ID {i+1}"}
+                    print(f"⚠️  Could not extract test run ID {i + 1} from output")
+                    return {
+                        "success": False,
+                        "error": f"Could not extract test run ID {i + 1}",
+                    }
 
                 test_run_ids.append(test_run_id)
-                print(f"Test run {i+1} ID: {test_run_id}")
+                print(f"Test run {i + 1} ID: {test_run_id}")
 
                 # Wait for test run to complete before starting next one
-                print(f"Waiting for test run {i+1} to complete...")
+                print(f"Waiting for test run {i + 1} to complete...")
                 cmd = f"idp-cli test-result --stack-name {stack_name} --test-run-id {test_run_id} --wait --timeout 300"
                 result = run_command(cmd, check=False)
 
                 if result.returncode != 0:
-                    print(f"⚠️  Test run {i+1} completion check failed")
-                    return {"success": False, "error": f"Test run {i+1} completion failed"}
+                    print(f"⚠️  Test run {i + 1} completion check failed")
+                    return {
+                        "success": False,
+                        "error": f"Test run {i + 1} completion failed",
+                    }
 
             # Compare the two test runs and save to JSON for validation
             print(f"\nComparing test runs: {', '.join(test_run_ids)}")
 
             # Create temp directory for comparison output
             import tempfile
+
             with tempfile.TemporaryDirectory() as tmpdir:
                 cmd = f"idp-cli test-compare --stack-name {stack_name} --test-run-ids '{','.join(test_run_ids)}' --output-dir {tmpdir}"
                 result = run_command(cmd, check=False)
@@ -827,39 +1032,61 @@ def test_step11_test_compare(stack_name):
                     return {"success": False, "error": "test-compare command failed"}
 
                 # Find and load the comparison JSON file
-                comparison_files = [f for f in os.listdir(tmpdir) if f.startswith('comparison-') and f.endswith('.json')]
+                comparison_files = [
+                    f
+                    for f in os.listdir(tmpdir)
+                    if f.startswith("comparison-") and f.endswith(".json")
+                ]
 
                 if not comparison_files:
                     print("⚠️  No comparison JSON file generated")
-                    return {"success": False, "error": "No comparison JSON file generated"}
+                    return {
+                        "success": False,
+                        "error": "No comparison JSON file generated",
+                    }
 
                 comparison_file = os.path.join(tmpdir, comparison_files[0])
 
-                with open(comparison_file, 'r') as f:
+                with open(comparison_file, "r") as f:
                     comparison_data = json.load(f)
 
                 # Validate JSON structure contains expected data
-                if 'metrics' not in comparison_data:
+                if "metrics" not in comparison_data:
                     print("⚠️  Comparison data missing 'metrics' field")
-                    return {"success": False, "error": "Comparison data missing 'metrics' field"}
+                    return {
+                        "success": False,
+                        "error": "Comparison data missing 'metrics' field",
+                    }
 
-                metrics = comparison_data['metrics']
+                metrics = comparison_data["metrics"]
 
                 # Verify both test runs are in metrics
                 missing_runs = [tid for tid in test_run_ids if tid not in metrics]
                 if missing_runs:
-                    print(f"⚠️  Test runs missing from comparison: {', '.join(missing_runs)}")
-                    return {"success": False, "error": f"Test runs missing from comparison: {', '.join(missing_runs)}"}
+                    print(
+                        f"⚠️  Test runs missing from comparison: {', '.join(missing_runs)}"
+                    )
+                    return {
+                        "success": False,
+                        "error": f"Test runs missing from comparison: {', '.join(missing_runs)}",
+                    }
 
                 # Verify each test run has required metric fields
-                required_metrics = ['overallAccuracy', 'totalCost']
+                required_metrics = ["overallAccuracy", "totalCost"]
                 for test_run_id in test_run_ids:
                     run_metrics = metrics[test_run_id]
-                    missing_metrics = [m for m in required_metrics if m not in run_metrics]
+                    missing_metrics = [
+                        m for m in required_metrics if m not in run_metrics
+                    ]
 
                     if missing_metrics:
-                        print(f"⚠️  Test run {test_run_id} missing metrics: {', '.join(missing_metrics)}")
-                        return {"success": False, "error": f"Test run missing metrics: {', '.join(missing_metrics)}"}
+                        print(
+                            f"⚠️  Test run {test_run_id} missing metrics: {', '.join(missing_metrics)}"
+                        )
+                        return {
+                            "success": False,
+                            "error": f"Test run missing metrics: {', '.join(missing_metrics)}",
+                        }
 
                 print("  ✓ Comparison JSON contains both test runs")
                 print("  ✓ All required metrics present")
@@ -875,8 +1102,9 @@ def test_step11_test_compare(stack_name):
         return {"success": False, "error": f"test-compare test failed: {str(e)}"}
 
 
-def deploy_and_test_stack(stack_name, admin_email, template_url):
+def deploy_and_test_stack(stack_name, admin_email, template_url, pipeline_config=None):
     """Deploy and test the unified IDP stack"""
+    pipeline_config = pipeline_config or {}
     print(f"Starting deployment: {stack_name}")
 
     try:
@@ -885,13 +1113,21 @@ def deploy_and_test_stack(stack_name, admin_email, template_url):
         role_arn, permissions_boundary_arn = create_iam_resources(stack_name)
         if not role_arn or not permissions_boundary_arn:
             raise Exception("Failed to create required IAM resources")
-        
+
         # Step 1: Deploy using template URL
         print("Step 1: Deploying stack...")
         cmd = f"idp-cli deploy --stack-name {stack_name} --template-url {template_url} --admin-email {admin_email} --wait"
         cmd += f" --role-arn {role_arn}"
-        cmd += f" --parameters PermissionsBoundaryArn={permissions_boundary_arn}"
-        
+
+        if pipeline_config.get("headless"):
+            cmd += " --headless"
+
+        # Build --parameters from config + IAM resources
+        params = {"PermissionsBoundaryArn": permissions_boundary_arn}
+        params.update(pipeline_config.get("parameters", {}))
+        param_str = ",".join(f"{k}={v}" for k, v in params.items())
+        cmd += f" --parameters {param_str}"
+
         run_command(cmd)
         print("✅ Deployment completed")
 
@@ -905,15 +1141,20 @@ def deploy_and_test_stack(stack_name, admin_email, template_url):
             return {
                 "stack_name": stack_name,
                 "success": False,
-                "error": f"Stack deployment failed with status: {result.stdout.strip()}"
+                "error": f"Stack deployment failed with status: {result.stdout.strip()}",
             }
 
         print("✅ Stack is healthy")
 
+        # Skip tests if configured (CD mode — deploy only)
+        if pipeline_config.get("skip_tests"):
+            print("ℹ️ skip_tests=true — skipping integration tests (CD mode)")
+            return {"stack_name": stack_name, "success": True}
+
         # Run tests 3-10 in parallel (Step 4 BDA now uses config-sync-bda + --config-version, no activation race)
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("Running tests 3-10 in parallel (fail-fast enabled)...")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
 
         parallel_tests = [
             (test_step3_default_config, "Step 3: Default config"),
@@ -929,7 +1170,9 @@ def deploy_and_test_stack(stack_name, admin_email, template_url):
         failed_test = None
         with ThreadPoolExecutor(max_workers=8) as executor:
             # Submit all parallel tests
-            futures = {executor.submit(func, stack_name): name for func, name in parallel_tests}
+            futures = {
+                executor.submit(func, stack_name): name for func, name in parallel_tests
+            }
 
             # Process results as they complete (fail-fast)
             for future in as_completed(futures):
@@ -939,7 +1182,9 @@ def deploy_and_test_stack(stack_name, admin_email, template_url):
                     if result["success"]:
                         print(f"✅ {test_name} passed")
                     else:
-                        print(f"❌ {test_name} failed: {result.get('error', 'Unknown error')}")
+                        print(
+                            f"❌ {test_name} failed: {result.get('error', 'Unknown error')}"
+                        )
                         failed_test = (test_name, result)
                         # Cancel all remaining tests
                         for f in futures:
@@ -960,41 +1205,50 @@ def deploy_and_test_stack(stack_name, admin_email, template_url):
             return {
                 "stack_name": stack_name,
                 "success": False,
-                "error": f"{test_name} failed: {result.get('error', 'Unknown error')}"
+                "error": f"{test_name} failed: {result.get('error', 'Unknown error')}",
             }
 
         # Run Step 11 (test-compare) sequentially after parallel tests
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("Running Step 11 (test-compare) sequentially...")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
 
         result = test_step11_test_compare(stack_name)
         if result["success"]:
             print("✅ Step 11: test-compare passed")
         else:
-            print(f"❌ Step 11: test-compare failed: {result.get('error', 'Unknown error')}")
+            print(
+                f"❌ Step 11: test-compare failed: {result.get('error', 'Unknown error')}"
+            )
             return {
                 "stack_name": stack_name,
                 "success": False,
-                "error": f"Step 11: test-compare failed: {result.get('error', 'Unknown error')}"
+                "error": f"Step 11: test-compare failed: {result.get('error', 'Unknown error')}",
             }
 
         print("✅ All tests passed")
-        return {
-            "stack_name": stack_name,
-            "success": True
-        }
+        return {"stack_name": stack_name, "success": True}
 
     except Exception as e:
         print(f"❌ Testing failed: {e}")
         return {
             "stack_name": stack_name,
             "success": False,
-            "error": f"Deployment/testing failed: {str(e)}"
+            "error": f"Deployment/testing failed: {str(e)}",
         }
 
 
-def run_inference_test(stack_name, sample_file, batch_id, verify_string, result_location, content_path, config_version=None, sample_dir="samples", additional_checks=None):
+def run_inference_test(
+    stack_name,
+    sample_file,
+    batch_id,
+    verify_string,
+    result_location,
+    content_path,
+    config_version=None,
+    sample_dir="samples",
+    additional_checks=None,
+):
     """Run inference test and verify results
 
     Args:
@@ -1052,7 +1306,9 @@ def run_inference_test(stack_name, sample_file, batch_id, verify_string, result_
                 text_content = text_content[key]
 
         if verify_string not in str(text_content):
-            print(f"❌ Text content does not contain expected string: '{verify_string}'")
+            print(
+                f"❌ Text content does not contain expected string: '{verify_string}'"
+            )
             print(f"Actual text starts with: '{str(text_content)[:100]}...'")
             return False
 
@@ -1069,7 +1325,9 @@ def run_inference_test(stack_name, sample_file, batch_id, verify_string, result_
                 check_file = check_result.stdout.strip()
 
                 if not check_file:
-                    print(f"⚠️  {check_name}: file not found at {check_path} (may be optional)")
+                    print(
+                        f"⚠️  {check_name}: file not found at {check_path} (may be optional)"
+                    )
                     continue  # Skip optional checks
 
                 # Load and verify
@@ -1098,32 +1356,30 @@ def get_codebuild_logs():
     """Get CodeBuild logs from CloudWatch"""
     try:
         # Get CodeBuild build ID from environment
-        build_id = os.environ.get('CODEBUILD_BUILD_ID', '')
+        build_id = os.environ.get("CODEBUILD_BUILD_ID", "")
         if not build_id:
             return "CodeBuild logs not available (not running in CodeBuild)"
-        
+
         # Wait for logs to propagate to CloudWatch
         time.sleep(10)
-        
+
         # Extract log group and stream from build ID
         log_group = f"/aws/codebuild/{build_id.split(':')[0]}"
-        log_stream = build_id.split(':')[-1]
-        
+        log_stream = build_id.split(":")[-1]
+
         # Get logs from CloudWatch
-        logs_client = boto3.client('logs')
+        logs_client = boto3.client("logs")
         response = logs_client.get_log_events(
-            logGroupName=log_group,
-            logStreamName=log_stream,
-            startFromHead=True
+            logGroupName=log_group, logStreamName=log_stream, startFromHead=True
         )
-        
+
         # Extract log messages
         log_messages = []
-        for event in response.get('events', []):
-            log_messages.append(event['message'])
-        
-        return '\n'.join(log_messages)
-        
+        for event in response.get("events", []):
+            log_messages.append(event["message"])
+
+        return "\n".join(log_messages)
+
     except Exception as e:
         return f"Failed to retrieve CodeBuild logs: {str(e)}"
 
@@ -1131,8 +1387,8 @@ def get_codebuild_logs():
 def generate_publish_failure_summary(publish_error):
     """Generate summary for publish/build failures"""
     try:
-        bedrock = boto3.client('bedrock-runtime')
-        
+        bedrock = boto3.client("bedrock-runtime")
+
         prompt = dedent(f"""
         You are a build system analyst. Analyze this publish/build failure and provide specific technical guidance.
 
@@ -1177,22 +1433,24 @@ def generate_publish_failure_summary(publish_error):
         
         IMPORTANT: Respond ONLY with the bullet format above. Do not include any text before or after.
         """)
-        
+
         response = bedrock.invoke_model(
-            modelId='us.anthropic.claude-sonnet-4-20250514-v1:0',
-            body=json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 2000,
-                "temperature": 0,
-                "messages": [{"role": "user", "content": prompt}]
-            })
+            modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
+            body=json.dumps(
+                {
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 2000,
+                    "temperature": 0,
+                    "messages": [{"role": "user", "content": prompt}],
+                }
+            ),
         )
-        
-        response_body = json.loads(response['body'].read())
-        summary = response_body['content'][0]['text']
-        
+
+        response_body = json.loads(response["body"].read())
+        summary = response_body["content"][0]["text"]
+
         return summary
-        
+
     except Exception as e:
         return f"⚠️ Failed to generate build failure summary: {e}"
 
@@ -1200,97 +1458,112 @@ def generate_publish_failure_summary(publish_error):
 def get_cloudformation_logs(stack_name):
     """Get CloudFormation stack events for error analysis"""
     try:
-        cf_client = boto3.client('cloudformation')
+        cf_client = boto3.client("cloudformation")
         all_failed_events = []
-        
+
         # Get events from main stack
         all_events = []
         next_token = None
-        
+
         while True:
             if next_token:
                 response = cf_client.describe_stack_events(
-                    StackName=stack_name,
-                    NextToken=next_token
+                    StackName=stack_name, NextToken=next_token
                 )
             else:
                 response = cf_client.describe_stack_events(StackName=stack_name)
-            
-            events = response.get('StackEvents', [])
+
+            events = response.get("StackEvents", [])
             all_events.extend(events)
-            
-            next_token = response.get('NextToken')
+
+            next_token = response.get("NextToken")
             if not next_token:
                 break
-        
+
         # Filter for failed events and extract nested stack ARNs
         nested_stack_arns = []
         for event in all_events:
-            status = event.get('ResourceStatus', '')
-            if 'FAILED' in status or 'ROLLBACK' in status:
-                all_failed_events.append({
-                    'stack_name': stack_name,
-                    'timestamp': event.get('Timestamp', '').isoformat() if event.get('Timestamp') else '',
-                    'resource_type': event.get('ResourceType', ''),
-                    'logical_id': event.get('LogicalResourceId', ''),
-                    'status': status,
-                    'reason': event.get('ResourceStatusReason', 'No reason provided')
-                })
-                
+            status = event.get("ResourceStatus", "")
+            if "FAILED" in status or "ROLLBACK" in status:
+                all_failed_events.append(
+                    {
+                        "stack_name": stack_name,
+                        "timestamp": event.get("Timestamp", "").isoformat()
+                        if event.get("Timestamp")
+                        else "",
+                        "resource_type": event.get("ResourceType", ""),
+                        "logical_id": event.get("LogicalResourceId", ""),
+                        "status": status,
+                        "reason": event.get(
+                            "ResourceStatusReason", "No reason provided"
+                        ),
+                    }
+                )
+
                 # Extract nested stack ARN from CREATE_FAILED events
-                if (status == 'CREATE_FAILED' and 
-                    event.get('ResourceType') == 'AWS::CloudFormation::Stack' and
-                    'Embedded stack arn:aws:cloudformation:' in event.get('ResourceStatusReason', '')):
-                    reason = event.get('ResourceStatusReason', '')
-                    start = reason.find('arn:aws:cloudformation:')
-                    end = reason.find(' was not successfully created')
+                if (
+                    status == "CREATE_FAILED"
+                    and event.get("ResourceType") == "AWS::CloudFormation::Stack"
+                    and "Embedded stack arn:aws:cloudformation:"
+                    in event.get("ResourceStatusReason", "")
+                ):
+                    reason = event.get("ResourceStatusReason", "")
+                    start = reason.find("arn:aws:cloudformation:")
+                    end = reason.find(" was not successfully created")
                     if start != -1 and end != -1:
                         nested_arn = reason[start:end]
                         nested_stack_arns.append(nested_arn)
-        
+
         # Get events from nested stacks
         for nested_arn in nested_stack_arns:
             try:
                 nested_events = []
                 next_token = None
-                
+
                 while True:
                     if next_token:
                         response = cf_client.describe_stack_events(
-                            StackName=nested_arn,
-                            NextToken=next_token
+                            StackName=nested_arn, NextToken=next_token
                         )
                     else:
                         response = cf_client.describe_stack_events(StackName=nested_arn)
-                    
-                    events = response.get('StackEvents', [])
+
+                    events = response.get("StackEvents", [])
                     nested_events.extend(events)
-                    
-                    next_token = response.get('NextToken')
+
+                    next_token = response.get("NextToken")
                     if not next_token:
                         break
-                
+
                 # Add failed events from nested stack
                 for event in nested_events:
-                    status = event.get('ResourceStatus', '')
-                    if 'FAILED' in status or 'ROLLBACK' in status:
-                        all_failed_events.append({
-                            'stack_name': nested_arn.split('/')[-2],  # Extract stack name from ARN
-                            'timestamp': event.get('Timestamp', '').isoformat() if event.get('Timestamp') else '',
-                            'resource_type': event.get('ResourceType', ''),
-                            'logical_id': event.get('LogicalResourceId', ''),
-                            'status': status,
-                            'reason': event.get('ResourceStatusReason', 'No reason provided')
-                        })
-                        
+                    status = event.get("ResourceStatus", "")
+                    if "FAILED" in status or "ROLLBACK" in status:
+                        all_failed_events.append(
+                            {
+                                "stack_name": nested_arn.split("/")[
+                                    -2
+                                ],  # Extract stack name from ARN
+                                "timestamp": event.get("Timestamp", "").isoformat()
+                                if event.get("Timestamp")
+                                else "",
+                                "resource_type": event.get("ResourceType", ""),
+                                "logical_id": event.get("LogicalResourceId", ""),
+                                "status": status,
+                                "reason": event.get(
+                                    "ResourceStatusReason", "No reason provided"
+                                ),
+                            }
+                        )
+
             except Exception:
                 # Skip nested stacks we can't access
                 continue
-        
+
         return all_failed_events
-        
+
     except Exception as e:
-        return [{'error': f"Failed to retrieve CloudFormation logs: {str(e)}"}]
+        return [{"error": f"Failed to retrieve CloudFormation logs: {str(e)}"}]
 
 
 def generate_deployment_summary(result, stack_name, template_url):
@@ -1300,12 +1573,12 @@ def generate_deployment_summary(result, stack_name, template_url):
         deployment_logs = get_codebuild_logs()
         if not result.get("success", True):
             # For failures, only show last 100 lines to reduce noise
-            log_lines = deployment_logs.split('\n')
+            log_lines = deployment_logs.split("\n")
             if len(log_lines) > 100:
-                deployment_logs = '\n'.join(log_lines[-100:])
+                deployment_logs = "\n".join(log_lines[-100:])
 
         # Initialize Bedrock client
-        bedrock = boto3.client('bedrock-runtime')
+        bedrock = boto3.client("bedrock-runtime")
 
         # Create prompt for Bedrock with structured analysis
         # IMPORTANT: Deployment result is at END for recency bias
@@ -1395,43 +1668,66 @@ def generate_deployment_summary(result, stack_name, template_url):
         4. CodeBuild logs are for context only, not for determining success/failure
         5. All 9 tests must be listed in success case (Steps 3-10 run in parallel, Step 11 sequential)
         """)
-        
+
         # Call Bedrock API with temperature=0 for deterministic output
         response = bedrock.invoke_model(
-            modelId='us.anthropic.claude-sonnet-4-20250514-v1:0',
-            body=json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 4000,
-                "temperature": 0,
-                "messages": [{"role": "user", "content": prompt}]
-            })
+            modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
+            body=json.dumps(
+                {
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 4000,
+                    "temperature": 0,
+                    "messages": [{"role": "user", "content": prompt}],
+                }
+            ),
         )
-        
-        response_body = json.loads(response['body'].read())
-        initial_summary = response_body['content'][0]['text']
-        
+
+        response_body = json.loads(response["body"].read())
+        initial_summary = response_body["content"][0]["text"]
+
         # Check if we need CloudFormation logs
         if initial_summary.startswith("NEED_CF_LOGS"):
             print("🔍 Getting CloudFormation logs for detailed analysis...")
             # Get CloudFormation logs for failed stacks
             logs = []
-            if not result["success"] and result.get("stack_name") and result["stack_name"] != "N/A":
+            if (
+                not result["success"]
+                and result.get("stack_name")
+                and result["stack_name"] != "N/A"
+            ):
                 print(f"📋 Getting CF logs for: {result['stack_name']}")
                 try:
                     logs = get_cloudformation_logs(result["stack_name"])
                     # Check if we got actual events or just error messages
-                    if logs and not (len(logs) == 1 and 'error' in logs[0]):
-                        print(f"✅ Retrieved {len(logs)} events for {result['stack_name']}")
+                    if logs and not (len(logs) == 1 and "error" in logs[0]):
+                        print(
+                            f"✅ Retrieved {len(logs)} events for {result['stack_name']}"
+                        )
                     else:
-                        error_msg = logs[0].get('error', 'Unknown error') if logs else 'No logs returned'
-                        print(f"⚠️ Failed to get CF logs for {result['stack_name']}: {error_msg}")
-                        logs= [{"error": error_msg, "stack_name": result["stack_name"]}]
+                        error_msg = (
+                            logs[0].get("error", "Unknown error")
+                            if logs
+                            else "No logs returned"
+                        )
+                        print(
+                            f"⚠️ Failed to get CF logs for {result['stack_name']}: {error_msg}"
+                        )
+                        logs = [
+                            {"error": error_msg, "stack_name": result["stack_name"]}
+                        ]
                 except Exception as e:
-                    print(f"⚠️ Exception getting CF logs for {result['stack_name']}: {e}")
-                    logs = [{"error": f"Exception: {str(e)}", "stack_name": result["stack_name"]}]
-            
+                    print(
+                        f"⚠️ Exception getting CF logs for {result['stack_name']}: {e}"
+                    )
+                    logs = [
+                        {
+                            "error": f"Exception: {str(e)}",
+                            "stack_name": result["stack_name"],
+                        }
+                    ]
+
             print(f"✅ Retrieved {len(logs)} CF logs for {stack_name}")
-            
+
             # Always proceed with second Bedrock call, even with partial/error data
             print("🤖 Making second Bedrock call with available CF data...")
             cf_prompt = dedent(f"""
@@ -1467,40 +1763,43 @@ def generate_deployment_summary(result, stack_name, template_url):
 
             Keep each bullet point under 75 characters.
             """)
-            
+
             cf_response = bedrock.invoke_model(
-                modelId='us.anthropic.claude-sonnet-4-20250514-v1:0',
-                body=json.dumps({
-                    "anthropic_version": "bedrock-2023-05-31",
-                    "max_tokens": 4000,
-                    "temperature": 0,
-                    "messages": [{"role": "user", "content": cf_prompt}]
-                })
+                modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
+                body=json.dumps(
+                    {
+                        "anthropic_version": "bedrock-2023-05-31",
+                        "max_tokens": 4000,
+                        "temperature": 0,
+                        "messages": [{"role": "user", "content": cf_prompt}],
+                    }
+                ),
             )
-            
-            cf_response_body = json.loads(cf_response['body'].read())
+
+            cf_response_body = json.loads(cf_response["body"].read())
             print("✅ Second Bedrock call completed successfully")
-            return cf_response_body['content'][0]['text']
-        
+            return cf_response_body["content"][0]["text"]
+
         return initial_summary
-        
+
     except Exception as e:
         # Manual summary when Bedrock unavailable
         return dedent(f"""
         DEPLOYMENT SUMMARY (MANUAL)
         
-        Deployment result {stack_name} : {'SUCCESS' if result['success'] else 'FAILED'}
+        Deployment result {stack_name} : {"SUCCESS" if result["success"] else "FAILED"}
         
         Error: Failed to generate AI analysis: {e}
         """)
+
 
 def cancel_bedrock_ingestion_jobs(stack_name):
     """Cancel any running Bedrock ingestion jobs before stack deletion"""
     print(f"[{stack_name}] Checking for running Bedrock ingestion jobs...")
 
     try:
-        cf_client = boto3.client('cloudformation')
-        bedrock_agent = boto3.client('bedrock-agent')
+        cf_client = boto3.client("cloudformation")
+        bedrock_agent = boto3.client("bedrock-agent")
 
         # Get all resources from main stack and nested stacks
         stacks_to_check = [stack_name]
@@ -1508,9 +1807,9 @@ def cancel_bedrock_ingestion_jobs(stack_name):
         # Find nested stacks
         try:
             resources = cf_client.describe_stack_resources(StackName=stack_name)
-            for resource in resources['StackResources']:
-                if resource['ResourceType'] == 'AWS::CloudFormation::Stack':
-                    nested_stack_name = resource['PhysicalResourceId'].split('/')[1]
+            for resource in resources["StackResources"]:
+                if resource["ResourceType"] == "AWS::CloudFormation::Stack":
+                    nested_stack_name = resource["PhysicalResourceId"].split("/")[1]
                     stacks_to_check.append(nested_stack_name)
         except Exception as e:
             print(f"  ⚠️ Could not list nested stacks: {e}")
@@ -1522,43 +1821,47 @@ def cancel_bedrock_ingestion_jobs(stack_name):
             try:
                 resources = cf_client.describe_stack_resources(StackName=stack)
 
-                for resource in resources['StackResources']:
-                    if resource['ResourceType'] == 'AWS::Bedrock::DataSource':
+                for resource in resources["StackResources"]:
+                    if resource["ResourceType"] == "AWS::Bedrock::DataSource":
                         # Parse physical resource ID: knowledgeBaseId|dataSourceId
-                        physical_id = resource['PhysicalResourceId']
-                        if '|' in physical_id:
-                            kb_id, ds_id = physical_id.split('|')
+                        physical_id = resource["PhysicalResourceId"]
+                        if "|" in physical_id:
+                            kb_id, ds_id = physical_id.split("|")
 
                             # List ingestion jobs for this data source
                             try:
                                 response = bedrock_agent.list_ingestion_jobs(
                                     knowledgeBaseId=kb_id,
                                     dataSourceId=ds_id,
-                                    maxResults=10
+                                    maxResults=10,
                                 )
 
-                                for job in response.get('ingestionJobSummaries', []):
-                                    if job['status'] == 'IN_PROGRESS':
-                                        job_id = job['ingestionJobId']
+                                for job in response.get("ingestionJobSummaries", []):
+                                    if job["status"] == "IN_PROGRESS":
+                                        job_id = job["ingestionJobId"]
                                         print(f"  Cancelling ingestion job: {job_id}")
 
                                         # Stop the ingestion job
                                         bedrock_agent.stop_ingestion_job(
                                             knowledgeBaseId=kb_id,
                                             dataSourceId=ds_id,
-                                            ingestionJobId=job_id
+                                            ingestionJobId=job_id,
                                         )
                                         jobs_cancelled += 1
                                         print(f"  ✓ Cancelled ingestion job: {job_id}")
 
                             except Exception as e:
-                                print(f"  ⚠️ Could not check/cancel jobs for {physical_id}: {e}")
+                                print(
+                                    f"  ⚠️ Could not check/cancel jobs for {physical_id}: {e}"
+                                )
 
             except Exception as e:
                 print(f"  ⚠️ Could not check stack {stack}: {e}")
 
         if jobs_cancelled > 0:
-            print(f"[{stack_name}] ✅ Cancelled {jobs_cancelled} running ingestion job(s)")
+            print(
+                f"[{stack_name}] ✅ Cancelled {jobs_cancelled} running ingestion job(s)"
+            )
             # Wait a bit for cancellation to propagate
             print(f"[{stack_name}] Waiting 10s for job cancellation to complete...")
             time.sleep(10)
@@ -1575,8 +1878,13 @@ def cleanup_stack(result):
     print(f"🧹 Starting cleanup for stack: {stack_name}")
     try:
         # Check stack status first
-        cmd_result = run_command(f"aws cloudformation describe-stacks --stack-name {stack_name} --query 'Stacks[0].StackStatus' --output text", check=False)
-        stack_status = cmd_result.stdout.strip() if cmd_result.returncode == 0 else "NOT_FOUND"
+        cmd_result = run_command(
+            f"aws cloudformation describe-stacks --stack-name {stack_name} --query 'Stacks[0].StackStatus' --output text",
+            check=False,
+        )
+        stack_status = (
+            cmd_result.stdout.strip() if cmd_result.returncode == 0 else "NOT_FOUND"
+        )
 
         print(f"[{stack_name}] stack status: {stack_status}")
 
@@ -1585,7 +1893,10 @@ def cleanup_stack(result):
 
         # Delete the stack and wait for completion (includes all cleanup via --force-delete-all)
         print(f"[{stack_name}] attempting stack deletion...")
-        run_command(f"idp-cli delete --stack-name {stack_name} --force --empty-buckets --force-delete-all --wait", check=False)
+        run_command(
+            f"idp-cli delete --stack-name {stack_name} --force --empty-buckets --force-delete-all --wait",
+            check=False,
+        )
 
         print(f"[{stack_name}] ✅ Cleanup completed")
 
@@ -1594,17 +1905,22 @@ def cleanup_stack(result):
     except Exception as e:
         print(f"⚠️ Cleanup task failed: {e}")
 
+
 def main():
     """Main execution function"""
     print("Starting CodeBuild deployment process...")
 
-    admin_email = get_env_var("IDP_ADMIN_EMAIL", "tanimath@amazon.com")
-    stack_name = generate_stack_name()
+    pipeline_config = load_pipeline_config()
+
+    admin_email = pipeline_config.get("admin_email") or get_env_var(
+        "IDP_ADMIN_EMAIL", "admin@example.com"
+    )
+    stack_name = pipeline_config.get("stack_name") or generate_stack_name()
 
     print(f"Stack Name: {stack_name}")
     print(f"Admin Email: {admin_email}")
 
-    #initialize AI summary
+    # initialize AI summary
     ai_summary = ""
     publish_success = False
     stack_success = False
@@ -1620,13 +1936,14 @@ def main():
     except Exception as e:
         print(f"❌ Publish failed: {e}")
         ai_summary = generate_publish_failure_summary(str(e))
-    
-    
+
     if publish_success:
         # Step 2: Deploy and test patterns concurrently (only if publish succeeded)
         print(f"🚀 Starting deployment for stack: {stack_name}")
         try:
-            result = deploy_and_test_stack(stack_name, admin_email, template_url)
+            result = deploy_and_test_stack(
+                stack_name, admin_email, template_url, pipeline_config
+            )
             if not result["success"]:
                 print(f"[{stack_name}] ❌ Failed")
             else:
@@ -1636,15 +1953,20 @@ def main():
             print(f"[{stack_name}] ❌ Exception: {e}")
             # Add failed result for exception cases
             result = {"stack_name": stack_name, "success": False, "error": str(e)}
-    
+
         # Step 3: Generate deployment summary using Bedrock (but don't print yet)
         try:
             ai_summary = generate_deployment_summary(result, stack_name, template_url)
         except Exception as e:
             ai_summary = f"⚠️ Failed to generate deployment summary: {e}"
 
-        # Step 4: clean up stack
-        cleanup_stack(result)
+        # Step 4: clean up stack (skip if pipeline config specifies a persistent stack)
+        if not pipeline_config.get("stack_name"):
+            cleanup_stack(result)
+        else:
+            print(
+                f"ℹ️ Skipping cleanup — stack '{stack_name}' is persistent (defined in pipeline config)"
+            )
 
     # Step 5: Print AI analysis results at the end
     print("\n🤖 Generating deployment summary with Bedrock...")
