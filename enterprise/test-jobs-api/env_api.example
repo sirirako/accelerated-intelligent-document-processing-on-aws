@@ -1,0 +1,5 @@
+# Copy to .env_api and fill in values from your stack outputs
+COGNITO_DOMAIN=https://<stack-name>-api-<account-id>.auth.<region>.amazoncognito.com
+CLIENT_ID=<from stack output ApiClientId>
+CLIENT_SECRET=<from: aws cognito-idp describe-user-pool-client --user-pool-id <pool-id> --client-id <client-id> --query UserPoolClient.ClientSecret --output text>
+API_ENDPOINT=<from stack output ApiGatewayEndpoint>
