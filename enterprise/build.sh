@@ -1,15 +1,15 @@
 #!/bin/bash
-# Build enterprise-addon layers (install dependencies into the layer directories).
+# Build enterprise layers (install dependencies into the layer directories).
 # Run this before `sam build` / `idp-cli publish` so the layers are ready to package.
 #
 # Usage:
 #   cd <project-root>
-#   ./enterprise-addon/build.sh
+#   ./enterprise/build.sh
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-echo "Building enterprise-addon layers..."
+echo "Building enterprise layers..."
 
 # --- Ping verifier layer (PyJWT) ---
 PING_LAYER_DIR="$SCRIPT_DIR/layers/ping_verifier"
