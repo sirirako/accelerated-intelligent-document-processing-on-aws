@@ -530,6 +530,8 @@ Resources:
                 - which idp-cli || { echo "idp-cli not found in PATH"; exit 1; }
                 # ── Enterprise layers (PyJWT + pika for Ping auth + MQ hook) ──
                 - |
+                  export LAMBDA_ARCHITECTURE=$(aws s3 cp "s3://${SOURCE_BUCKET}/${PIPELINE_CONFIG_KEY}" - 2>/dev/null | python3 -c "import sys,yaml; c=yaml.safe_load(sys.stdin) or {}; print(c.get('parameters',{}).get('LambdaArchitecture','arm64'))" 2>/dev/null || echo "arm64")
+                  echo "Lambda architecture: $LAMBDA_ARCHITECTURE"
                   if [ -f "./enterprise/build.sh" ]; then
                     echo "Building enterprise layers..."
                     ./enterprise/build.sh
