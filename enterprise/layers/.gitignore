@@ -1,0 +1,11 @@
+# Installed layer dependencies (rebuilt by enterprise/build.sh)
+pika/python/
+ping_verifier/python/jwt/
+ping_verifier/python/PyJWT*/
+ping_verifier/python/cryptography*/
+ping_verifier/python/cffi*/
+ping_verifier/python/pycparser*/
+ping_verifier/python/_cffi_backend*
+ping_verifier/python/*.dist-info/
+# Keep ping_verifier.py (our code, not a dependency)
+!ping_verifier/python/ping_verifier.py
