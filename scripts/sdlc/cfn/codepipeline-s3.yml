@@ -528,6 +528,12 @@ Resources:
                 - pip install rich scikit-learn || echo "Additional package installation failed, using fallbacks"
                 - export PATH="$PWD/.venv/bin:$PATH"
                 - which idp-cli || { echo "idp-cli not found in PATH"; exit 1; }
+                # ── Enterprise layers (PyJWT + pika for Ping auth + MQ hook) ──
+                - |
+                  if [ -f "./enterprise/build.sh" ]; then
+                    echo "Building enterprise layers..."
+                    ./enterprise/build.sh
+                  fi
             build:
               commands:
                 - python3 scripts/sdlc/codebuild_deployment.py
