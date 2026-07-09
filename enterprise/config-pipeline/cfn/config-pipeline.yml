@@ -1,0 +1,222 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Lightweight pipeline for IDP document configuration promotion'
+
+Parameters:
+  PipelineName:
+    Type: String
+    Default: idp-config-pipeline
+    Description: 'Name of the config pipeline'
+
+  SourceBucketName:
+    Type: String
+    Description: 'S3 bucket containing config files and pipeline config'
+
+  SourceKey:
+    Type: String
+    Default: configs/config.zip
+    Description: 'S3 key that triggers the pipeline when updated'
+
+  ConfigPipelineConfigKey:
+    Type: String
+    Default: deploy/config-pipeline.yaml
+    Description: 'S3 key of the pipeline config file (stack name, versions to upload)'
+
+  IdpStackName:
+    Type: String
+    Description: 'Name of the target IDP stack to upload configurations to'
+
+Conditions:
+  CreateSourceBucket: !Equals ['', '']  # Always false — bucket must pre-exist
+
+Resources:
+  # =========================================================================
+  # IAM Role for CodeBuild
+  # =========================================================================
+  ConfigCodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ConfigUploadPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # S3 — read config files from source bucket
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::${SourceBucketName}'
+                  - !Sub 'arn:aws:s3:::${SourceBucketName}/*'
+              # CloudFormation — read stack outputs (idp-cli needs this)
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                  - cloudformation:ListStacks
+                Resource:
+                  - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${IdpStackName}*'
+              # DynamoDB — write config to the IDP configuration table
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                Resource:
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${IdpStackName}-*'
+              # SSM — read IDP settings (idp-cli config-upload reads stack settings)
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${IdpStackName}-Settings'
+              # CloudWatch Logs
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${PipelineName}*'
+
+  # =========================================================================
+  # CodeBuild Project
+  # =========================================================================
+  ConfigCodeBuild:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Ref PipelineName
+      Description: 'Uploads IDP document configurations to the target stack'
+      ServiceRole: !GetAtt ConfigCodeBuildRole.Arn
+      TimeoutInMinutes: 10
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux-x86_64-standard:5.0
+        EnvironmentVariables:
+          - Name: SOURCE_BUCKET
+            Value: !Ref SourceBucketName
+          - Name: IDP_STACK_NAME
+            Value: !Ref IdpStackName
+          - Name: CONFIG_PIPELINE_CONFIG_KEY
+            Value: !Ref ConfigPipelineConfigKey
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                python: 3.12
+              commands:
+                - pip install pyyaml boto3
+                - pip install -e lib/idp_cli_pkg 2>/dev/null || pip install idp-cli 2>/dev/null || echo "idp-cli not available, using direct upload"
+            build:
+              commands:
+                - python3 enterprise/config-pipeline/scripts/upload_configs.py
+
+  # =========================================================================
+  # CodePipeline
+  # =========================================================================
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireArtifacts
+            Status: Enabled
+            ExpirationInDays: 7
+
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodePipelinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - s3:ListBucket
+                  - s3:PutObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::${SourceBucketName}/*'
+                  - !Sub 'arn:aws:s3:::${SourceBucketName}'
+                  - !Sub 'arn:aws:s3:::${ArtifactBucket}/*'
+                  - !Sub 'arn:aws:s3:::${ArtifactBucket}'
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: !GetAtt ConfigCodeBuild.Arn
+
+  ConfigPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Ref PipelineName
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: S3
+                Version: '1'
+              Configuration:
+                S3Bucket: !Ref SourceBucketName
+                S3ObjectKey: !Ref SourceKey
+                PollForSourceChanges: 'true'
+              OutputArtifacts:
+                - Name: SourceOutput
+        - Name: UploadConfigs
+          Actions:
+            - Name: UploadAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref ConfigCodeBuild
+              InputArtifacts:
+                - Name: SourceOutput
+
+Outputs:
+  PipelineName:
+    Value: !Ref ConfigPipeline
+    Description: 'Config pipeline name'
+  SourceBucket:
+    Value: !Ref SourceBucketName
+    Description: 'Drop config.zip here to trigger the pipeline'
+  TargetStack:
+    Value: !Ref IdpStackName
+    Description: 'IDP stack that receives the configurations'
