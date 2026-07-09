@@ -199,6 +199,7 @@ s3://aidp-sdlc-sourcecode-{ACCOUNT_ID}-{REGION}/
 | `stack_name` | No | Auto-generated (`idp-MMDD-HHMMSS`) | Fixed stack name. When set, stack persists after pipeline runs |
 | `skip_tests` | No | `false` | Skip integration tests (CD mode) |
 | `headless` | No | `false` | Deploy without UI/AppSync/Cognito/WAF |
+| `role_arn` | No | Auto-created | Pre-deployed CloudFormation service role ARN. If provided along with `PermissionsBoundaryArn` in parameters, the pipeline skips creating IAM resources |
 | `parameters` | No | `{}` | CloudFormation parameters passed to `idp-cli deploy --parameters` |
 
 ### Supported CloudFormation Parameters

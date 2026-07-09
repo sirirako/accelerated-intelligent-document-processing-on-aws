@@ -1098,11 +1098,22 @@ def deploy_and_test_stack(stack_name, admin_email, template_url, pipeline_config
     print(f"Starting deployment: {stack_name}")
 
     try:
-        # Step 0: Create IAM resources
-        print("Step 0: Creating IAM resources...")
-        role_arn, permissions_boundary_arn = create_iam_resources(stack_name)
-        if not role_arn or not permissions_boundary_arn:
-            raise Exception("Failed to create required IAM resources")
+        # Step 0: Resolve IAM resources
+        # If customer provides role_arn and PermissionsBoundaryArn in config, use those.
+        # Otherwise, create them (upstream CI behavior).
+        config_params = pipeline_config.get("parameters", {})
+        role_arn = pipeline_config.get("role_arn")
+        permissions_boundary_arn = config_params.get("PermissionsBoundaryArn")
+
+        if role_arn and permissions_boundary_arn:
+            print(
+                "Step 0: Using pre-configured IAM resources (role_arn + PermissionsBoundaryArn from config)"
+            )
+        else:
+            print("Step 0: Creating IAM resources...")
+            role_arn, permissions_boundary_arn = create_iam_resources(stack_name)
+            if not role_arn or not permissions_boundary_arn:
+                raise Exception("Failed to create required IAM resources")
 
         # Step 1: Deploy using template URL
         print("Step 1: Deploying stack...")
@@ -1114,7 +1125,7 @@ def deploy_and_test_stack(stack_name, admin_email, template_url, pipeline_config
 
         # Build --parameters from config + IAM resources
         params = {"PermissionsBoundaryArn": permissions_boundary_arn}
-        params.update(pipeline_config.get("parameters", {}))
+        params.update(config_params)
         param_str = ",".join(f"{k}={v}" for k, v in params.items())
         cmd += f" --parameters {param_str}"
 
