@@ -56,44 +56,34 @@ def generate_stack_name():
 
 
 def load_pipeline_config():
-    """Load deployment config from S3 (PIPELINE_CONFIG_KEY) or local fallback."""
+    """Load deployment config from S3 (PIPELINE_CONFIG_KEY).
+
+    The config file must exist in the S3 source bucket. Each environment has its
+    own config (synced from enterprise/environments/*.yaml). If missing, the
+    pipeline fails — deploying without explicit config is not safe.
+    """
     import yaml
 
     source_bucket = os.environ.get("SOURCE_BUCKET", "")
     config_key = os.environ.get("PIPELINE_CONFIG_KEY", "deploy/pipeline-config.yaml")
     local_path = "/tmp/pipeline-config.yaml"  # nosec B108
 
-    # Try S3 first (the canonical source for per-environment config)
-    if source_bucket and config_key:
-        try:
-            s3 = boto3.client("s3")
-            s3.download_file(source_bucket, config_key, local_path)
-            with open(local_path) as f:
-                config = yaml.safe_load(f) or {}
-            print(f"✅ Loaded pipeline config from s3://{source_bucket}/{config_key}")
-            return config
-        except s3.exceptions.NoSuchKey:
-            print(f"ℹ️ No config at s3://{source_bucket}/{config_key}")
-        except Exception as e:
-            print(f"⚠️ Failed to download config from S3: {e}")
+    if not source_bucket:
+        raise Exception("SOURCE_BUCKET environment variable not set")
 
-    # Fallback: check if config exists inside the code zip
-    for local_fallback in [
-        "enterprise/deploy/pipeline-config.yaml",
-        "deploy/pipeline-config.yaml",
-    ]:
-        if not os.path.exists(local_fallback):
-            continue
-        try:
-            with open(local_fallback) as f:
-                config = yaml.safe_load(f) or {}
-            print(f"✅ Loaded pipeline config from {local_fallback} (local fallback)")
-            return config
-        except Exception as e:
-            print(f"⚠️ Failed to load local pipeline config: {e}")
-
-    print("ℹ️ No pipeline config found, using defaults")
-    return {}
+    try:
+        s3 = boto3.client("s3")
+        s3.download_file(source_bucket, config_key, local_path)
+        with open(local_path) as f:
+            config = yaml.safe_load(f) or {}
+        print(f"✅ Loaded pipeline config from s3://{source_bucket}/{config_key}")
+        return config
+    except Exception as e:
+        raise Exception(
+            f"Failed to load pipeline config from s3://{source_bucket}/{config_key}: {e}\n"
+            f"Each environment must have a pipeline-config.yaml in its S3 source bucket.\n"
+            f"See enterprise/environments/README.md for setup instructions."
+        )
 
 
 def cleanup_stale_bda_blueprints():
