@@ -70,15 +70,39 @@ aws cloudformation deploy \
   --region {REGION}
 ```
 
-### 1.2 Create the Environment Config
+### 1.2 Deploy the CloudFormation Service Role
 
-Copy a template from `enterprise/environments/` and fill in the values:
+This role is assumed by CloudFormation to create/update/delete the IDP stack resources (Lambda functions, DynamoDB tables, S3 buckets, etc.). It is **not** the CodeBuild role — it's the role that CFN uses during stack operations.
+
+```bash
+aws cloudformation deploy \
+  --template-file iam-roles/cloudformation-management/IDP-Cloudformation-Service-Role.yaml \
+  --stack-name aidp-cfn-service-role \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region {REGION}
+```
+
+Note the output ARN — you'll need it for the config file:
+```bash
+aws cloudformation describe-stacks \
+  --stack-name aidp-cfn-service-role \
+  --query 'Stacks[0].Outputs[?OutputKey==`ServiceRoleArn`].OutputValue' \
+  --output text --region {REGION}
+```
+
+> **Security note:** This role has broad permissions (it creates the entire IDP infrastructure) but can only be assumed by `cloudformation.amazonaws.com`. It does NOT have a permissions boundary — that would prevent it from creating the stack's IAM roles. Instead, the `PermissionsBoundaryArn` parameter is applied to all roles **created by** the stack (Lambda execution roles, etc.).
+>
+> **Customer review:** Share `iam-roles/cloudformation-management/IDP-Cloudformation-Service-Role.yaml` with the customer's security team before deployment. They may want to scope it further or add conditions.
+
+### 1.3 Create the Environment Config
+
+Copy a template from `enterprise/environments/` and fill in the values, including the service role ARN from step 1.2 and your customer's permissions boundary ARN:
 
 ```bash
 # Copy the template
 cp enterprise/environments/prod.yaml enterprise/environments/local-myenv.yaml
 
-# Edit with your values (VPC, IdP, etc.)
+# Edit with your values (role_arn, PermissionsBoundaryArn, VPC, IdP, etc.)
 vim enterprise/environments/local-myenv.yaml
 
 # Upload to S3 as the standard config name
@@ -86,9 +110,13 @@ aws s3 cp enterprise/environments/local-myenv.yaml \
   s3://aidp-sdlc-sourcecode-{ACCOUNT_ID}-{REGION}/deploy/pipeline-config.yaml
 ```
 
+Key fields to fill:
+- `role_arn` — the service role ARN from step 1.2
+- `parameters.PermissionsBoundaryArn` — customer's boundary (applied to all stack-created roles)
+
 > **Note:** Files prefixed with `local-` are gitignored (they contain real account IDs/ARNs). The committed `dev.yaml` and `prod.yaml` are templates with placeholder values.
 
-### 1.3 Deploy the Pipeline Stack
+### 1.4 Deploy the Pipeline Stack
 
 **Standard (public internet access):**
 ```bash
