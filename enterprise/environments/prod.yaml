@@ -4,6 +4,7 @@
 stack_name: idp-prod
 region: us-east-1
 admin_email: admin@example.com
+skip_tests: true
 
 parameters:
   # --- Hosting ---
@@ -45,6 +46,9 @@ parameters:
   # UvConfigSecretArn: ""
   # PipConfigSecretArn: ""
   # NpmConfigSecretArn: ""
+
+  # --- Build ---
+  LambdaArchitecture: x86_64  # x86_64 avoids QEMU cross-compile in CodeBuild
 
   # --- Other ---
   EnableMCP: "false"
