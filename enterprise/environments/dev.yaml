@@ -1,0 +1,52 @@
+# IDP Development Environment
+# Sync to S3: aws s3 cp enterprise/environments/dev.yaml s3://<dev-source-bucket>/deploy/pipeline-config.yaml
+
+stack_name: idp-dev
+region: us-east-1
+admin_email: admin@example.com
+
+parameters:
+  # --- Hosting ---
+  WebUIHosting: ALB
+  ALBScheme: internal
+  ALBVpcId: ""              # fill with dev VPC ID
+  ALBSubnetIds: ""          # fill with dev subnet IDs (comma-separated)
+  ALBCertificateArn: ""     # fill with dev ACM cert ARN
+
+  # --- Private networking ---
+  ApiGatewayVisibility: PRIVATE
+  ApiGatewayVpcEndpointId: ""   # fill with dev execute-api VPC endpoint
+  LambdaSubnetIds: ""           # fill with dev private subnet IDs
+  DeployInVPC: "true"
+  VpcId: ""                     # fill with dev VPC ID
+  PrivateSubnetIds: ""          # fill with dev private subnet IDs
+  LambdaSecurityGroupId: ""     # fill with dev Lambda SG
+
+  # --- Headless API (Jobs API + Ping auth) ---
+  EnableHeadless: "true"
+  PingIssuer1: ""           # fill with dev Ping issuer
+  PingJwksUri1: ""          # fill with dev Ping JWKS endpoint
+  PingIssuer2: ""           # optional secondary issuer
+  PingJwksUri2: ""
+  PingRequiredRoles: ""     # comma-separated required roles (empty = any valid token)
+
+  # --- Completion hook (Amazon MQ) ---
+  EnableCompletionHook: "false"   # enable when MQ is ready
+  CompletionHookMQHost: ""
+  CompletionHookMQExchange: ""
+  CompletionHookMQRoutingKey: "idp.document.completed"
+  CompletionHookMQOAuthScope: ""
+  CompletionHookPingTokenUrl: ""
+  CompletionHookPingClientId: ""
+  CompletionHookPingClientSecretArn: ""
+
+  # --- Private registry ---
+  # DockerConfigSecretArn: ""
+  # UvConfigSecretArn: ""
+  # PipConfigSecretArn: ""
+  # NpmConfigSecretArn: ""
+
+  # --- Other ---
+  EnableMCP: "false"
+  DocumentKnowledgeBase: DISABLED
+  ArtifactsBucketKmsKeyArn: ""  # fill if S3 bucket uses KMS
