@@ -1,0 +1,9 @@
+# Pipeline deployment configuration (test environment: aidp-cd-test)
+# Sync to S3: aws s3 cp enterprise/environments/test-aidp-cd.yaml s3://<source-bucket>/deploy/pipeline-config.yaml
+
+stack_name: aidp-cd-test
+admin_email: siriratk@amazon.com
+skip_tests: true
+
+parameters:
+  LambdaArchitecture: x86_64
