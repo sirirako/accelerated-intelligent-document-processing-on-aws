@@ -6,6 +6,10 @@ region: us-east-1
 admin_email: admin@example.com
 skip_tests: true
 
+# CloudFormation service role (pre-deployed by customer's cloud team)
+# If omitted, the pipeline creates one automatically from IDP-Cloudformation-Service-Role.yaml
+# role_arn: arn:aws:iam::123456789012:role/idp-dev-iam-CFServiceRole
+
 parameters:
   # --- Hosting ---
   WebUIHosting: ALB
@@ -49,6 +53,9 @@ parameters:
 
   # --- Build ---
   LambdaArchitecture: x86_64  # x86_64 avoids QEMU cross-compile in CodeBuild
+
+  # --- Security ---
+  PermissionsBoundaryArn: ""  # fill with customer's boundary ARN (applied to all stack-created roles)
 
   # --- Other ---
   EnableMCP: "false"
