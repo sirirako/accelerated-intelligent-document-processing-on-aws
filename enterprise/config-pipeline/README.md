@@ -12,8 +12,7 @@ S3 source bucket:
 │   ├── lending-v1.yaml      ← config versions (extraction rules, schemas)
 │   ├── lending-v2.yaml
 │   └── claims-v1.yaml
-└── deploy/
-    └── config-pipeline.yaml  ← (optional) which versions to upload
+└── config-pipeline.yaml      ← (optional) which versions to upload
 ```
 
 1. Drop/update `configs/config.zip` in S3 (zip of the configs/ directory)
@@ -46,11 +45,11 @@ The pipeline triggers automatically on upload.
 
 ## Pipeline config (optional)
 
-If `deploy/config-pipeline.yaml` exists in the source bucket, the pipeline
+If `config-pipeline.yaml` exists in the source bucket root, the pipeline
 reads it to determine which configs to upload:
 
 ```yaml
-# deploy/config-pipeline.yaml
+# config-pipeline.yaml
 stack_name: idp-prod                # override target stack
 config_versions:                    # only upload these (skip others)
   - lending-v2
