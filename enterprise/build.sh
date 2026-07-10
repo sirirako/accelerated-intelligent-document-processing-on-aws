@@ -1,15 +1,20 @@
 #!/bin/bash
-# Build enterprise-addon layers (install dependencies into the layer directories).
-# Run this before `sam build` / `idp-cli publish` so the layers are ready to package.
+# OPTIONAL local-dev helper — populate the layer python/ dirs for editor/import
+# resolution while working on the code locally.
+#
+# NOT required before publish: the layers declare `Metadata: BuildMethod: python3.12`,
+# so `sam build` / `idp-cli publish` installs these dependencies from each layer's
+# requirements.txt automatically (through the registry-configured pip in CodeBuild).
+# The python/ dirs are git-ignored build output; this script just fills them locally.
 #
 # Usage:
 #   cd <project-root>
-#   ./enterprise-addon/build.sh
+#   ./enterprise/build.sh
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-echo "Building enterprise-addon layers..."
+echo "Populating enterprise layer deps locally (optional; publish does this via BuildMethod)..."
 
 # --- Ping verifier layer (PyJWT) ---
 PING_LAYER_DIR="$SCRIPT_DIR/layers/ping_verifier"
@@ -31,4 +36,4 @@ pip install -q -r "$PIKA_LAYER_DIR/requirements.txt" \
 echo "  ✓ pika layer ready"
 
 echo ""
-echo "Done. Layers are ready for sam build / idp-cli publish."
+echo "Done. (Local dev only — publish installs these via BuildMethod.)"

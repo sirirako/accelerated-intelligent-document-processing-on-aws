@@ -93,3 +93,16 @@ feature-platform/**/dist/
 # bundled OSS features + config_library/marketplace-catalog.yaml). Never
 # hand-edited or committed; marketplace-catalog.yaml is the checked-in source.
 config_library/catalog.json
+
+# Local-only tooling and generated artifacts (not project source)
+.claude/private-tunnel.sh
+.threatmodel/genaiidp-threat-model.json
+.threatmodel/genaiidp-threat-model.md
+
+# Enterprise Lambda layer dependencies. SAM's BuildMethod:python3.12 installs
+# these into python/ from each layer's requirements.txt during the build (via
+# the registry-configured pip in CodeBuild), so they are reproducible build
+# artifacts, not source. The custom ping_verifier.py now lives at the layer
+# ContentUri root and IS tracked. Ignore the generated python/ trees.
+enterprise/layers/ping_verifier/python/
+enterprise/layers/pika/python/

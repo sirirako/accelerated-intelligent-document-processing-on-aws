@@ -11,7 +11,6 @@ Validates: RS256/ES256 signature against JWKS, `iss`, `exp`/`nbf`, and audience
 from __future__ import annotations
 
 import time
-import urllib.request
 
 import jwt
 from jwt import PyJWKClient

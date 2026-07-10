@@ -1965,6 +1965,14 @@ Resources:
   EnterprisePingVerifierLayer:
     Type: AWS::Serverless::LayerVersion
     Condition: DeployApiGateway
+    # BuildMethod installs deps from requirements.txt during the build (via the
+    # registry-configured pip in CodeBuild), so nothing is vendored into git.
+    # The custom ping_verifier.py in the ContentUri is packaged alongside them.
+    # BuildArchitecture must match the authorizer function (arm64) so the native
+    # cryptography/cffi wheels are the right arch.
+    Metadata:
+      BuildMethod: python3.12
+      BuildArchitecture: arm64
     Properties:
       LayerName: !Sub "${AWS::StackName}-enterprise-ping-verifier"
       Description: "PyJWT + PingFederate OIDC JWT verifier"
@@ -1976,6 +1984,9 @@ Resources:
   EnterprisePikaLayer:
     Type: AWS::Serverless::LayerVersion
     Condition: DeployCompletionHook
+    Metadata:
+      BuildMethod: python3.12
+      BuildArchitecture: arm64
     Properties:
       LayerName: !Sub "${AWS::StackName}-enterprise-pika"
       Description: "pika AMQP client for RabbitMQ"
