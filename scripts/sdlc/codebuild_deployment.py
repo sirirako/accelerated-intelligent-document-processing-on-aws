@@ -1436,7 +1436,7 @@ def generate_publish_failure_summary(publish_error):
         """)
 
         response = bedrock.invoke_model(
-            modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
+            modelId="us.anthropic.claude-sonnet-4-5-20250514-v1:0",
             body=json.dumps(
                 {
                     "anthropic_version": "bedrock-2023-05-31",
@@ -1672,7 +1672,7 @@ def generate_deployment_summary(result, stack_name, template_url):
 
         # Call Bedrock API with temperature=0 for deterministic output
         response = bedrock.invoke_model(
-            modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
+            modelId="us.anthropic.claude-sonnet-4-5-20250514-v1:0",
             body=json.dumps(
                 {
                     "anthropic_version": "bedrock-2023-05-31",
@@ -1766,7 +1766,7 @@ def generate_deployment_summary(result, stack_name, template_url):
             """)
 
             cf_response = bedrock.invoke_model(
-                modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
+                modelId="us.anthropic.claude-sonnet-4-5-20250514-v1:0",
                 body=json.dumps(
                     {
                         "anthropic_version": "bedrock-2023-05-31",

@@ -70,6 +70,10 @@ Parameters:
     Type: String
     Default: 'deploy/pipeline-config.yaml'
     Description: 'S3 key of the pipeline config file in the source bucket (per-environment deployment parameters)'
+  CodeBuildPermissionsBoundaryArn:
+    Type: String
+    Default: ''
+    Description: '(Optional) Permissions boundary ARN to attach to the CodeBuild role (required in environments with SCP/org boundary mandates)'
 
 Conditions:
   CreateKMSKey: !Equals [!Ref KMSKeyArn, '']
@@ -80,6 +84,7 @@ Conditions:
   HasPipConfigSecret: !Not [!Equals [!Ref PipConfigSecretArn, '']]
   HasNpmConfigSecret: !Not [!Equals [!Ref NpmConfigSecretArn, '']]
   HasCACertBundle: !Not [!Equals [!Ref CACertBundleS3Uri, '']]
+  HasCodeBuildPermissionsBoundary: !Not [!Equals [!Ref CodeBuildPermissionsBoundaryArn, '']]
   HasAnyRegistrySecret: !Or
     - !Not [!Equals [!Ref DockerConfigSecretArn, '']]
     - !Not [!Equals [!Ref UvConfigSecretArn, '']]
@@ -180,6 +185,7 @@ Resources:
             reason: "Some IAM List/Get operations and service-linked roles require wildcard resources"
     Properties:
       MaxSessionDuration: 14400  # 4 hours - allows tests to run beyond default 60-minute token expiration
+      PermissionsBoundary: !If [HasCodeBuildPermissionsBoundary, !Ref CodeBuildPermissionsBoundaryArn, !Ref 'AWS::NoValue']
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
