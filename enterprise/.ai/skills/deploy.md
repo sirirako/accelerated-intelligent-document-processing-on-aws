@@ -3,55 +3,29 @@
 ## When to use
 Publishing and deploying the IDP stack to an environment.
 
-## Steps
+## Full guide
+**Read `enterprise/docs/deployment-guide.md`** — it's the full AI-guided
+deployment walkthrough with all parameters, paths, and troubleshooting.
 
-1. Build enterprise layers:
-   ```bash
-   ./enterprise/build.sh
-   ```
+## Quick steps
 
-2. Publish:
-   ```bash
-   idp-cli publish --source-dir . --bucket-basename <bucket> --prefix <prefix> --region <region>
-   ```
+1. `./enterprise/build.sh` (install enterprise layer deps)
+2. `idp-cli publish --source-dir . --region <region>` (or `--from-code .` for one-shot)
+3. `idp-cli deploy --stack-name <name> --template-url <url> --parameters "..."` 
 
-3. Deploy:
-   ```bash
-   idp-cli deploy --stack-name <name> --template-url <url> --region <region> --wait \
-     --parameters "<params from enterprise/environments/*.yaml>"
-   ```
-
-## Required parameters for private VPC + headless
+## Key parameters (private VPC + headless)
 
 ```
-WebUIHosting=ALB
-ALBScheme=internal
-ALBVpcId=<vpc>
-ALBSubnetIds=<subnets>
-ALBCertificateArn=<cert>
-ApiGatewayVisibility=PRIVATE
-ApiGatewayVpcEndpointId=<vpce>
-LambdaSubnetIds=<subnets>
-EnableHeadless=true
-DeployInVPC=true
-VpcId=<vpc>
-PrivateSubnetIds=<subnets>
-LambdaSecurityGroupId=<sg>
-PingIssuer1=<issuer>
-PingJwksUri1=<jwks>
-ArtifactsBucketKmsKeyArn=<key>  (if S3 uses KMS)
+WebUIHosting=ALB,ALBScheme=internal,ALBVpcId=<vpc>,ALBSubnetIds=<subnets>,
+ALBCertificateArn=<cert>,ApiGatewayVisibility=PRIVATE,
+ApiGatewayVpcEndpointId=<vpce>,LambdaSubnetIds=<subnets>,
+EnableHeadless=true,DeployInVPC=true,VpcId=<vpc>,PrivateSubnetIds=<subnets>,
+LambdaSecurityGroupId=<sg>,PingIssuer1=<issuer>,PingJwksUri1=<jwks>,
+ArtifactsBucketKmsKeyArn=<key>
 ```
 
 ## Known issues
-- Stack names must be **lowercase** (ApiUserPoolDomain in Cognito requires it)
-- `ArtifactsBucketKmsKeyArn` required if publish bucket uses KMS encryption
-- CodeBuild Docker builds can timeout on first deploy in VPC (NAT required, be patient)
-- `ruff.toml` must exclude `enterprise/layers/*/python` to pass publish linting
-- v0.5 → v0.6 upgrade fails on old stacks with `custom:idp_groups` schema constraint mismatch
-
-## Pipeline deploy (automated)
-The SDLC pipeline handles publish + deploy automatically:
-1. Pipeline reads `deploy/pipeline-config.yaml` from S3
-2. Runs `enterprise/build.sh` (install layers)
-3. Runs `idp-cli publish`
-4. Runs `idp-cli deploy` with params from config
+- Stack names must be lowercase (Cognito domain requirement)
+- `ArtifactsBucketKmsKeyArn` required if S3 uses KMS
+- CodeBuild Docker builds need NAT for image pulls
+- `enterprise/build.sh` runs automatically in the SDLC pipeline
