@@ -38,6 +38,15 @@ or completing significant work.
 
 ## Completed Recently
 
+- JFrog cache warming scripts created (`enterprise/registry/scripts/`) — PS1 + bash
+- JFrog warming tested at customer site — most packages cached, some need Zap Caches
+- WebUI buildspec fixed for air-gapped builds:
+  - Removed `n 22.14.0` (uses CodeBuild built-in Node)
+  - Added `install` phase with `.npmrc` from Secrets Manager + CA cert install
+  - Added IAM permissions for secrets + CA cert S3 to UICodeBuildServiceRole
+  - Added `HasCACertBundle` condition
+- `src/ui/package.json` xlsx URL updated to customer's internal registry
+- `--only-binary` arg split for PowerShell compatibility in warm-python.ps1
 - v0.6 private VPC deployment tested (account 502161568083)
 - Jobs API tested end-to-end with PowerShell script (Cognito M2M auth)
 - Per-job configurationVersion tested and PR submitted upstream

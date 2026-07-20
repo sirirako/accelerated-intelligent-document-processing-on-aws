@@ -76,6 +76,50 @@ not in the code zip. No fallback to local files.
 specific. Fallback configs with test values are dangerous — they can silently deploy wrong
 parameters.
 
+## xlsx tarball URL parameterized (not hardcoded in package.json)
+
+**Decision:** `package.json` uses the default SheetJS CDN URL (`https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz`).
+A CloudFormation parameter `XlsxTarballUrl` allows air-gapped deployments to override it. The
+WebUI buildspec `install` phase runs `sed` to replace the CDN URL before `npm ci`.
+
+**Why:** SheetJS `xlsx` is not on the npm registry — it's distributed as a direct tarball URL.
+Air-gapped builds can't reach `cdn.sheetjs.com`. The customer must host the tarball in their
+JFrog instance. Parameterizing avoids hardcoding customer-specific URLs in the codebase and
+avoids requiring the customer to manually edit `package.json` on every code update.
+
+**Alternatives rejected:**
+- Hardcode customer URL in package.json — leaks customer info, breaks internet-connected builds
+- Publish xlsx to JFrog's local npm repo as a proper package — SheetJS pulled it from npm years
+  ago, no standard registry metadata exists, would require manual `npm publish` setup
+- Remove xlsx dependency — it's actively used in `download-func.ts` for Excel export
+
+## WebUI buildspec: rely on CodeBuild's built-in Node (no `n` install)
+
+**Decision:** Remove `n 22.14.0` and `npm install -g npm@11.1.0` from the WebUI buildspec.
+Rely on the Node.js version pre-installed in the CodeBuild image (`aws/codebuild/amazonlinux2-x86_64-standard:5.0`).
+
+**Why:** In the air-gapped customer environment, `n` cannot reach `nodejs.org` to download
+Node binaries. The customer confirmed their CodeBuild image already has a compatible Node
+version. Their working buildspec omits the `n` install entirely.
+
+**Alternatives rejected:**
+- `N_NODE_MIRROR` env var pointing to JFrog mirror — customer's JFrog doesn't replicate
+  nodejs.org's `/vX.Y.Z/` directory structure (flat path instead)
+- Direct tarball download from internal registry — adds complexity for a version that's
+  already in the image
+- `--engine-strict=false` with Node 18 — fragile long-term
+
+## WebUI .npmrc written from Secrets Manager at build time
+
+**Decision:** The WebUI CodeBuild `install` phase writes `~/.npmrc` from the `NpmConfigSecretArn`
+secret before `npm ci` runs. This was missing — `NpmConfigSecretArn` parameter existed but was
+never wired into the WebUI CodeBuild project.
+
+**Why:** Air-gapped builds need `.npmrc` to point npm at the internal JFrog registry. Without
+it, `npm ci` tries to reach `registry.npmjs.org` and fails. The parameter was already in the
+template but never connected to the WebUI build (it was only passed to the pattern stack for
+Docker builds).
+
 ## Layer dependencies not committed to git
 
 **Decision:** `enterprise/layers/*/python/` (PyJWT, pika, cryptography) are gitignored.
