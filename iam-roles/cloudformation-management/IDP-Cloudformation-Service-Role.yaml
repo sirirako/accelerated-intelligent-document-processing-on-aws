@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  This template creates a CloudFormation Service Role for the IDP Accelerator solution. 
+  This template creates a CloudFormation Service Role for the IDP Accelerator solution.
   This role grants permissions to create, update, and delete IDP CloudFormation
   stacks and their resources. It follows the principle of least privilege
   by allowing only the necessary actions for stack management. This template also
@@ -8,6 +8,16 @@ Description: >
   service role to CloudFormation. The iam:PassRole policy must be attached to
   the user or role that will be using the CloudFormation Service Role in order
   to successfully pass the role.
+
+Parameters:
+  PermissionsBoundaryArn:
+    Type: String
+    Default: ''
+    Description: '(Optional) Permissions boundary ARN to attach to the service role (required in environments with SCP boundary mandates)'
+
+Conditions:
+  HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, '']]
+
 Resources:
   CloudFormationServiceRole:
     Type: AWS::IAM::Role
@@ -40,6 +50,7 @@ Resources:
     # cdk-nag:skip=AwsSolutions-IAM5: CloudFormation service role requires broad permissions for IDP stack deployment. Constrained by trust policy to cloudformation.amazonaws.com service principal.
     Properties:
       RoleName: !Sub '${AWS::StackName}-CFServiceRole'
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref 'AWS::NoValue']
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -125,6 +136,7 @@ Resources:
                   - scheduler:*
                   - ec2:*
                   - ecr:*
+                  - elasticloadbalancing:*
                 Resource: '*'
   PassRolePolicy:
     Type: AWS::IAM::ManagedPolicy

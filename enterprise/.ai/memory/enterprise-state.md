@@ -40,13 +40,30 @@ Current status of each enterprise feature, known issues, and what's tested.
 - **Branch:** `feature/internal-artifact-registry`, merged into `enterprise/develop`
 - **Tested:** Deployed with JFrog secrets, builds pull from private registry
 
-### SDLC Pipeline
-- **Status:** Implemented, tested
+### SDLC/CD Pipeline
+- **Status:** Implemented, deployed, working end-to-end in air-gapped environment
 - **Location:** `scripts/sdlc/cfn/codepipeline-s3.yml`, `scripts/sdlc/codebuild_deployment.py`
-- **Tested:** Pipeline triggers on S3 upload, publishes, deploys
+- **Tested:** Full CD pipeline — publish + deploy with private registry, VPC, AppSync PRIVATE
+- **Air-gap fixes applied:**
+  - `Dockerfile.optimized`: Install uv via pip (not ghcr.io image pull), `BASE_IMAGE` ARG for full image:tag
+  - `patterns/unified/buildspec.yml`: Removed buildx docker-container driver, removed `INSTALL_GIT=true`, removed `UV_IMAGE` arg
+  - `nested/multi-doc-discovery/template.yaml`: Removed gcc install, use `docker --config` for JFrog auth, full image:tag support
+  - `template.yaml` (UI buildspec): `npm install --engine-strict=false` (Node 18 compat)
+  - `codepipeline-s3.yml`: Amazon Linux 2 image, CA cert format detection, `NodeDistUrl` param, boundary on all roles
+  - `iam-roles/.../IDP-Cloudformation-Service-Role.yaml`: Added `PermissionsBoundaryArn` param
+  - `feature-platform/main-stack-extensions/template.yaml`: Added `PermissionsBoundaryArn` pass-through to both roles
+  - `src/ui/package.json`: xlsx pointed to internal registry, vite updated to ^7.3.6
+- **Pipeline config fields:** `stack_name`, `skip_tests`, `headless`, `role_arn`, `parameters:{}`
+- **Config loaded from:** S3 at `{PIPELINE_CONFIG_KEY}` (default `deploy/pipeline-config.yaml`)
 - **Known issues:**
-  - KMS key policy must allow CodeBuild roles BEFORE deploy (`ArtifactsBucketKmsKeyArn` required)
-  - `enterprise/build.sh` added as pipeline install step
+  - `n 22.14.0` can't reach nodejs.org in air-gap — falls back to built-in Node 18 (works with `--engine-strict=false`)
+  - Bedrock model `anthropic.claude-sonnet-4-5-20250929-v1:0` not available in all accounts (non-critical, AI summary only)
+  - mlflow-logger built without git (no git metadata tracking)
+  - `LambdaVpcSecurityGroup` auto-created when `AppSyncVisibility=PRIVATE` — can block stack deletion (ENI detach delay)
+  - `npm install` instead of `npm ci` — less reproducible but works on Node 18
+- **Base image:** Customer mirrors `public.ecr.aws/lambda/python` in their internal Docker registry. `LambdaBaseImage` parameter takes the full image:tag (e.g., `internal-registry/lambda/python:3.12-x86_64`). Both `Dockerfile.optimized` and `multi-doc-discovery` support this via `BASE_IMAGE` ARG.
+- **Required VPC endpoints:** `com.amazonaws.us-east-1.codebuild` (for Custom Resource Lambda calling CodeBuild API)
+- **Docs:** `enterprise/docs/sdlc-pipeline-setup.md`, `enterprise/environments/`
 
 ### Config Pipeline
 - **Status:** Implemented, not tested
@@ -73,3 +90,7 @@ Current status of each enterprise feature, known issues, and what's tested.
 - Cross-account PrivateLink setup (API + MQ)
 - Merging v0.6 upstream into enterprise/develop
 - AI agent automated fork maintenance (planned)
+- Node 22 install in air-gap (workaround: Node 18 + `--engine-strict=false`)
+- Submit FeaturePlatformStack boundary fix upstream (reported)
+- Config pipeline (`enterprise/config-pipeline/`) not yet deployed at customer
+- UI build at customer blocked by JFrog quarantine (vite 7.3.6 now released, needs retest with headless=false)

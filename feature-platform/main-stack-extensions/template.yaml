@@ -203,7 +203,14 @@ Parameters:
     Default: 'INFO'
     AllowedValues: [DEBUG, INFO, WARNING, ERROR]
 
+  PermissionsBoundaryArn:
+    Type: String
+    Default: ''
+    Description: '(Optional) Permissions boundary ARN to attach to all IAM roles'
+
 Conditions:
+
+  HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, '']]
 
   HasConfigurationTable: !Not [!Equals [!Ref ConfigurationTableName, '']]
   HasConfigurationBucket: !Not [!Equals [!Ref ConfigurationBucketName, '']]
@@ -252,6 +259,7 @@ Resources:
   FeaturePlatformLambdaRole:
     Type: AWS::IAM::Role
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref 'AWS::NoValue']
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -538,6 +546,7 @@ Resources:
   AppSyncServiceRole:
     Type: AWS::IAM::Role
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref 'AWS::NoValue']
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
