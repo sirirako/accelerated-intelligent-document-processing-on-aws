@@ -128,3 +128,38 @@ Docker builds).
 **Why:** Binary `.so` files waste git storage, can't be diffed, and are platform-specific
 (arm64 vs x86_64). The pipeline runs `build.sh` automatically. Only `requirements.txt` and
 our own `ping_verifier.py` are tracked.
+
+## Minimal buildspec diff from upstream (v0.6.1+)
+
+**Decision:** `patterns/unified/buildspec.yml` should be upstream's file exactly, with only
+two additive changes: (1) an `install` phase for registry config, (2) `SECRET_ARGS` for
+Docker build `--secret` mounts.
+
+**Why:** Previous divergence (removing buildx multiarch builder, adding `--config` flags,
+custom base image args in the build loop) caused deploy failures. The `docker buildx create
+--driver docker-container` was accidentally removed, breaking arm64 builds. Less diff from
+upstream = fewer merge conflicts and subtle breakages.
+
+**Implication:** The customer's x86_64 native builds work fine with the multiarch builder
+present (it's a no-op for same-arch builds). The `docker-container` driver pulls
+`moby/buildkit` from Docker Hub — this works in our test account but will fail in the
+customer's air-gapped environment. Since the customer uses x86_64, the builder is created
+but cross-compilation is never triggered. If they switch to arm64, they'd need `moby/buildkit`
+in their internal registry.
+
+## Take upstream for application code (v0.6.1+)
+
+**Decision:** Always take upstream's version for application code — patterns/unified/template.yaml
+schema, extraction logic, assessment, classification, UI components. Don't modify their
+application behavior.
+
+**Why:** Upstream's code evolves (retiring granular assessment, adding validation/escalation,
+sharding). Our previous merge incorrectly kept our old sampling params and postHook alongside
+upstream's restructured code, causing duplicates. Upstream now includes postHook and sampling
+params in their own schema.
+
+**Enterprise changes are limited to:**
+- Parameters/conditions/IAM in nested templates (registry secrets pass-through)
+- Buildspec install phase (registry config)
+- Main template enterprise block (Ping auth, completion hook, registry params)
+- Configuration (environment params, pipeline config)

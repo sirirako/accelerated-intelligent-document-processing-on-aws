@@ -98,26 +98,30 @@ Current status of each enterprise feature, known issues, and what's tested.
 
 ## Upstream Version Compatibility
 
-- **Current fork:** v0.5.16
-- **Tested upgrade to v0.6:** Works for non-VPC and VPC stacks (with caveats below)
-- **v0.6 known issues:**
-  - `custom:idp_groups` schema constraint: stacks created before the `MaxLength: "2048"`
-    constraint was added cannot upgrade in-place (Cognito limitation)
-  - `ApiUserPoolDomain` fails with uppercase stack names (Cognito domain must be lowercase)
-  - `ArtifactsBucketKmsKeyArn` required when S3 bucket uses KMS encryption
-  - Fresh VPC deploys need working NAT for CodeBuild Docker pulls
-  - v0.6 replaces AppSync with API Gateway REST API — our `AppSyncVisibility=PRIVATE`
-    workaround is no longer needed (use `ApiGatewayVisibility=PRIVATE` instead)
+- **Current fork:** v0.6.1 (merged 2026-07-20, commit 367a68e0)
+- **Previous fork base:** v0.5.16
+- **v0.6.1 key changes:**
+  - AppSync fully removed, replaced by API Gateway REST API (APIRESOLVERSTACK nested stack)
+  - `WebUIHosting` only allows `CloudFront` and `APIGateway` (ALB removed)
+  - Assessment retired as standalone step, moved into `extraction.confidence`
+  - `postHook` schema is upstream now (not just enterprise addition)
+  - Granular assessment retired
+  - New: extraction sharding, validation/escalation, missing field handling, enforceValidClasses
+  - New: HITL as top-level config section
+  - `idp_feature_sdk` required for publish
+  - Node >= 22.12.0 required for UI lint (use `--no-lint` to skip)
+- **Breaking:** Cannot in-place update v0.5.x stacks (ALB removed, Cognito schema constraints)
+- **Tested:** Both `idp-default` (x86_64) and `idp-enterprise` (arm64, PRIVATE API GW, headless, Ping) deployed successfully in account 502161568083
 
 ## What's NOT done
 
 - Testing Ping authorizer with real PingFederate
 - Testing completion hook with real RabbitMQ broker
 - Cross-account PrivateLink setup (API + MQ)
-- Merging v0.6 upstream into enterprise/develop
 - AI agent automated fork maintenance (planned)
 - Submit FeaturePlatformStack boundary fix upstream (reported)
 - Config pipeline (`enterprise/config-pipeline/`) not yet deployed at customer
 - Docker build CA cert S3 path 404 — customer needs to fix `CACertBundleS3Uri` to match actual S3 key
 - JFrog: some Python packages still 404 (e.g., pyarrow 23.0.1) — waiting for metadata cache refresh or admin Zap Caches
-- Rebuild code.zip with updated template.yaml (WebUI buildspec changes) and re-deploy at customer
+- Redeploy pipeline stack at customer with v0.6.1 changes
+- Beta release testing at customer environment (v0.6.1)

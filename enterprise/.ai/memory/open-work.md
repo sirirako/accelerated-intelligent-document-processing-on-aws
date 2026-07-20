@@ -5,21 +5,22 @@ or completing significant work.
 
 ## Active Workstreams
 
-### 1. v0.6 Upstream Merge
-- **Status:** Tested, not merged
-- **What:** Merge upstream v0.6 (AppSync → API Gateway REST) into `enterprise/develop`
-- **Blocker:** Waiting for upstream to release v0.6 (currently dev9)
-- **Impact on enterprise:**
-  - `AppSyncVisibility=PRIVATE` → replaced by `ApiGatewayVisibility=PRIVATE` (native in v0.6)
-  - Our Ping authorizer on Jobs API — still needed (v0.6 still uses Cognito M2M on headless)
-  - Completion hook — unchanged (PostProcessingLambdaHookFunctionArn still exists)
-  - Private registry — unchanged
-- **Test results:** v0.6 deploys successfully with `ApiGatewayVisibility=PRIVATE` + `EnableHeadless=true`
+### 1. v0.6.1 Upstream Merge
+- **Status:** ✅ DONE (2026-07-20, commit 367a68e0, pushed to origin)
+- **What:** Merged upstream main (v0.6.1) into `enterprise/develop`
+- **Conflicts resolved:** template.yaml, CLAUDE.md, feature-platform template, patterns/unified/template.yaml, codepipeline-s3.yml, codebuild_deployment.py
+- **Fixes during merge:**
+  - Added registry params (DockerConfigSecretArn, etc.) back to `patterns/unified/template.yaml`
+  - Restored `docker buildx create --driver docker-container` in buildspec (arm64 cross-compile)
+  - Added SECRET_ARGS for pip/uv/cacert Docker build mounts
+- **Principle applied:** Take upstream for all application code; our changes are only install phase + SECRET_ARGS in buildspec, registry params in nested template, enterprise block in main template
+- **Test deployments:** `idp-default` (x86_64) ✅, `idp-enterprise` (arm64, PRIVATE APIGW, headless, Ping) ✅
 
-### 2. Customer Delivery
-- **Status:** Code pushed to customer repo
-- **What:** Enterprise features delivered to customer's internal repo
-- **Next:** Customer to fill in their Ping/MQ/VPC values and deploy
+### 2. Customer Beta Release (v0.6.1)
+- **Status:** Creating beta release for customer testing
+- **What:** v0.6.1 enterprise fork ready for customer environment
+- **Next:** Deploy to customer environment, redeploy pipeline stack with new template
+- **Note:** Customer uses x86_64, air-gapped (no Docker Hub/ghcr.io access)
 
 ### 3. Ping Auth End-to-End Testing
 - **Status:** Blocked on real Ping environment
