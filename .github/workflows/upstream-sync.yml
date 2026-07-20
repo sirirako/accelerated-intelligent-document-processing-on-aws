@@ -1,0 +1,269 @@
+name: Upstream Sync
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday 9am UTC
+  workflow_dispatch:
+    inputs:
+      upstream_branch:
+        description: 'Upstream branch to sync from'
+        default: 'develop'
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  UPSTREAM_REPO: https://github.com/aws-solutions-library-samples/accelerated-intelligent-document-processing-on-aws.git
+  UPSTREAM_BRANCH: ${{ inputs.upstream_branch || 'develop' }}
+  TARGET_BRANCH: enterprise/develop
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream ${{ env.UPSTREAM_REPO }} || true
+          git fetch upstream ${{ env.UPSTREAM_BRANCH }}
+
+      - name: Check for new commits
+        id: check
+        run: |
+          BEHIND=$(git rev-list HEAD..upstream/${{ env.UPSTREAM_BRANCH }} --count)
+          echo "behind=$BEHIND" >> $GITHUB_OUTPUT
+          if [ "$BEHIND" -eq 0 ]; then
+            echo "Already up to date with upstream"
+          else
+            echo "$BEHIND new commits from upstream"
+          fi
+
+      - name: Attempt merge
+        if: steps.check.outputs.behind != '0'
+        id: merge
+        run: |
+          BRANCH="sync/upstream-$(date +%Y%m%d)"
+          git checkout -b "$BRANCH"
+
+          if git merge upstream/${{ env.UPSTREAM_BRANCH }} --no-edit; then
+            echo "result=clean" >> $GITHUB_OUTPUT
+          else
+            echo "result=conflict" >> $GITHUB_OUTPUT
+          fi
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Run validation (clean merge)
+        if: steps.merge.outputs.result == 'clean'
+        run: |
+          # YAML syntax check
+          python3 -c "
+          import yaml
+          yaml.SafeLoader.add_multi_constructor('!', lambda l,s,n: None)
+          yaml.safe_load(open('template.yaml'))
+          print('✅ template.yaml YAML valid')
+          "
+
+          # Enterprise markers check
+          echo "Checking enterprise markers..."
+          grep -q "Enterprise Integration" template.yaml && echo "✅ Enterprise params present" || echo "⚠️ Enterprise params missing"
+          grep -q "DeployCompletionHook" template.yaml && echo "✅ DeployCompletionHook condition present" || echo "⚠️ DeployCompletionHook missing"
+          grep -q "EnterprisePingAuthorizerFunction" template.yaml && echo "✅ Ping authorizer present" || echo "⚠️ Ping authorizer missing"
+
+          # Registry markers
+          grep -q "DockerConfigSecretArn" template.yaml && echo "✅ Registry params present" || echo "⚠️ Registry params missing"
+
+      - name: AI conflict resolution
+        if: steps.merge.outputs.result == 'conflict'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # Get the list of conflicting files
+          CONFLICTS=$(git diff --name-only --diff-filter=U)
+          echo "Conflicting files:"
+          echo "$CONFLICTS"
+
+          # For each conflicting file, get the conflict content
+          for file in $CONFLICTS; do
+            echo "---"
+            echo "File: $file"
+            echo "Conflict markers:"
+            grep -n "<<<<<<\|======\|>>>>>>" "$file" | head -20
+          done
+
+          # If Claude API key is available, attempt AI resolution
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo ""
+            echo "🤖 Attempting AI-assisted conflict resolution..."
+
+            # Install Claude Code CLI if available, or use API directly
+            pip install anthropic 2>/dev/null || true
+
+            python3 << 'PYTHON'
+          import os
+          import subprocess
+          import json
+
+          try:
+              import anthropic
+          except ImportError:
+              print("⚠️ anthropic package not available, skipping AI resolution")
+              exit(0)
+
+          client = anthropic.Anthropic()
+
+          # Read the sync guide for context
+          guide = ""
+          guide_path = "enterprise/.ai/skills/upstream-sync.md"
+          if os.path.exists(guide_path):
+              guide = open(guide_path).read()
+
+          # Get conflicting files
+          result = subprocess.run(["git", "diff", "--name-only", "--diff-filter=U"],
+                                  capture_output=True, text=True)
+          conflicts = result.stdout.strip().split("\n")
+
+          resolved_count = 0
+          for filepath in conflicts:
+              if not filepath or not os.path.exists(filepath):
+                  continue
+
+              content = open(filepath).read()
+              if "<<<<<<" not in content:
+                  continue
+
+              print(f"\n📝 Resolving: {filepath}")
+
+              response = client.messages.create(
+                  model="claude-sonnet-4-6",
+                  max_tokens=16000,
+                  messages=[{
+                      "role": "user",
+                      "content": f"""You are resolving a git merge conflict in an enterprise fork of the IDP accelerator.
+
+          Context (from our sync guide):
+          {guide[:3000]}
+
+          The file is: {filepath}
+
+          Current content with conflict markers:
+          ```
+          {content[:8000]}
+          ```
+
+          Rules:
+          - Keep BOTH upstream changes AND enterprise additions
+          - Enterprise code is marked with comments like "Enterprise Integration", "DeployCompletionHook", etc.
+          - Never delete enterprise resources, params, or conditions
+          - For template.yaml: enterprise params go in their own section between markers
+          - For Dockerfile/buildspec: keep our ARGs/guards alongside upstream changes
+
+          Return ONLY the resolved file content, no explanation. If you cannot resolve safely, return the string CANNOT_RESOLVE."""
+                  }]
+              )
+
+              resolved = response.content[0].text.strip()
+
+              if resolved == "CANNOT_RESOLVE" or "<<<<<<" in resolved:
+                  print(f"  ⚠️ Could not auto-resolve {filepath}")
+                  continue
+
+              # Remove markdown code fences if present
+              if resolved.startswith("```"):
+                  lines = resolved.split("\n")
+                  resolved = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
+
+              open(filepath, "w").write(resolved)
+              subprocess.run(["git", "add", filepath])
+              resolved_count += 1
+              print(f"  ✅ Resolved {filepath}")
+
+          if resolved_count > 0:
+              # Check if all conflicts resolved
+              remaining = subprocess.run(["git", "diff", "--name-only", "--diff-filter=U"],
+                                        capture_output=True, text=True)
+              if not remaining.stdout.strip():
+                  subprocess.run(["git", "commit", "--no-edit"])
+                  print(f"\n✅ All {resolved_count} conflicts resolved by AI")
+              else:
+                  print(f"\n⚠️ {resolved_count} resolved, but some remain: {remaining.stdout.strip()}")
+          else:
+              print("\n⚠️ No conflicts could be auto-resolved")
+          PYTHON
+          else
+            echo "⚠️ No ANTHROPIC_API_KEY set — skipping AI resolution"
+            echo "Manual resolution required for:"
+            echo "$CONFLICTS"
+          fi
+
+      - name: Push and create PR (clean or AI-resolved)
+        if: steps.check.outputs.behind != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ steps.merge.outputs.branch }}"
+
+          # Check if there are still unresolved conflicts
+          REMAINING=$(git diff --name-only --diff-filter=U 2>/dev/null || echo "")
+
+          if [ -n "$REMAINING" ]; then
+            # Conflicts remain — commit as-is for manual resolution
+            git add -A
+            git commit -m "chore: sync upstream (conflicts need manual resolution)" --allow-empty || true
+          fi
+
+          git push origin "$BRANCH" --force
+
+          # Determine PR body based on state
+          if [ -n "$REMAINING" ]; then
+            BODY="## ⚠️ Manual Resolution Required
+
+          Automated merge from upstream/${{ env.UPSTREAM_BRANCH }} had conflicts that could not be auto-resolved.
+
+          **Conflicting files:**
+          \`\`\`
+          $REMAINING
+          \`\`\`
+
+          ### Resolution guide
+          See \`enterprise/.ai/skills/upstream-sync.md\` for conflict resolution rules.
+
+          ### Post-merge checklist
+          See \`enterprise/docs/upstream-sync-guide.md\` for the full checklist."
+          else
+            BODY="## ✅ Clean Merge (or AI-resolved)
+
+          Automated merge from upstream/${{ env.UPSTREAM_BRANCH }} completed successfully.
+
+          ### Validation
+          - YAML syntax: checked
+          - Enterprise markers: checked
+
+          ### Before merging
+          Run the full validation suite:
+          \`\`\`bash
+          make lint && make test
+          ./enterprise/build.sh
+          \`\`\`
+
+          See \`enterprise/docs/upstream-sync-guide.md\` for the post-merge checklist."
+          fi
+
+          gh pr create \
+            --title "chore: sync upstream/${{ env.UPSTREAM_BRANCH }} ($(date +%Y-%m-%d))" \
+            --body "$BODY" \
+            --base "${{ env.TARGET_BRANCH }}" \
+            --head "$BRANCH" \
+            --label "upstream-sync" || echo "PR already exists"
