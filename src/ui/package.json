@@ -60,7 +60,7 @@
     "tmp": "^0.2.7",
     "uuid": "^11.1.0",
     "vuera": "^0.2.7",
-    "xlsx": "https://jfrog.example.com/artifactory/fm-foss-software/FOSS/DESKTOP_FOSS/SheetJS/xlsx-0.20.0.tgz"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
   },
   "scripts": {
     "dev": "vite",

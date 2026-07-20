@@ -708,6 +708,15 @@ Parameters:
       (Optional) Full base image reference for Lambda containers including tag
       (e.g., internal-registry.com/lambda/python:3.12). Override for air-gapped deployments.
 
+  XlsxTarballUrl:
+    Type: String
+    Default: ""
+    Description: >-
+      (Optional) Internal URL of the SheetJS xlsx tarball for air-gapped builds.
+      The xlsx package is not on the npm registry — it is distributed as a tarball.
+      When set, the buildspec replaces the default CDN URL before npm ci.
+      Example: https://jfrog.company.com/artifactory/foss-local/SheetJS/xlsx-0.20.2.tgz
+
   CACertBundleS3Uri:
     Type: String
     Default: ""
@@ -1287,6 +1296,7 @@ Conditions:
   HasUvConfigSecret: !Not [ !Equals [ !Ref UvConfigSecretArn, "" ] ]
   HasPipConfigSecret: !Not [ !Equals [ !Ref PipConfigSecretArn, "" ] ]
   HasNpmConfigSecret: !Not [ !Equals [ !Ref NpmConfigSecretArn, "" ] ]
+  HasXlsxTarballUrl: !Not [ !Equals [ !Ref XlsxTarballUrl, "" ] ]
   HasCACertBundle: !Not [ !Equals [ !Ref CACertBundleS3Uri, "" ] ]
   HasCustomConfigPath: !Not [ !Equals [ !Ref CustomConfigPath, "" ] ]
   # The version-check resolver only needs IAM grants when an artifacts
@@ -10138,6 +10148,12 @@ Resources:
                     echo "Writing .npmrc from Secrets Manager..."
                     echo "$NPM_CONFIG_SECRET" > ~/.npmrc
                   fi
+                - |
+                  if [ -n "${XLSX_TARBALL_URL:-}" ]; then
+                    echo "Replacing xlsx CDN URL with internal registry..."
+                    sed -i "s|https://cdn.sheetjs.com/[^\"|]*|${XLSX_TARBALL_URL}|g" package.json
+                    sed -i "s|https://cdn.sheetjs.com/[^\"|]*|${XLSX_TARBALL_URL}|g" package-lock.json
+                  fi
             pre_build:
               commands:
                 - echo ${SOURCE_CODE_LOCATION}
@@ -10266,6 +10282,11 @@ Resources:
             - HasCACertBundle
             - Name: CA_CERT_S3_URI
               Value: !Ref CACertBundleS3Uri
+            - !Ref AWS::NoValue
+          - !If
+            - HasXlsxTarballUrl
+            - Name: XLSX_TARBALL_URL
+              Value: !Ref XlsxTarballUrl
             - !Ref AWS::NoValue
       TimeoutInMinutes: 30
 
