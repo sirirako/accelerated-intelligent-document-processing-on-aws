@@ -29,9 +29,12 @@ phases:
   pre_build:
     commands:
       - echo "Logging into Amazon ECR..."
-      - docker --config /root/.config/docker --version || docker --version
-      - aws ecr get-login-password --region $AWS_REGION | docker --config /root/.config/docker login --username AWS --password-stdin $ECR_URI
-      - echo "Docker buildx ready (using default builder for native builds)"
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_URI
+      - echo "Verifying Docker..."
+      - docker --version
+      - echo "Setting up Docker buildx for cross-platform builds..."
+      - docker buildx create --use --name multiarch-builder --driver docker-container || docker buildx use multiarch-builder
+      - docker buildx inspect --bootstrap
   build:
     commands:
       - echo "Building Unified Pattern Docker images (BDA + Pipeline)..."
@@ -54,13 +57,7 @@ phases:
       - export FUNCTION_rule_validation_orchestration="patterns/unified/src/rule-validation-orchestration-function"
       - export FUNCTION_mlflow_logger="patterns/unified/src/mlflow_logger_function"
       - export FUNCTION_rule_validation_policy_classification="patterns/unified/src/rule-validation-policy-classification-function"
-      # ── Platform selection ──
-      - |
-        DOCKER_PLATFORM="linux/${LAMBDA_ARCHITECTURE:-arm64}"
-        if [ "$LAMBDA_ARCHITECTURE" = "x86_64" ]; then
-          DOCKER_PLATFORM="linux/amd64"
-        fi
-      # ── Secret file paths for docker build --secret mounts ──
+      # ── Secret file paths for docker build --secret mounts (air-gapped) ──
       - |
         SECRET_ARGS=""
         if [ -f /root/.config/pip/pip.conf ]; then
@@ -78,17 +75,18 @@ phases:
           func_name=$(basename "$func_path" | sed 's/_/-/g')
           echo "Building ${func_name} from ${func_path}..."
           EXTRA_ARGS=""
-          BASE_IMAGE_ARGS=""
-          if echo "${LAMBDA_BASE_IMAGE:-}" | grep -q ':'; then
-            BASE_IMAGE_ARGS="--build-arg BASE_IMAGE=${LAMBDA_BASE_IMAGE}"
-          else
-            BASE_IMAGE_ARGS="--build-arg BASE_IMAGE_REGISTRY=${LAMBDA_BASE_IMAGE:-public.ecr.aws/lambda/python} --build-arg BASE_IMAGE_SUFFIX=${LAMBDA_ARCHITECTURE:-arm64}"
+          if [ "$func_var" = "FUNCTION_mlflow_logger" ]; then
+            EXTRA_ARGS="--build-arg INSTALL_GIT=true"
           fi
-          docker --config /root/.config/docker buildx build \
+          DOCKER_PLATFORM="linux/${LAMBDA_ARCHITECTURE:-arm64}"
+          if [ "$LAMBDA_ARCHITECTURE" = "x86_64" ]; then
+            DOCKER_PLATFORM="linux/amd64"
+          fi
+          docker buildx build \
             --platform "$DOCKER_PLATFORM" \
             -f Dockerfile.optimized \
             --build-arg FUNCTION_PATH="${func_path}" \
-            ${BASE_IMAGE_ARGS} \
+            --build-arg BASE_IMAGE_SUFFIX="${LAMBDA_ARCHITECTURE:-arm64}" \
             ${SECRET_ARGS} \
             ${EXTRA_ARGS} \
             --tag "${ECR_URI}:${func_name}-${IMAGE_VERSION}" \
