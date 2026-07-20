@@ -137,13 +137,21 @@ lint-cicd: ## CI/CD lint — checks only, no modifications
 		exit 1; \
 	fi
 
-	@if ! make ui-build; then \
+	@# ui-build-only (vite build, NO lint/typecheck) — ui-lint above already ran
+	@# eslint + tsc, so the default `ui-build` would redundantly run them again.
+	@if ! make ui-build-only; then \
 		echo -e "$(RED)ERROR: UI build failed$(NC)"; \
 		exit 1; \
 	fi
 
 	@if ! make codegen-check; then \
 		echo -e "$(RED)ERROR: GraphQL codegen check failed$(NC)"; \
+		exit 1; \
+	fi
+
+	@echo "GovCloud ARN partition check"
+	@if ! make check-arn-partitions; then \
+		echo -e "$(RED)ERROR: Hardcoded ARN partitions/service principals found (breaks GovCloud)$(NC)"; \
 		exit 1; \
 	fi
 
@@ -176,6 +184,29 @@ check-arn-partitions: ## Check CloudFormation templates for hardcoded ARN partit
 				echo -e "$(YELLOW)  Example: 'lambda.amazonaws.com' should be 'lambda.\$${AWS::URLSuffix}'$(NC)"; \
 				FOUND_ISSUES=1; \
 			fi; \
+			CONSOLE_MATCHES=$$(grep -n "console\.aws\.amazon\.com\|s3\.console\.aws\.amazon\.com" "$$template" | grep -v "^[0-9]*:[[:space:]]*#" | grep -v "Domain:" | grep -v "Description:" | grep -v "Comment:" || true); \
+			if [ -n "$$CONSOLE_MATCHES" ]; then \
+				echo -e "$(RED)ERROR: Found hardcoded AWS console domain references in $$template:$(NC)"; \
+				echo "$$CONSOLE_MATCHES" | sed 's/^/  /'; \
+				echo -e "$(YELLOW)  Console URLs must be partition-aware for GovCloud (console.amazonaws-us-gov.com).$(NC)"; \
+				echo -e "$(YELLOW)  Use !FindInMap [ConsoleDomainMap, !Ref \"AWS::Partition\", Domain] and the$(NC)"; \
+				echo -e "$(YELLOW)  regional host form 'https://\$${AWS::Region}.\$${ConsoleDomain}/...' (works for S3 too).$(NC)"; \
+				FOUND_ISSUES=1; \
+			fi; \
+		fi; \
+	done; \
+	for asl in patterns/*/statemachine/*.asl.json options/*/statemachine/*.asl.json feature-platform/*/statemachine/*.asl.json; do \
+		if [ -f "$$asl" ]; then \
+			echo "Checking $$asl..."; \
+			ASL_MATCHES=$$(grep -n "arn:aws:" "$$asl" | grep -v "arn:\$${Partition}:" || true); \
+			if [ -n "$$ASL_MATCHES" ]; then \
+				echo -e "$(RED)ERROR: Found hardcoded 'arn:aws:' references in $$asl:$(NC)"; \
+				echo "$$ASL_MATCHES" | sed 's/^/  /'; \
+				echo -e "$(YELLOW)  State-machine ASL uses DefinitionSubstitutions, so these should use$(NC)"; \
+				echo -e "$(YELLOW)  'arn:\$${Partition}:' (add 'Partition: !Ref AWS::Partition' to$(NC)"; \
+				echo -e "$(YELLOW)  DefinitionSubstitutions). Hardcoded 'aws' breaks Step Functions in GovCloud.$(NC)"; \
+				FOUND_ISSUES=1; \
+			fi; \
 		fi; \
 	done; \
 	if [ $$FOUND_ISSUES -eq 0 ]; then \
@@ -201,30 +232,48 @@ typecheck-pr: ## Type check only files changed vs TARGET_BRANCH (default: main)
 	$(PYTHON) scripts/sdlc/typecheck_pr_changes.py $(TARGET_BRANCH)
 
 ##@ Testing
-test: ## Run all tests (idp_common, cli, sdk, feature platform, capacity, circuit breaker, config library)
-	$(MAKE) -C lib/idp_common_pkg test PYTHON=$(PYTHON)
-	cd lib/idp_cli_pkg && $(PYTHON) -m pytest -v
-	cd lib/idp_sdk && $(PYTHON) -m pytest -m "not integration" -v
+# The repo's Python tests live in ~30 separate roots (packages + per-Lambda
+# dirs), each with its own conftest/mini-environment — a single `pytest` from
+# the repo root fails because the many `tests/conftest.py` files collide. So
+# `scripts/run_all_tests.py` DISCOVERS every test directory and runs each as an
+# isolated pytest invocation. It also fails if it finds a test dir that isn't
+# registered (RUN or QUARANTINE), so new tests can never be silently skipped —
+# the gap that let the old hand-maintained list here miss ~200 Lambda tests.
+test: ## Run every non-integration test suite (auto-discovered; see scripts/run_all_tests.py)
+	$(PYTHON) scripts/run_all_tests.py
+
+test-integration-all: ## Run every integration-marked suite across all roots (requires AWS)
+	$(PYTHON) scripts/run_all_tests.py --integration
+
+test-list: ## List the discovered test roots (run vs quarantined) without running them
+	$(PYTHON) scripts/run_all_tests.py --list
+
+test-packages-cicd: ## CI-safe: run the package/Lambda suites NOT covered by idp_common_pkg test-cicd (all green headless, no AWS)
+	@echo "Running idp_cli_pkg tests..."
+	cd lib/idp_cli_pkg && $(PYTHON) -m pytest -q -p no:cacheprovider
+	@echo "Running idp_sdk tests (not integration)..."
+	cd lib/idp_sdk && $(PYTHON) -m pytest -m "not integration" -q -p no:cacheprovider
 	@echo "Running idp_feature_sdk tests..."
-	cd lib/idp_feature_sdk && $(PYTHON) -m pytest -v
-	@echo "Running feature platform tests (plumbing resolvers + feature template)..."
-	cd feature-platform/main-stack-extensions && $(PYTHON) -m pytest -v
-	cd feature-platform/feature-template/feature-api && $(PYTHON) -m pytest -v
-	@echo "Running pipeline-hooks dispatcher tests..."
-	cd lib/idp_common_pkg && $(PYTHON) -m pytest tests/unit/lambdas/test_pipeline_hooks_dispatcher.py -v
+	cd lib/idp_feature_sdk && $(PYTHON) -m pytest -q -p no:cacheprovider
+	@echo "Running feature platform tests..."
+	cd feature-platform/main-stack-extensions && $(PYTHON) -m pytest -q -p no:cacheprovider
+	cd feature-platform/feature-template/feature-api && $(PYTHON) -m pytest -q -p no:cacheprovider
 	@echo "Running capacity planning Lambda tests..."
-	cd src/lambda/calculate_capacity && $(PYTHON) -m pytest -v
+	cd src/lambda/calculate_capacity && $(PYTHON) -m pytest -q -p no:cacheprovider
 	@echo "Running circuit breaker Lambda tests..."
-	$(PYTHON) -m pytest -v \
+	$(PYTHON) -m pytest -q -p no:cacheprovider \
 	    src/lambda/circuit_breaker_manager \
 	    src/lambda/queue_processor/test_check_circuit_breaker.py \
 	    src/lambda/workflow_tracker/test_notify_circuit_breaker.py
 	@echo "Running Chat-with-Document Lambda tests..."
-	$(PYTHON) -m pytest -v \
+	$(PYTHON) -m pytest -q -p no:cacheprovider \
 	    src/lambda/chat_with_document_processor/tests \
-	    nested/appsync/src/lambda/send_chat_document_message_resolver/tests
+	    nested/api-resolvers/src/lambda/send_chat_document_message_resolver/tests
+	@echo "Running Chat-stream processor tests (incl. vendored-in-sync guard)..."
+	cd src/lambda/chat_stream_processor && $(PYTHON) -m pytest tests -q -p no:cacheprovider
 	@echo "Validating config library files..."
-	$(PYTHON) -m pytest config_library/test_config_library.py -v
+	$(PYTHON) -m pytest config_library/test_config_library.py -q -p no:cacheprovider
+	@echo -e "$(GREEN)✅ All package/Lambda CI suites passed!$(NC)"
 
 test-cli: ## Run only IDP CLI tests
 	@echo "Running IDP CLI tests..."
@@ -250,6 +299,28 @@ test-circuit-breaker: ## Run only circuit breaker tests
 	    src/lambda/circuit_breaker_manager \
 	    src/lambda/queue_processor/test_check_circuit_breaker.py \
 	    src/lambda/workflow_tracker/test_notify_circuit_breaker.py
+
+api-test-static: ## Static RBAC/authorization scan of all API operations (no AWS; CI-safe)
+	@echo "Running static API RBAC scan..."
+	$(PYTHON) scripts/sdlc/scan_api_rbac.py $(if $(STRICT),--strict,)
+
+# Usage: make api-test STACK_NAME=<stack-name> [REGION=<region>] [REPORT_DIR=<dir>] [NO_TEARDOWN=1]
+# Runs the static scan first, then dynamic tests against the deployed stack:
+# creates temporary Cognito users (one per group + a config-version-scoped
+# Author), exercises every API op across all roles + unauthenticated + token
+# negatives, and tears the test users down afterward. Requires AWS creds for the
+# deployment account (see CLAUDE.md — use AWS_PROFILE=default).
+api-test: api-test-static ## Full RBAC test: static scan + live API tests (requires STACK_NAME)
+ifndef STACK_NAME
+	$(error STACK_NAME is not set. Usage: make api-test STACK_NAME=<stack-name> [REGION=...])
+endif
+	@echo "Running dynamic API RBAC tests against stack $(STACK_NAME)..."
+	$(PYTHON) scripts/test_api_rbac.py \
+	    --stack-name $(STACK_NAME) \
+	    $(if $(REGION),--region $(REGION),) \
+	    --report-dir $(if $(REPORT_DIR),$(REPORT_DIR),./api-test-results) \
+	    $(if $(NO_TEARDOWN),--no-teardown,)
+	@echo -e "$(GREEN)✅ API RBAC report written to $(if $(REPORT_DIR),$(REPORT_DIR),./api-test-results)$(NC)"
 
 ##@ UI Development
 # Usage: make ui-start STACK_NAME=<stack-name>
@@ -282,6 +353,13 @@ endif
 	@echo "Starting UI development server..."
 	cd src/ui && npm run start
 
+# `npm ci` wipes and reinstalls node_modules (~1 min). The UI targets below each
+# ran it, so a single `make lint-cicd` did it 3× (ui-lint + ui-build-only +
+# codegen-check). Set SKIP_NPM_CI=1 when the caller has ALREADY installed UI
+# deps (the CI code_checks job installs once in before_script) to make these a
+# no-op; unset (local) installs as before.
+NPM_CI := $(if $(SKIP_NPM_CI),true,npm ci --prefer-offline --no-audit)
+
 ui-lint: ## Run UI linting with checksum caching (skips if unchanged). Use FORCE=1 to force re-run.
 	@echo "Checking if UI lint is needed..."
 	@CURRENT_HASH=$$($(PYTHON) -c "from publish import IDPPublisher; p = IDPPublisher(); print(p.get_directory_checksum('src/ui'))"); \
@@ -292,16 +370,24 @@ ui-lint: ## Run UI linting with checksum caching (skips if unchanged). Use FORCE
 		else \
 			echo "UI code checksum changed - running lint..."; \
 		fi; \
-		cd src/ui && npm ci --prefer-offline --no-audit && npm run lint -- --fix && npm run typecheck || exit 1; \
+		cd src/ui && $(NPM_CI) && npm run lint -- --fix && npm run typecheck || exit 1; \
 		echo "$$CURRENT_HASH" > .checksum; \
 		echo -e "$(GREEN)✅ UI lint and typecheck completed and checksum updated$(NC)"; \
 	else \
 		echo -e "$(GREEN)✅ UI code checksum unchanged - skipping lint (use FORCE=1 to force re-run)$(NC)"; \
 	fi
 
-ui-build: ## Build UI for production
+ui-build: ## Build UI for production (runs lint + typecheck + vite build)
 	@echo "Checking UI build"
-	cd src/ui && npm ci --prefer-offline --no-audit && npm run build
+	cd src/ui && $(NPM_CI) && npm run build
+
+ui-build-only: ## Vite production build ONLY (no lint/typecheck) — for CI, where ui-lint already ran them
+	@echo "Building UI (vite only; lint+typecheck already done by ui-lint)"
+	cd src/ui && $(NPM_CI) && npm run build:only
+
+ui-test: ## Run UI unit tests (Vitest, jsdom — no browser required)
+	@echo "Running UI unit tests..."
+	cd src/ui && npm ci --prefer-offline --no-audit && npx vitest run
 
 ##@ Code Generation
 codegen: ## Regenerate GraphQL types and operations
@@ -310,7 +396,7 @@ codegen: ## Regenerate GraphQL types and operations
 
 codegen-check: ## Verify GraphQL codegen output is up-to-date
 	@echo "Checking if GraphQL codegen output is up-to-date..."
-	@cd src/ui && npm ci --prefer-offline --no-audit && npm run codegen
+	@cd src/ui && $(NPM_CI) && npm run codegen
 	@if ! git diff --quiet src/ui/src/graphql/generated/; then \
 		if [ -n "$$CI" ] || [ -n "$$GITHUB_ACTIONS" ]; then \
 			echo -e "$(RED)ERROR: Generated GraphQL files are out of date!$(NC)"; \
@@ -412,7 +498,15 @@ docs-deploy: docs-build ## Deploy docs to GitHub Pages (from local build)
 	@echo -e "$(GREEN)✅ Docs deployed to GitHub Pages!$(NC)"
 
 ##@ Security (SRT)
-srt: ## Run full SRT workflow (setup → scan → optional fix)
+srt-clean: ## Remove gitignored build/temp dirs that pollute local SRT scans
+	@echo "Removing build artifacts that pollute SRT scans..."
+	find . -name node_modules -prune -o -name .venv -prune -o \
+		-type d \( -name .aws-sam -o -path '*/layer/python' \) -prune -print \
+		| xargs -r rm -rf
+	@echo -e "$(GREEN)✅ Scan-polluting artifacts removed (CI checkouts are already clean)$(NC)"
+
+srt: ## Run full SRT workflow (clean → setup → scan → optional fix)
+	@$(MAKE) srt-clean
 	@$(MAKE) srt-setup
 	@$(MAKE) srt-scan
 	@echo ""
@@ -470,11 +564,12 @@ endif
 #   make deploy STACK_NAME=my-idp-dev ADMIN_EMAIL=me@example.com FROM_CODE=1  # build & deploy from local source
 #   make deploy STACK_NAME=my-idp ADMIN_EMAIL=me@example.com HEADLESS=1       # headless (no UI)
 #   make deploy STACK_NAME=my-idp CUSTOM_CONFIG=./my-config.yaml              # update config on existing stack
+#   make deploy STACK_NAME=my-idp TAGS="Owner=docs-team,Environment=prod"     # stack tags (propagated to all resources)
 #   make deploy STACK_NAME=my-idp NO_WAIT=1                                   # fire-and-forget (default is --wait)
 #   make deploy STACK_NAME=my-idp EXTRA_ARGS="--max-concurrent 200 --log-level DEBUG"
-deploy: ## Deploy/update IDP CloudFormation stack (Usage: make deploy STACK_NAME=... [ADMIN_EMAIL=...] [REGION=...] [FROM_CODE=1] [HEADLESS=1] [CUSTOM_CONFIG=...] [TEMPLATE_URL=...] [TEMPLATE_FILE=...] [NO_WAIT=1] [EXTRA_ARGS=...])
+deploy: ## Deploy/update IDP CloudFormation stack (Usage: make deploy STACK_NAME=... [ADMIN_EMAIL=...] [REGION=...] [FROM_CODE=1] [HEADLESS=1] [CUSTOM_CONFIG=...] [TAGS=...] [TEMPLATE_URL=...] [TEMPLATE_FILE=...] [NO_WAIT=1] [EXTRA_ARGS=...])
 ifndef STACK_NAME
-	$(error STACK_NAME is not set. Usage: make deploy STACK_NAME=my-stack [ADMIN_EMAIL=...] [REGION=...] [FROM_CODE=1] [HEADLESS=1] [CUSTOM_CONFIG=...] [NO_WAIT=1] [EXTRA_ARGS=...])
+	$(error STACK_NAME is not set. Usage: make deploy STACK_NAME=my-stack [ADMIN_EMAIL=...] [REGION=...] [FROM_CODE=1] [HEADLESS=1] [CUSTOM_CONFIG=...] [TAGS=...] [NO_WAIT=1] [EXTRA_ARGS=...])
 endif
 	@echo -e "$(CYAN)Running idp-cli deploy (stack=$(STACK_NAME))...$(NC)"
 	$(IDP_CLI) deploy \
@@ -484,6 +579,7 @@ endif
 		$(if $(FROM_CODE),--from-code .) \
 		$(if $(HEADLESS),--headless) \
 		$(if $(CUSTOM_CONFIG),--custom-config $(CUSTOM_CONFIG)) \
+		$(if $(TAGS),--tags "$(TAGS)") \
 		$(if $(TEMPLATE_URL),--template-url $(TEMPLATE_URL)) \
 		$(if $(TEMPLATE_FILE),--template-file $(TEMPLATE_FILE)) \
 		$(if $(NO_WAIT),,--wait) \
@@ -508,3 +604,26 @@ endif
 		$(if $(NO_WAIT),,--wait) \
 		$(EXTRA_ARGS)
 
+
+##@ Benchmarking
+
+.PHONY: benchmark-release
+# The release-cycle benchmark is skill-driven (it needs judgment: cross-version config
+# compatibility, corefast scoping, failure honesty). This target is a thin wrapper that
+# invokes Claude Code to run the `run-benchmarks` skill for a prev-published-vs-develop
+# comparison, producing docs/benchmarking/releases/v<VERSION>.md.
+#
+# Usage:
+#   make benchmark-release VERSION=0.6.0 PREV=0.5.16
+#   make benchmark-release VERSION=0.6.0 PREV=0.5.16 STACK_NAME=idpbench0516   # reuse a stack
+benchmark-release: ## Run the release-vs-release benchmark audit trail (Usage: make benchmark-release VERSION=... PREV=... [STACK_NAME=...])
+ifndef VERSION
+	$(error VERSION is not set. Usage: make benchmark-release VERSION=0.6.0 PREV=0.5.16)
+endif
+ifndef PREV
+	$(error PREV is not set (previous PUBLISHED release). Usage: make benchmark-release VERSION=0.6.0 PREV=0.5.16)
+endif
+	@command -v claude >/dev/null 2>&1 || { echo -e "$(RED)claude CLI not found. Run the 'run-benchmarks' skill manually (see .claude/skills/run-benchmarks.md).$(NC)"; exit 1; }
+	@echo -e "$(CYAN)Invoking Claude Code to run the release benchmark (v$(PREV) published -> v$(VERSION) develop)...$(NC)"
+	@echo -e "$(YELLOW)This deploys/upgrades a real stack and runs live Bedrock jobs (~1-2h, costs \$$). Ctrl-C to abort.$(NC)"
+	claude --dangerously-skip-permissions -p "Use the run-benchmarks skill to produce the release-cycle audit-trail entry comparing the previous PUBLISHED release v$(PREV) to the current develop prerelease v$(VERSION). Follow the skill's 'Release-cycle audit trail' procedure end to end: deploy the published v$(PREV) template$(if $(STACK_NAME), (reuse stack $(STACK_NAME))), run the corefast suite with --native-upload, save + promote baseline, upgrade the SAME stack in place to develop via --from-code --clean-build, re-run corefast, aggregate + compare + figures, then write docs/benchmarking/releases/v$(VERSION).md and append a row to docs/benchmarking/releases/README.md. Work autonomously and report the deltas."
