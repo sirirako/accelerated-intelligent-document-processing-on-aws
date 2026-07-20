@@ -82,37 +82,40 @@ enterprise/
 
 ## Documentation
 
+All actionable guides live in `.ai/skills/` — usable by both humans and AI agents.
+
 ### For downstream developers
 
-| Document | What it covers |
+| Guide | What it covers |
 |---|---|
 | [API.md](API.md) | Jobs API endpoint reference, authentication, request/response examples |
 | [test-jobs-api/README.md](test-jobs-api/README.md) | How to run the end-to-end API test scripts |
 
 ### For operations / deployment
 
-| Document | What it covers |
+| Guide | What it covers |
 |---|---|
-| [docs/deployment-guide.md](docs/deployment-guide.md) | Full AI-guided deployment walkthrough (publish, deploy, verify) |
-| [docs/sdlc-pipeline-setup.md](docs/sdlc-pipeline-setup.md) | SDLC/CD pipeline setup (CodePipeline + CodeBuild) |
-| [docs/private-registry-setup.md](docs/private-registry-setup.md) | Private artifact registry configuration (JFrog, CodeArtifact, Nexus) |
-| [docs/completion-hook-auth.md](docs/completion-hook-auth.md) | Completion hook MQ auth setup (Ping OAuth2 + RabbitMQ) |
+| [.ai/skills/deploy.md](.ai/skills/deploy.md) | Build, publish, deploy with enterprise params |
+| [.ai/skills/new-environment.md](.ai/skills/new-environment.md) | Set up a new environment from scratch |
+| [.ai/skills/pipeline-setup.md](.ai/skills/pipeline-setup.md) | SDLC/CD pipeline setup (CodePipeline + CodeBuild) |
+| [.ai/skills/private-registry.md](.ai/skills/private-registry.md) | Private artifact registry (JFrog, CodeArtifact, Nexus) |
+| [.ai/skills/completion-hook.md](.ai/skills/completion-hook.md) | Completion hook MQ auth (Ping OAuth2 + RabbitMQ) |
 | [environments/README.md](environments/README.md) | Per-environment parameter management |
 | [config-pipeline/README.md](config-pipeline/README.md) | Document configuration promotion pipeline |
-| [registry/README.md](registry/README.md) | Private registry secrets + examples |
+| [docs/deployment-guide.md](docs/deployment-guide.md) | Full AI-guided deployment walkthrough (interactive prompt template) |
 
 ### For maintainers / fork management
 
-| Document | What it covers |
+| Guide | What it covers |
 |---|---|
-| [docs/upstream-sync-guide.md](docs/upstream-sync-guide.md) | Conflict resolution rules, silent-breakage checks, post-merge checklist |
-| [docs/enterprise-fork-proposal.md](docs/enterprise-fork-proposal.md) | Original proposal (historical context — decisions captured in `.ai/memory/`) |
-| [REVIEW_GUIDE.md](REVIEW_GUIDE.md) | Design and code review checklist for enterprise features |
+| [.ai/skills/upstream-sync.md](.ai/skills/upstream-sync.md) | Conflict resolution rules, silent-breakage checks, post-merge checklist |
+| [.ai/skills/code-review.md](.ai/skills/code-review.md) | Design and code review checklist |
+| [docs/enterprise-fork-proposal.md](docs/enterprise-fork-proposal.md) | Original proposal (historical context) |
 
-### For AI agents
+### AI agent knowledge base
 
 | Path | What it covers |
 |---|---|
-| [.ai/README.md](.ai/README.md) | How to use the AI knowledge base |
-| [.ai/memory/](,.ai/memory/) | Project state, decisions, architecture — read on every session start |
-| [.ai/skills/](.ai/skills/) | Step-by-step task guides (upstream sync, deploy, test, new environment) |
+| [.ai/README.md](.ai/README.md) | How to use the knowledge base |
+| [.ai/memory/](.ai/memory/) | Project state, decisions, architecture — read on every session start |
+| [.ai/skills/](.ai/skills/) | All guides above + test-api, new-environment |
