@@ -7,20 +7,25 @@
 # Architecture selection: pass --build-arg BASE_IMAGE_SUFFIX=x86_64 for AMD64
 ARG BASE_IMAGE_SUFFIX=arm64
 
-# Registry override: pass --build-arg UV_IMAGE=your-registry.com/uv:0.9.6 for internal mirrors
-ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.9.6
-
-# Base image override: pass --build-arg BASE_IMAGE_REGISTRY=your-registry.com/lambda/python for internal mirrors
+# Base image override:
+#   For public: --build-arg BASE_IMAGE_REGISTRY=public.ecr.aws/lambda/python (appends :3.12-SUFFIX)
+#   For private: --build-arg BASE_IMAGE=your-registry.com/lambda/python:3.12-tag (full reference, no suffix appended)
 ARG BASE_IMAGE_REGISTRY=public.ecr.aws/lambda/python
-
-# Use specific version to avoid network issues
-FROM ${UV_IMAGE} AS uv
+ARG BASE_IMAGE=""
 
 # Builder stage - bundle dependencies into Lambda task root
-FROM ${BASE_IMAGE_REGISTRY}:3.12-${BASE_IMAGE_SUFFIX} AS builder
+FROM ${BASE_IMAGE:-${BASE_IMAGE_REGISTRY}:3.12-${BASE_IMAGE_SUFFIX}} AS builder
 
 # Enable bytecode compilation to improve cold-start performance
 ENV UV_COMPILE_BYTECODE=1
+
+# Install uv via pip (avoids pulling ghcr.io image in air-gapped environments)
+RUN --mount=type=secret,id=pipconf,target=/etc/pip.conf \
+    --mount=type=secret,id=cacert,target=/etc/pki/ca-trust/source/anchors/custom-ca.crt \
+  if [ -f /etc/pki/ca-trust/source/anchors/custom-ca.crt ] && [ -s /etc/pki/ca-trust/source/anchors/custom-ca.crt ]; then \
+    update-ca-trust extract; \
+  fi && \
+  PIP_CONFIG_FILE=/etc/pip.conf pip install --no-cache-dir uv
 
 # Disable installer metadata to create a deterministic layer
 ENV UV_NO_INSTALLER_METADATA=1
@@ -35,9 +40,6 @@ ARG INSTALL_GIT=false
 
 # Create working directory
 WORKDIR /build
-
-# Copy uv binary from uv stage
-COPY --from=uv /uv /usr/local/bin/uv
 
 # Copy idp_common_pkg and requirements for installation
 COPY lib/idp_common_pkg /tmp/idp_common_pkg
@@ -63,7 +65,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Final stage - minimal runtime
 ARG BASE_IMAGE_REGISTRY=public.ecr.aws/lambda/python
 ARG BASE_IMAGE_SUFFIX=arm64
-FROM ${BASE_IMAGE_REGISTRY}:3.12-${BASE_IMAGE_SUFFIX}
+ARG BASE_IMAGE=""
+FROM ${BASE_IMAGE:-${BASE_IMAGE_REGISTRY}:3.12-${BASE_IMAGE_SUFFIX}}
 
 # Conditionally install git (required for mlflow/gitpython)
 ARG INSTALL_GIT=false

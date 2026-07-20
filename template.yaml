@@ -703,10 +703,10 @@ Parameters:
 
   LambdaBaseImage:
     Type: String
-    Default: "public.ecr.aws/lambda/python"
+    Default: "public.ecr.aws/lambda/python:3.12"
     Description: >-
-      (Optional) Base image registry for Lambda container images. Override with
-      an internal registry mirror for air-gapped deployments.
+      (Optional) Full base image reference for Lambda containers including tag
+      (e.g., internal-registry.com/lambda/python:3.12). Override for air-gapped deployments.
 
   CACertBundleS3Uri:
     Type: String
@@ -1287,6 +1287,7 @@ Conditions:
   HasUvConfigSecret: !Not [ !Equals [ !Ref UvConfigSecretArn, "" ] ]
   HasPipConfigSecret: !Not [ !Equals [ !Ref PipConfigSecretArn, "" ] ]
   HasNpmConfigSecret: !Not [ !Equals [ !Ref NpmConfigSecretArn, "" ] ]
+  HasCACertBundle: !Not [ !Equals [ !Ref CACertBundleS3Uri, "" ] ]
   HasCustomConfigPath: !Not [ !Equals [ !Ref CustomConfigPath, "" ] ]
   # The version-check resolver only needs IAM grants when an artifacts
   # bucket is actually configured. When `PublicArtifactsBucket` is empty
@@ -3117,6 +3118,7 @@ Resources:
         # read it at runtime — the catalog source, no artifacts-bucket dependency.
         ConfigurationBucketName: !Ref ConfigurationBucket
         LogLevel: !Ref LogLevel
+        PermissionsBoundaryArn: !Ref PermissionsBoundaryArn
   # === Feature Platform (optional) — END =================================
 
   CustomerManagedEncryptionKey:
@@ -10080,6 +10082,22 @@ Resources:
                     - kms:DescribeKey
                   Resource: !Ref ArtifactsBucketKmsKeyArn
                 - !Ref AWS::NoValue
+              - !If
+                - HasNpmConfigSecret
+                - Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource: !Ref NpmConfigSecretArn
+                - !Ref AWS::NoValue
+              - !If
+                - HasCACertBundle
+                - Effect: Allow
+                  Action:
+                    - s3:GetObject
+                  Resource: !Sub
+                    - "arn:${AWS::Partition}:s3:::${BucketAndKey}"
+                    - BucketAndKey: !Select [1, !Split ["s3://", !Ref CACertBundleS3Uri]]
+                - !Ref AWS::NoValue
 
   UICodeBuildProject:
     Type: AWS::CodeBuild::Project
@@ -10106,16 +10124,29 @@ Resources:
         BuildSpec: |
           version: 0.2
           phases:
+            install:
+              commands:
+                - |
+                  if [ -n "${CA_CERT_S3_URI:-}" ]; then
+                    echo "Installing CA certificates..."
+                    aws s3 cp "$CA_CERT_S3_URI" /tmp/ca-bundle.tar.gz
+                    tar xzf /tmp/ca-bundle.tar.gz -C /etc/pki/ca-trust/source/anchors/
+                    update-ca-trust extract
+                  fi
+                - |
+                  if [ -n "${NPM_CONFIG_SECRET:-}" ]; then
+                    echo "Writing .npmrc from Secrets Manager..."
+                    echo "$NPM_CONFIG_SECRET" > ~/.npmrc
+                  fi
             pre_build:
               commands:
                 - echo ${SOURCE_CODE_LOCATION}
                 - echo `ls -altr`
                 - echo `pwd`
-                - echo Installing NodeJS
-                - n 22.14.0
-                - npm install -g npm@11.1.0
+                - node --version
+                - npm --version
                 - echo Installing Web UI dependencies
-                - npm ci
+                - npm install --engine-strict=false
             build:
               commands:
                 - echo Build started on `date`
@@ -10225,6 +10256,17 @@ Resources:
             Value: "4000"
           - Name: VITE_BDA_TOKENS_PER_PAGE
             Value: "2000"
+          - !If
+            - HasNpmConfigSecret
+            - Name: NPM_CONFIG_SECRET
+              Type: SECRETS_MANAGER
+              Value: !Ref NpmConfigSecretArn
+            - !Ref AWS::NoValue
+          - !If
+            - HasCACertBundle
+            - Name: CA_CERT_S3_URI
+              Value: !Ref CACertBundleS3Uri
+            - !Ref AWS::NoValue
       TimeoutInMinutes: 30
 
   StartUICodeBuildExecutionRole:

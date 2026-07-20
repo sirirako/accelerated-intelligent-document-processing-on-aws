@@ -107,8 +107,8 @@ Parameters:
     Description: "(Optional) Secrets Manager ARN for pip.conf (private PyPI)."
   LambdaBaseImage:
     Type: String
-    Default: "public.ecr.aws/lambda/python"
-    Description: "(Optional) Base image registry for Lambda container images."
+    Default: "public.ecr.aws/lambda/python:3.12"
+    Description: "(Optional) Full base image reference for Lambda containers (e.g., registry/lambda/python:3.12)"
   CACertBundleS3Uri:
     Type: String
     Default: ""
@@ -343,7 +343,7 @@ Resources:
             pre_build:
               commands:
                 - echo Logging in to Amazon ECR...
-                - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+                - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker --config /root/.config/docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
             build:
               commands:
                 - echo "Source directory contents:"
@@ -365,15 +365,14 @@ Resources:
                 - echo "Creating Dockerfile..."
                 - |
                   cat > Dockerfile << DOCKERFILE
-                  FROM ${LAMBDA_BASE_IMAGE}:3.12 AS builder
-                  RUN dnf install -y gcc gcc-c++ make && dnf clean all
+                  FROM ${LAMBDA_BASE_IMAGE} AS builder
                   COPY requirements.txt /tmp/requirements.txt
                   RUN --mount=type=secret,id=pipconf,target=/etc/pip.conf \
                     PIP_CONFIG_FILE=/etc/pip.conf pip install --no-cache-dir --target /opt/python -r /tmp/requirements.txt
                   COPY lib/idp_common_pkg /tmp/idp_common_pkg
                   RUN --mount=type=secret,id=pipconf,target=/etc/pip.conf \
                     PIP_CONFIG_FILE=/etc/pip.conf pip install --no-cache-dir --no-deps --target /opt/python /tmp/idp_common_pkg
-                  FROM ${LAMBDA_BASE_IMAGE}:3.12
+                  FROM ${LAMBDA_BASE_IMAGE}
                   COPY --from=builder /opt/python \${LAMBDA_TASK_ROOT}/../opt/python
                   ENV PYTHONPATH="\${LAMBDA_TASK_ROOT}/../opt/python:\${LAMBDA_TASK_ROOT}"
                   COPY src/lambda/multi_doc_discovery/*.py \${LAMBDA_TASK_ROOT}/
@@ -385,7 +384,7 @@ Resources:
                   if [ -f /root/.config/pip/pip.conf ]; then
                     DOCKER_SECRET_ARGS="--secret id=pipconf,src=/root/.config/pip/pip.conf"
                   fi
-                  docker buildx build \
+                  docker --config /root/.config/docker buildx build \
                     $DOCKER_SECRET_ARGS \
                     -t $ECR_REPO_URI:$IMAGE_TAG \
                     --provenance=false \

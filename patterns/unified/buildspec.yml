@@ -31,9 +31,7 @@ phases:
       - echo "Logging into Amazon ECR..."
       - docker --config /root/.config/docker --version || docker --version
       - aws ecr get-login-password --region $AWS_REGION | docker --config /root/.config/docker login --username AWS --password-stdin $ECR_URI
-      - echo "Setting up Docker buildx for cross-platform builds..."
-      - docker buildx create --use --name multiarch-builder --driver docker-container || docker buildx use multiarch-builder
-      - docker buildx inspect --bootstrap
+      - echo "Docker buildx ready (using default builder for native builds)"
   build:
     commands:
       - echo "Building Unified Pattern Docker images (BDA + Pipeline)..."
@@ -80,16 +78,17 @@ phases:
           func_name=$(basename "$func_path" | sed 's/_/-/g')
           echo "Building ${func_name} from ${func_path}..."
           EXTRA_ARGS=""
-          if [ "$func_var" = "FUNCTION_mlflow_logger" ]; then
-            EXTRA_ARGS="--build-arg INSTALL_GIT=true"
+          BASE_IMAGE_ARGS=""
+          if echo "${LAMBDA_BASE_IMAGE:-}" | grep -q ':'; then
+            BASE_IMAGE_ARGS="--build-arg BASE_IMAGE=${LAMBDA_BASE_IMAGE}"
+          else
+            BASE_IMAGE_ARGS="--build-arg BASE_IMAGE_REGISTRY=${LAMBDA_BASE_IMAGE:-public.ecr.aws/lambda/python} --build-arg BASE_IMAGE_SUFFIX=${LAMBDA_ARCHITECTURE:-arm64}"
           fi
           docker --config /root/.config/docker buildx build \
             --platform "$DOCKER_PLATFORM" \
             -f Dockerfile.optimized \
             --build-arg FUNCTION_PATH="${func_path}" \
-            --build-arg BASE_IMAGE_SUFFIX="${LAMBDA_ARCHITECTURE:-arm64}" \
-            --build-arg UV_IMAGE="${UV_IMAGE:-ghcr.io/astral-sh/uv:0.9.6}" \
-            --build-arg BASE_IMAGE_REGISTRY="${LAMBDA_BASE_IMAGE:-public.ecr.aws/lambda/python}" \
+            ${BASE_IMAGE_ARGS} \
             ${SECRET_ARGS} \
             ${EXTRA_ARGS} \
             --tag "${ECR_URI}:${func_name}-${IMAGE_VERSION}" \

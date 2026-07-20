@@ -195,8 +195,8 @@ def publish_templates():
     # Derive bucket basename by stripping the region suffix (publish appends -<region>)
     bucket_basename = source_bucket.removesuffix(f"-{region}")
 
-    # Run idp-cli publish
-    cmd = f"idp-cli publish --source-dir . --bucket-basename {bucket_basename} --prefix {prefix} --region {region}"
+    # Run idp-cli publish (--no-lint skips UI validation which requires Node 22 — UI is built during stack deployment)
+    cmd = f"idp-cli publish --source-dir . --bucket-basename {bucket_basename} --prefix {prefix} --region {region} --no-lint"
     result = run_command(cmd)
 
     # Extract template URL from output - match S3 URLs only
@@ -1436,7 +1436,7 @@ def generate_publish_failure_summary(publish_error):
         """)
 
         response = bedrock.invoke_model(
-            modelId="us.anthropic.claude-sonnet-4-5-20250514-v1:0",
+            modelId="anthropic.claude-sonnet-4-5-20250929-v1:0",
             body=json.dumps(
                 {
                     "anthropic_version": "bedrock-2023-05-31",
@@ -1672,7 +1672,7 @@ def generate_deployment_summary(result, stack_name, template_url):
 
         # Call Bedrock API with temperature=0 for deterministic output
         response = bedrock.invoke_model(
-            modelId="us.anthropic.claude-sonnet-4-5-20250514-v1:0",
+            modelId="anthropic.claude-sonnet-4-5-20250929-v1:0",
             body=json.dumps(
                 {
                     "anthropic_version": "bedrock-2023-05-31",
@@ -1766,7 +1766,7 @@ def generate_deployment_summary(result, stack_name, template_url):
             """)
 
             cf_response = bedrock.invoke_model(
-                modelId="us.anthropic.claude-sonnet-4-5-20250514-v1:0",
+                modelId="anthropic.claude-sonnet-4-5-20250929-v1:0",
                 body=json.dumps(
                     {
                         "anthropic_version": "bedrock-2023-05-31",

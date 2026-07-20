@@ -40,9 +40,9 @@ Parameters:
     Description: '(Optional) Private subnet IDs for CodeBuild VPC config'
     Default: ''
 
-  CodeBuildSecurityGroupId:
-    Type: String
-    Description: '(Optional) Security group for CodeBuild VPC config'
+  CodeBuildSecurityGroupIds:
+    Type: CommaDelimitedList
+    Description: '(Optional) Security group ID(s) for CodeBuild VPC config (comma-separated)'
     Default: ''
 
   # ── Air-gapped / private registry parameters ──
@@ -70,6 +70,10 @@ Parameters:
     Type: String
     Default: 'deploy/pipeline-config.yaml'
     Description: 'S3 key of the pipeline config file in the source bucket (per-environment deployment parameters)'
+  NodeDistUrl:
+    Type: String
+    Default: ''
+    Description: '(Optional) Direct URL to Node.js tar.gz binary for air-gapped environments (e.g., https://jfrog.company.com/.../node-v22.14.0-linux-x64.tar.gz)'
   CodeBuildPermissionsBoundaryArn:
     Type: String
     Default: ''
@@ -85,6 +89,7 @@ Conditions:
   HasNpmConfigSecret: !Not [!Equals [!Ref NpmConfigSecretArn, '']]
   HasCACertBundle: !Not [!Equals [!Ref CACertBundleS3Uri, '']]
   HasCodeBuildPermissionsBoundary: !Not [!Equals [!Ref CodeBuildPermissionsBoundaryArn, '']]
+  HasNodeDistUrl: !Not [!Equals [!Ref NodeDistUrl, '']]
   HasAnyRegistrySecret: !Or
     - !Not [!Equals [!Ref DockerConfigSecretArn, '']]
     - !Not [!Equals [!Ref UvConfigSecretArn, '']]
@@ -134,6 +139,7 @@ Resources:
   CodePipelineRole:
       Type: 'AWS::IAM::Role'
       Properties:
+        PermissionsBoundary: !If [HasCodeBuildPermissionsBoundary, !Ref CodeBuildPermissionsBoundaryArn, !Ref 'AWS::NoValue']
         AssumeRolePolicyDocument:
           Version: '2012-10-17'
           Statement:
@@ -444,15 +450,14 @@ Resources:
           - DeployInVPC
           - VpcId: !Ref VpcId
             Subnets: !Ref PrivateSubnetIds
-            SecurityGroupIds:
-              - !Ref CodeBuildSecurityGroupId
+            SecurityGroupIds: !Ref CodeBuildSecurityGroupIds
           - !Ref AWS::NoValue
       Artifacts:
         Type: CODEPIPELINE
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_LARGE
-        Image: aws/codebuild/standard:7.0
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
         EnvironmentVariables:
           - Name: SOURCE_BUCKET
             Value: !Sub '${BucketNamePrefix}-${AWS::AccountId}-${AWS::Region}'
@@ -487,6 +492,11 @@ Resources:
               Type: SECRETS_MANAGER
               Value: !Ref NpmConfigSecretArn
             - !Ref AWS::NoValue
+          - !If
+            - HasNodeDistUrl
+            - Name: NODE_DIST_URL
+              Value: !Ref NodeDistUrl
+            - !Ref AWS::NoValue
       Source:
         Type: CODEPIPELINE
         BuildSpec: |
@@ -501,8 +511,13 @@ Resources:
                 - |
                   if [ -n "${CA_CERT_BUNDLE_S3_URI:-}" ]; then
                     echo "Installing CA certificate bundle from $CA_CERT_BUNDLE_S3_URI..."
-                    aws s3 cp "$CA_CERT_BUNDLE_S3_URI" /tmp/ca-bundle.tar.gz
-                    tar xzf /tmp/ca-bundle.tar.gz -C /etc/pki/ca-trust/source/anchors/
+                    aws s3 cp "$CA_CERT_BUNDLE_S3_URI" /tmp/ca-bundle
+                    case "$CA_CERT_BUNDLE_S3_URI" in
+                      *.tar.gz|*.tgz) tar xzf /tmp/ca-bundle -C /etc/pki/ca-trust/source/anchors/ ;;
+                      *.tar)          tar xf /tmp/ca-bundle -C /etc/pki/ca-trust/source/anchors/ ;;
+                      *.crt|*.pem)    cp /tmp/ca-bundle /etc/pki/ca-trust/source/anchors/custom-ca.crt ;;
+                      *)              tar xzf /tmp/ca-bundle -C /etc/pki/ca-trust/source/anchors/ 2>/dev/null || tar xf /tmp/ca-bundle -C /etc/pki/ca-trust/source/anchors/ 2>/dev/null || cp /tmp/ca-bundle /etc/pki/ca-trust/source/anchors/custom-ca.crt ;;
+                    esac
                     update-ca-trust extract
                   fi
                 - |
@@ -525,8 +540,23 @@ Resources:
                     echo "Configuring npm for private registry..."
                     echo "$NPM_CONF" > ~/.npmrc
                   fi
-                # ── Standard install (uses private registry if configured above) ──
-                - n 22.14.0 && node --version || { echo "Node setup failed"; exit 1; }
+                # ── Node.js install (tries n, falls back to direct download from NODE_DIST_URL, then built-in) ──
+                - |
+                  if [ -n "${NODE_DIST_URL:-}" ]; then
+                    echo "Installing Node from $NODE_DIST_URL..."
+                    CURL_AUTH=""
+                    if [ -f ~/.npmrc ]; then
+                      TOKEN=$(grep '_authToken=' ~/.npmrc | head -1 | sed 's/.*_authToken=//')
+                      if [ -n "$TOKEN" ]; then
+                        CURL_AUTH="-H \"Authorization: Bearer $TOKEN\""
+                      fi
+                    fi
+                    eval curl -fsSL $CURL_AUTH "$NODE_DIST_URL" -o /tmp/node.tar.gz
+                    tar xzf /tmp/node.tar.gz -C /usr/local --strip-components=1
+                    echo "Node $(node --version) installed from private registry"
+                  else
+                    n 22.14.0 && echo "Node $(node --version) installed via n" || echo "Node install skipped (using built-in $(node --version 2>/dev/null || echo 'none'))"
+                  fi
                 - npm install -g npm@11 || echo "npm upgrade skipped, using bundled $(npm --version)"
                 - pip install uv || { echo "uv installation failed"; exit 1; }
                 - export IDP_ADMIN_EMAIL=$(aws s3api head-object --bucket ${SOURCE_BUCKET} --key deploy/code.zip --query 'Metadata."gitlab-user-email"' --output text 2>/dev/null || echo "")
@@ -789,6 +819,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: genaiic-sdlc-pipeline-trigger-role
+      PermissionsBoundary: !If [HasCodeBuildPermissionsBoundary, !Ref CodeBuildPermissionsBoundaryArn, !Ref 'AWS::NoValue']
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
