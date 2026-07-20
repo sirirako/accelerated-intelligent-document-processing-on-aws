@@ -3,49 +3,22 @@
 ## When to use
 Merging upstream develop/main into the enterprise fork.
 
-## Steps
+## Full guide
+**Read `enterprise/docs/upstream-sync-guide.md`** — it has the complete conflict
+resolution rules, silent-breakage checks, and post-merge checklist.
 
-1. Fetch upstream:
-   ```bash
-   git fetch upstream develop
-   ```
+## Quick steps
 
-2. Merge:
-   ```bash
-   git merge upstream/develop
-   ```
+1. `git fetch upstream main` (or `develop`)
+2. `git merge upstream/main`
+3. Resolve conflicts per the rules in the full guide
+4. Run silent-breakage checks (YAML valid, enterprise markers intact, SFN chain)
+5. `./enterprise/build.sh && make lint && make test`
+6. Update `.ai/memory/enterprise-state.md` if something relevant changed
 
-3. Resolve conflicts (see `enterprise/docs/upstream-sync-guide.md` for detailed rules):
-   - `template.yaml`: keep enterprise params/conditions/resources alongside upstream's
-   - `Dockerfile.optimized`: keep our ARGs, update base image version if upstream bumped it
-   - `patterns/unified/buildspec.yml`: keep our install-phase guards
-   - `enterprise/` directory: never conflicts (ours only)
-
-4. Run silent-breakage checks (even if merge was clean):
-   ```bash
-   # YAML valid
-   python3 -c "import yaml; yaml.SafeLoader.add_multi_constructor('!', lambda l,s,n: None); yaml.safe_load(open('template.yaml')); print('OK')"
-   
-   # Enterprise markers intact
-   grep -n "Enterprise Integration" template.yaml
-   grep -n "DeployCompletionHook" template.yaml
-   grep -n "EnterprisePingAuthorizerFunction" template.yaml
-   
-   # SFN chain integrity (if pipeline hooks exist)
-   python3 -c "..." # see upstream-sync-guide.md for full script
-   ```
-
-5. Build and test:
-   ```bash
-   ./enterprise/build.sh
-   make lint
-   make test
-   ```
-
-6. Update `enterprise/.ai/memory/enterprise-state.md` if upstream changed something relevant.
-
-## Key rules
+## Key rules (from the full guide)
 - Never delete enterprise resources during conflict resolution
-- If upstream renamed something our overlay references, update our reference
-- If unsure, keep both sides and test
-- Escalate if: upstream removed PostProcessingLambdaHookFunctionArn, restructured SFN into parallel branches, or replaced Cognito entirely
+- Keep both sides for additive changes (params, conditions)
+- `ShouldEnablePostProcessingLambdaHook` must keep our `!Or` wrapper
+- API Gateway must keep `PingAuthorizer`
+- Escalate if upstream removed `PostProcessingLambdaHookFunctionArn` or restructured SFN
