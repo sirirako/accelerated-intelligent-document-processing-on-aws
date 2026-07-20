@@ -48,7 +48,7 @@ if ($Platform -eq "linux") {
     $platformArgs = @(
         "--platform", "manylinux2014_x86_64",
         "--python-version", "312",
-        "--only-binary=:all:"
+        "--only-binary", ":all:"
     )
 }
 
