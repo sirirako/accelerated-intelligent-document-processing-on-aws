@@ -56,10 +56,16 @@ or completing significant work.
 - Layer binaries removed from git (build.sh before publish)
 - Pipeline buildspec includes `enterprise/build.sh`
 - All docs consolidated and customer-specific info removed
+- v0.6.1 merged and tested (2026-07-20): idp-default + idp-enterprise stacks deployed
+- Enterprise-owned deployment script created (`enterprise/sdlc/codebuild_deployment.py`)
+- Pipeline buildspec now: chmod build.sh, use enterprise script if present, fallback to upstream
+- Pipeline fixes: `--no-lint` on publish, `CreateTestVpc=false`, permissions boundary on roles
+- Pipeline template orphan issue documented (hardcoded names: pipeline, CodeBuild project, IAM role, KMS alias, SNS topic — must be manually deleted before redeploying with same PipelineName)
 
 ## Coordination Notes
 
 - **Multiple agents** work on this repo (enterprise integration, SDLC pipeline, registry)
 - **`enterprise/develop`** is the integration branch — all feature branches merge here
-- **Don't merge to `main`** until upstream releases v0.6 and we validate the full merge
-- **Customer repo** is separate — copy `enterprise/` folder there, no git history
+- **Main branch** is synced with upstream main (v0.6.1) — no enterprise commits on main
+- **Releases** tagged from `enterprise/develop` (e.g., `v0.6.1-enterprise-beta1`)
+- **Customer deployment:** Download release zip → upload to S3 → redeploy pipeline stack once → pipeline handles the rest

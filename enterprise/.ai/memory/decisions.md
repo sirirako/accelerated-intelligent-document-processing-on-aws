@@ -163,3 +163,41 @@ params in their own schema.
 - Buildspec install phase (registry config)
 - Main template enterprise block (Ping auth, completion hook, registry params)
 - Configuration (environment params, pipeline config)
+
+## Enterprise-owned deployment script (v0.6.1+)
+
+**Decision:** Create `enterprise/sdlc/codebuild_deployment.py` as a complete replacement
+for `scripts/sdlc/codebuild_deployment.py`. Pipeline buildspec uses enterprise script if
+present, falls back to upstream's otherwise.
+
+**Why:** Upstream's deployment script (3700+ lines) gets rewritten frequently — 24 merge
+conflicts in v0.6.1 alone. When we took upstream's version and re-applied our changes,
+we lost critical enterprise logic (`--no-lint`, `skip_tests`, `role_arn`, config params
+pass-through). This happened twice. The deployment script is infrastructure, not application
+code — it's specific to the customer's air-gapped CD workflow.
+
+**What our script does:** load config → publish (--no-lint) → deploy with role_arn +
+config_params + headless flag → skip tests if configured → never delete persistent stacks.
+~170 lines vs upstream's 3700.
+
+**Implication:** When upstream adds useful deployment features, we manually port what we
+want. But in practice, upstream's CI logic (parallel test probes, fail-fast abort, test VPCs,
+APIGW hosting tests) is irrelevant to the customer's CD pipeline.
+
+## Pipeline template stays shared (not enterprise-owned)
+
+**Decision:** Keep `scripts/sdlc/cfn/codepipeline-s3.yml` as upstream's file with our
+enterprise additions. Do NOT create a separate enterprise pipeline template.
+
+**Why:** Pipeline template conflicts are additive (params, conditions, env vars alongside
+upstream's) and resolve cleanly with "keep both sides." Unlike the deployment script which
+had logic rewrites, the CFN template is structural. The fallback to enterprise deployment
+script is done via a file-existence check in the buildspec — no parameter needed.
+
+**Enterprise additions to the pipeline template:**
+- Registry params (DockerConfigSecretArn, UvConfigSecretArn, PipConfigSecretArn, etc.)
+- `CreateTestVpc=false` for customer (no NAT Gateway/VPC creation)
+- `chmod +x ./enterprise/build.sh` in install phase
+- Enterprise script fallback in build phase
+- `CodeBuildPermissionsBoundaryArn` on IAM roles
+- `PipelineConfigKey` and `NodeDistUrl` params
