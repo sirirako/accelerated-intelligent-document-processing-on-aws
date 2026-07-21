@@ -240,11 +240,46 @@ print('YAML valid')
 - [ ] Dockerfile ARGs present and defaults match upstream's base image version
 - [ ] Buildspec install-phase guards present
 - [ ] **CRITICAL: `patterns/unified/buildspec.yml` has NO `docker buildx create` or `moby/buildkit`** (air-gapped customer can't pull from Docker Hub — use default builder)
+- [ ] Buildspec uses `docker --config /root/.config/docker` on ALL docker commands (ECR login + buildx build)
+- [ ] Buildspec has `BASE_IMAGE_ARGS` logic (checks `LAMBDA_BASE_IMAGE` for full image:tag vs registry prefix)
+- [ ] Buildspec has `SECRET_ARGS` for `--secret id=pipconf,cacert,uvconf` mounts
 - [ ] Buildspec env var is `CA_CERT_S3_URI` (not `CA_CERT_BUNDLE_S3_URI`)
+- [ ] `patterns/unified/template.yaml` DockerBuildProject has env vars: `LAMBDA_BASE_IMAGE`, `DOCKER_CONF`, `PIP_CONF`, `UV_CONF`, `CA_CERT_S3_URI`
+- [ ] `patterns/unified/template.yaml` DockerBuildRole has S3 access to CA cert bucket (not just ArtifactPrefix)
+- [ ] `patterns/unified/template.yaml` has registry params: `DockerConfigSecretArn`, `UvConfigSecretArn`, `PipConfigSecretArn`, `LambdaBaseImage`, `CACertBundleS3Uri`
+- [ ] `nested/multi-doc-discovery/template.yaml` buildspec unchanged (docker --config, LAMBDA_BASE_IMAGE, secret mounts)
+- [ ] `Dockerfile.optimized` unchanged (ARG BASE_IMAGE, secret mounts for pip/uv/cacert, uv installed via pip)
 - [ ] `configurationVersion` field still in api_handler models
 - [ ] `make lint` passes
 - [ ] `make test` passes
 - [ ] `./enterprise/build.sh` succeeds
+
+### Build project verification commands
+
+```bash
+# PATTERNSTACK buildspec — must NOT have multiarch builder
+grep "docker buildx create\|moby/buildkit" patterns/unified/buildspec.yml && echo "❌ REMOVE multiarch builder" || echo "✅ No multiarch"
+
+# PATTERNSTACK buildspec — must have docker --config
+grep -c "docker --config /root/.config/docker" patterns/unified/buildspec.yml | xargs -I{} test {} -ge 2 && echo "✅ docker --config present" || echo "❌ MISSING docker --config"
+
+# PATTERNSTACK buildspec — must have BASE_IMAGE_ARGS
+grep -q "LAMBDA_BASE_IMAGE" patterns/unified/buildspec.yml && echo "✅ BASE_IMAGE_ARGS present" || echo "❌ MISSING BASE_IMAGE_ARGS"
+
+# PATTERNSTACK template — must have LAMBDA_BASE_IMAGE env var
+grep -q "Name: LAMBDA_BASE_IMAGE" patterns/unified/template.yaml && echo "✅ LAMBDA_BASE_IMAGE env var" || echo "❌ MISSING LAMBDA_BASE_IMAGE env var"
+
+# PATTERNSTACK template — must have CA cert S3 IAM
+grep -q "HasCACertBundle" patterns/unified/template.yaml && grep -A3 "HasCACertBundle" patterns/unified/template.yaml | grep -q "s3:GetObject" && echo "✅ CA cert S3 IAM" || echo "❌ MISSING CA cert S3 access"
+
+# Multi-doc-discovery — must be unchanged (docker --config, LAMBDA_BASE_IMAGE)
+grep -q "docker --config /root/.config/docker" nested/multi-doc-discovery/template.yaml && echo "✅ multi-doc docker --config" || echo "❌ MISSING"
+grep -q "LAMBDA_BASE_IMAGE" nested/multi-doc-discovery/template.yaml && echo "✅ multi-doc LAMBDA_BASE_IMAGE" || echo "❌ MISSING"
+
+# Dockerfile — must have secret mounts and BASE_IMAGE ARG
+grep -q "ARG BASE_IMAGE=" Dockerfile.optimized && echo "✅ Dockerfile BASE_IMAGE ARG" || echo "❌ MISSING"
+grep -q "mount=type=secret" Dockerfile.optimized && echo "✅ Dockerfile secret mounts" || echo "❌ MISSING"
+```
 
 ---
 
