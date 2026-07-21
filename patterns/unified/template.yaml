@@ -3310,7 +3310,7 @@ Resources:
             - !Ref AWS::NoValue
           - !If
             - HasCACertBundle
-            - Name: CA_CERT_BUNDLE_S3_URI
+            - Name: CA_CERT_S3_URI
               Value: !Ref CACertBundleS3Uri
             - !Ref AWS::NoValue
       TimeoutInMinutes: 90
