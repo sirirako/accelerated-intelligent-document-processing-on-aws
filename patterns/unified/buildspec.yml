@@ -32,9 +32,7 @@ phases:
       - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_URI
       - echo "Verifying Docker..."
       - docker --version
-      - echo "Setting up Docker buildx for cross-platform builds..."
-      - docker buildx create --use --name multiarch-builder --driver docker-container || docker buildx use multiarch-builder
-      - docker buildx inspect --bootstrap
+      - echo "Docker buildx ready (using default builder for native builds)"
   build:
     commands:
       - echo "Building Unified Pattern Docker images (BDA + Pipeline)..."
