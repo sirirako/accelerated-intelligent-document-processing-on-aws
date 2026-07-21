@@ -963,6 +963,7 @@ Resources:
                   echo "Lambda architecture: $LAMBDA_ARCHITECTURE"
                   if [ -f "./enterprise/build.sh" ]; then
                     echo "Building enterprise layers..."
+                    chmod +x ./enterprise/build.sh
                     ./enterprise/build.sh
                   fi
             build:
