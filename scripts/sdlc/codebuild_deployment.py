@@ -299,8 +299,7 @@ def publish_templates():
     prefix = f"codebuild-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
     # Run idp-cli publish — cold-cache Docker/UI builds can run long
-    # --no-lint skips UI validation (requires Node 22+); UI is built during stack deployment
-    cmd = f"idp-cli publish --source-dir . --bucket-basename {bucket_basename} --prefix {prefix} --region {region} --no-lint"
+    cmd = f"idp-cli publish --source-dir . --bucket-basename {bucket_basename} --prefix {prefix} --region {region}"
     result = run_command(cmd, timeout=3 * 3600)
 
     # Extract template URL from output - match S3 URLs only
