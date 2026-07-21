@@ -80,11 +80,17 @@ phases:
           if [ "$LAMBDA_ARCHITECTURE" = "x86_64" ]; then
             DOCKER_PLATFORM="linux/amd64"
           fi
+          BASE_IMAGE_ARGS=""
+          if echo "${LAMBDA_BASE_IMAGE:-}" | grep -q ':'; then
+            BASE_IMAGE_ARGS="--build-arg BASE_IMAGE=${LAMBDA_BASE_IMAGE}"
+          else
+            BASE_IMAGE_ARGS="--build-arg BASE_IMAGE_REGISTRY=${LAMBDA_BASE_IMAGE:-public.ecr.aws/lambda/python} --build-arg BASE_IMAGE_SUFFIX=${LAMBDA_ARCHITECTURE:-arm64}"
+          fi
           docker buildx build \
             --platform "$DOCKER_PLATFORM" \
             -f Dockerfile.optimized \
             --build-arg FUNCTION_PATH="${func_path}" \
-            --build-arg BASE_IMAGE_SUFFIX="${LAMBDA_ARCHITECTURE:-arm64}" \
+            ${BASE_IMAGE_ARGS} \
             ${SECRET_ARGS} \
             ${EXTRA_ARGS} \
             --tag "${ECR_URI}:${func_name}-${IMAGE_VERSION}" \

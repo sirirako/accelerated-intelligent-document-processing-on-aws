@@ -3313,6 +3313,8 @@ Resources:
             - Name: CA_CERT_S3_URI
               Value: !Ref CACertBundleS3Uri
             - !Ref AWS::NoValue
+          - Name: LAMBDA_BASE_IMAGE
+            Value: !Ref LambdaBaseImage
       TimeoutInMinutes: 90
 
   CodeBuildExecutionRole:
