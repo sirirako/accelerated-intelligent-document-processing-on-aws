@@ -968,9 +968,13 @@ Resources:
                   fi
             build:
               commands:
-                - python3 scripts/sdlc/codebuild_deployment.py
-              finally:
-                - echo "Cleanup handled by codebuild deployment script"
+                # Use enterprise deployment script (simpler, no upstream CI logic)
+                - |
+                  if [ -f "enterprise/sdlc/codebuild_deployment.py" ]; then
+                    python3 enterprise/sdlc/codebuild_deployment.py
+                  else
+                    python3 scripts/sdlc/codebuild_deployment.py
+                  fi
 
   DeploymentPipeline:
     Type: 'AWS::CodePipeline::Pipeline'
