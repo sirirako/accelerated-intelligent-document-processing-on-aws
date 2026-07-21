@@ -1,0 +1,348 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  GENAIIDP-activemq-publisher: Post-processing Lambda hook that publishes
+  completed IDP document results to an Amazon MQ for ActiveMQ broker over
+  STOMP+SSL. Runs entirely inside a customer VPC with no internet egress.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: {default: Networking}
+        Parameters: [VpcId, VpcCidr, PrivateSubnetIds, CreateSecretsManagerEndpoint]
+      - Label: {default: Amazon MQ broker}
+        Parameters: [BrokerStompEndpoints, BrokerPort, BrokerSecurityGroupId, ManageBrokerIngress, Destination]
+      - Label: {default: Function behavior}
+        Parameters: [DryRun, IncludeSectionAttributes, ReservedConcurrentExecutions, LogLevel]
+      - Label: {default: Encryption and alarms}
+        Parameters: [SecretKmsKeyArn, AlarmTopicArn]
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC containing the Amazon MQ broker.
+
+  VpcCidr:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^(\\d{1,3}\\.){3}\\d{1,3}/\\d{1,2}$"
+    Description: >
+      (Optional) VPC CIDR. Only used when CreateSecretsManagerEndpoint=false, to
+      scope the function's HTTPS egress to a pre-existing interface endpoint.
+
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >
+      Private subnets (2+ AZs recommended) with a route to the broker. No NAT
+      gateway or internet route is required.
+
+  CreateSecretsManagerEndpoint:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Create a com.amazonaws.<region>.secretsmanager interface VPC endpoint.
+      Set to false if the VPC already has one. (CloudWatch Logs and the async
+      DLQ are delivered by the Lambda service outside the VPC and need no
+      endpoint.)
+
+  BrokerStompEndpoints:
+    Type: String
+    AllowedPattern: "^[A-Za-z0-9.\\-]+:\\d{2,5}(,[A-Za-z0-9.\\-]+:\\d{2,5})*$"
+    Description: >
+      Comma-separated broker STOMP+SSL endpoints as host:port. For an
+      active/standby deployment list both so the client can fail over, e.g.
+      b-1234-1.mq.us-east-1.amazonaws.com:61614,b-1234-2.mq.us-east-1.amazonaws.com:61614
+
+  BrokerPort:
+    Type: Number
+    Default: 61614
+    MinValue: 1
+    MaxValue: 65535
+    Description: >
+      Broker STOMP+SSL port, used for the security group egress rule. Amazon MQ
+      for ActiveMQ defaults to 61614 for STOMP+SSL.
+
+  BrokerSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security group attached to the Amazon MQ broker.
+
+  ManageBrokerIngress:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Add an ingress rule to the broker's security group allowing this
+      function's security group on BrokerPort. Set to false if your network team
+      manages broker ingress rules out of band.
+
+  Destination:
+    Type: String
+    Default: /queue/idp.document.completed
+    AllowedPattern: "^/(queue|topic)/[A-Za-z0-9._\\-]+$"
+    Description: STOMP destination, e.g. /queue/name or /topic/name.
+
+  DryRun:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >
+      When true the function logs the message it would publish and returns
+      without connecting to the broker. Useful for validating the payload shape
+      before the broker is reachable.
+
+  IncludeSectionAttributes:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Include extracted attribute values in the message body. Set to false to
+      publish only S3 result URIs (recommended when payloads carry PII or are
+      large).
+
+  ReservedConcurrentExecutions:
+    Type: Number
+    Default: 10
+    MinValue: 1
+    MaxValue: 1000
+    Description: >
+      Caps simultaneous broker connections. Keep this well under the broker
+      instance's connection limit.
+
+  LogLevel:
+    Type: String
+    Default: INFO
+    AllowedValues: [DEBUG, INFO, WARNING, ERROR]
+
+  SecretKmsKeyArn:
+    Type: String
+    Default: ""
+    Description: >
+      (Optional) Customer-managed KMS key ARN for the broker credentials secret.
+      Defaults to the aws/secretsmanager AWS-managed key.
+
+  AlarmTopicArn:
+    Type: String
+    Default: ""
+    Description: (Optional) SNS topic notified when messages land in the DLQ.
+
+Conditions:
+  CreateEndpoint: !Equals [!Ref CreateSecretsManagerEndpoint, "true"]
+  ManageIngress: !Equals [!Ref ManageBrokerIngress, "true"]
+  HasSecretKey: !Not [!Equals [!Ref SecretKmsKeyArn, ""]]
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmTopicArn, ""]]
+  HasVpcCidr: !Not [!Equals [!Ref VpcCidr, ""]]
+
+Resources:
+  # --- Credentials -------------------------------------------------------
+  # Created with placeholder values so the stack deploys before the broker
+  # credentials exist. index.py refuses to publish while the placeholder is
+  # present, so a half-configured stack fails loudly instead of silently
+  # attempting a bad connection. Retained on delete so a stack replacement
+  # never destroys real credentials.
+  BrokerCredentialsSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    # checkov:skip=CKV_AWS_149: "AWS-managed key is the default; SecretKmsKeyArn allows a CMK"
+    Properties:
+      Name: !Sub "${AWS::StackName}/activemq/publisher"
+      Description: >
+        Amazon MQ credentials for the GENAIIDP ActiveMQ post-processing hook.
+        Replace the REPLACE_ME placeholders with the broker user's real
+        credentials, then re-run the hook.
+      SecretString: '{"username":"REPLACE_ME","password":"REPLACE_ME"}'
+      KmsKeyId: !If [HasSecretKey, !Ref SecretKmsKeyArn, !Ref AWS::NoValue]
+
+  # --- Networking --------------------------------------------------------
+  FunctionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W40
+            reason: Egress is explicitly scoped to the broker SG and HTTPS; no default rule.
+          - id: W5
+            reason: HTTPS egress targets the VPC-internal interface endpoint only.
+    Properties:
+      GroupDescription: !Sub "${AWS::StackName} ActiveMQ publisher Lambda"
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - Description: STOMP+SSL to the Amazon MQ broker
+          IpProtocol: tcp
+          FromPort: !Ref BrokerPort
+          ToPort: !Ref BrokerPort
+          DestinationSecurityGroupId: !Ref BrokerSecurityGroupId
+        - !If
+          - CreateEndpoint
+          - Description: HTTPS to the Secrets Manager interface endpoint
+            IpProtocol: tcp
+            FromPort: 443
+            ToPort: 443
+            DestinationSecurityGroupId: !Ref EndpointSecurityGroup
+          - !If
+            - HasVpcCidr
+            - Description: HTTPS to pre-existing VPC interface endpoints
+              IpProtocol: tcp
+              FromPort: 443
+              ToPort: 443
+              CidrIp: !Ref VpcCidr
+            - !Ref AWS::NoValue
+
+  BrokerIngressFromFunction:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: ManageIngress
+    Properties:
+      Description: !Sub "${AWS::StackName} IDP post-processing publisher"
+      GroupId: !Ref BrokerSecurityGroupId
+      IpProtocol: tcp
+      FromPort: !Ref BrokerPort
+      ToPort: !Ref BrokerPort
+      SourceSecurityGroupId: !Ref FunctionSecurityGroup
+
+  EndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateEndpoint
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W40
+            reason: Endpoint ENIs need no egress; only the ingress rule below is used.
+    Properties:
+      GroupDescription: !Sub "${AWS::StackName} Secrets Manager VPC endpoint"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - Description: HTTPS from the publisher function
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref FunctionSecurityGroup
+      SecurityGroupEgress:
+        - Description: No egress required from the endpoint ENI
+          IpProtocol: "-1"
+          CidrIp: 127.0.0.1/32
+
+  SecretsManagerEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.secretsmanager"
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: ["secretsmanager:GetSecretValue"]
+            Resource: !Ref BrokerCredentialsSecret
+
+  # --- Failure handling --------------------------------------------------
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    # checkov:skip=CKV_AWS_27: "SSE-SQS (SQS-managed keys) is enabled below"
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-activemq-publisher-dlq"
+      SqsManagedSseEnabled: true
+      MessageRetentionPeriod: 1209600 # 14 days
+
+  DeadLetterQueueAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasAlarmTopic
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-activemq-publisher-dlq-not-empty"
+      AlarmDescription: >
+        Document results failed to publish to Amazon MQ after Lambda retries.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt DeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopicArn]
+
+  # --- Function ----------------------------------------------------------
+  ActiveMQPublisherFunction:
+    Type: AWS::Serverless::Function
+    # checkov:skip=CKV_AWS_173: "Environment variables hold configuration only; credentials live in Secrets Manager"
+    Properties:
+      FunctionName: !Sub "GENAIIDP-activemq-publisher-${AWS::StackName}"
+      Description: Publishes completed IDP documents to Amazon MQ (ActiveMQ) over STOMP+SSL.
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      CodeUri: .
+      Timeout: 60
+      MemorySize: 512
+      ReservedConcurrentExecutions: !Ref ReservedConcurrentExecutions
+      VpcConfig:
+        SecurityGroupIds: [!Ref FunctionSecurityGroup]
+        SubnetIds: !Ref PrivateSubnetIds
+      Environment:
+        Variables:
+          BROKER_SECRET_ARN: !Ref BrokerCredentialsSecret
+          BROKER_STOMP_ENDPOINTS: !Ref BrokerStompEndpoints
+          DESTINATION: !Ref Destination
+          DRY_RUN: !Ref DryRun
+          INCLUDE_SECTION_ATTRIBUTES: !Ref IncludeSectionAttributes
+          LOG_LEVEL: !Ref LogLevel
+      Policies:
+        - VPCAccessPolicy: {}
+        - Statement:
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Ref BrokerCredentialsSecret
+            - !If
+              - HasSecretKey
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: !Ref SecretKmsKeyArn
+              - !Ref AWS::NoValue
+      EventInvokeConfig:
+        # The IDP decompression Lambda invokes this function asynchronously,
+        # so retries and the DLQ are configured here, not on the caller.
+        MaximumRetryAttempts: 2
+        MaximumEventAgeInSeconds: 3600
+        DestinationConfig:
+          OnFailure:
+            Type: SQS
+            Destination: !GetAtt DeadLetterQueue.Arn
+
+  # The IDP main stack grants EventBridge/its decompressor permission to invoke
+  # the ARN passed as PostProcessingLambdaHookFunctionArn. This resource-based
+  # grant lets the IDP stack's decompression Lambda call in cross-stack.
+  InvokePermissionForIdpStack:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ActiveMQPublisherFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: !Sub "lambda.${AWS::URLSuffix}"
+      SourceAccount: !Ref AWS::AccountId
+
+Outputs:
+  FunctionArn:
+    Description: >
+      Pass this as the IDP stack's PostProcessingLambdaHookFunctionArn parameter.
+    Value: !GetAtt ActiveMQPublisherFunction.Arn
+
+  BrokerCredentialsSecretArn:
+    Description: >
+      Populate with real broker credentials, e.g.
+      aws secretsmanager put-secret-value --secret-id <arn>
+      --secret-string '{"username":"idp-publisher","password":"..."}'
+    Value: !Ref BrokerCredentialsSecret
+
+  FunctionSecurityGroupId:
+    Description: Allow this SG on the broker's STOMP port if ManageBrokerIngress=false.
+    Value: !Ref FunctionSecurityGroup
+
+  DeadLetterQueueUrl:
+    Description: Failed publishes land here after Lambda's async retries.
+    Value: !Ref DeadLetterQueue
