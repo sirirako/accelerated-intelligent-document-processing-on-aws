@@ -239,6 +239,8 @@ print('YAML valid')
 - [ ] Registry params/conditions exist in template + nested stacks
 - [ ] Dockerfile ARGs present and defaults match upstream's base image version
 - [ ] Buildspec install-phase guards present
+- [ ] **CRITICAL: `patterns/unified/buildspec.yml` has NO `docker buildx create` or `moby/buildkit`** (air-gapped customer can't pull from Docker Hub — use default builder)
+- [ ] Buildspec env var is `CA_CERT_S3_URI` (not `CA_CERT_BUNDLE_S3_URI`)
 - [ ] `configurationVersion` field still in api_handler models
 - [ ] `make lint` passes
 - [ ] `make test` passes
