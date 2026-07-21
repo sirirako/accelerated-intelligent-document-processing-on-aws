@@ -3162,6 +3162,15 @@ Resources:
                   - s3:GetObjectVersion
                   - s3:GetBucketLocation
                   - s3:ListBucket
+              - !If
+                - HasCACertBundle
+                - Effect: Allow
+                  Action:
+                    - s3:GetObject
+                  Resource: !Sub
+                    - "arn:${AWS::Partition}:s3:::${BucketName}/*"
+                    - BucketName: !Select [2, !Split ["/", !Ref CACertBundleS3Uri]]
+                - !Ref AWS::NoValue
               - Resource:
                   - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*"
                   - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*:*"
