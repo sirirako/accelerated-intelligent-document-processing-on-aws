@@ -29,9 +29,8 @@ phases:
   pre_build:
     commands:
       - echo "Logging into Amazon ECR..."
-      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_URI
-      - echo "Verifying Docker..."
-      - docker --version
+      - docker --config /root/.config/docker --version || docker --version
+      - aws ecr get-login-password --region $AWS_REGION | docker --config /root/.config/docker login --username AWS --password-stdin $ECR_URI
       - echo "Docker buildx ready (using default builder for native builds)"
   build:
     commands:
@@ -86,7 +85,7 @@ phases:
           else
             BASE_IMAGE_ARGS="--build-arg BASE_IMAGE_REGISTRY=${LAMBDA_BASE_IMAGE:-public.ecr.aws/lambda/python} --build-arg BASE_IMAGE_SUFFIX=${LAMBDA_ARCHITECTURE:-arm64}"
           fi
-          docker buildx build \
+          docker --config /root/.config/docker buildx build \
             --platform "$DOCKER_PLATFORM" \
             -f Dockerfile.optimized \
             --build-arg FUNCTION_PATH="${func_path}" \
