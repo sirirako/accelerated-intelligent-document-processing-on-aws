@@ -5,9 +5,9 @@ phases:
       # ── Private registry setup (optional, no-op when env vars are unset) ──
       - mkdir -p /root/.config/docker /root/.config/pip /root/.config/uv
       - |
-        if [ -n "${CA_CERT_BUNDLE_S3_URI:-}" ]; then
-          echo "Installing CA certificate bundle from $CA_CERT_BUNDLE_S3_URI..."
-          aws s3 cp "$CA_CERT_BUNDLE_S3_URI" /tmp/ca-bundle.tar.gz
+        if [ -n "${CA_CERT_S3_URI:-}" ]; then
+          echo "Installing CA certificate bundle from $CA_CERT_S3_URI..."
+          aws s3 cp "$CA_CERT_S3_URI" /tmp/ca-bundle.tar.gz
           tar xzf /tmp/ca-bundle.tar.gz -C /etc/pki/ca-trust/source/anchors/
           update-ca-trust extract
         fi
