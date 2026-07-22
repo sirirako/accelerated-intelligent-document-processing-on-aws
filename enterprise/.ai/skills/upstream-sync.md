@@ -240,6 +240,7 @@ print('YAML valid')
 - [ ] Dockerfile ARGs present and defaults match upstream's base image version
 - [ ] Buildspec install-phase guards present
 - [ ] **CRITICAL: `patterns/unified/buildspec.yml` has NO `docker buildx create` or `moby/buildkit`** (air-gapped customer can't pull from Docker Hub — use default builder)
+- [ ] **CRITICAL: buildspec has NO `INSTALL_GIT=true`** (dnf install reaches cdn.amazonlinux.com — blocked in air-gapped)
 - [ ] Buildspec uses `docker --config /root/.config/docker` on ALL docker commands (ECR login + buildx build)
 - [ ] Buildspec has `BASE_IMAGE_ARGS` logic (checks `LAMBDA_BASE_IMAGE` for full image:tag vs registry prefix)
 - [ ] Buildspec has `SECRET_ARGS` for `--secret id=pipconf,cacert,uvconf` mounts
