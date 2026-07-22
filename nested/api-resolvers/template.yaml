@@ -3260,7 +3260,10 @@ Resources:
 Outputs:
   HttpApiEndpoint:
     Description: Base URL of the REST API transport (stage 'api')
-    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/api"
+    Value: !If
+      - IsPrivateApi
+      - !Sub "https://${HttpApi}-${ApiGatewayVpcEndpointId}.execute-api.${AWS::Region}.${AWS::URLSuffix}/api"
+      - !Sub "https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/api"
 
   TestResultsResolverFunctionArn:
     Description: ARN of the Test Results Resolver Lambda function
