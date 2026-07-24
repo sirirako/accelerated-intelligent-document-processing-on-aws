@@ -35,7 +35,7 @@ Exception: VPC endpoints (`AWS::EC2::VPCEndpoint`) are allowed.
 - Every `AWS::IAM::Role` must have `PermissionsBoundary` (conditional on param)
 - No `iam:*` wildcard actions
 - No `Resource: "*"` on write actions (read-only wildcards are acceptable)
-- No roles without the `EnterprisePermissionsBoundary` boundary
+- No roles without the required permissions boundary (set via `PermissionsBoundaryArn` parameter)
 
 ### External endpoints (NEVER reach from build/runtime)
 - Docker Hub (moby/buildkit, any docker pull without --config)

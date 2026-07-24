@@ -46,7 +46,7 @@ These will pass in our test account but FAIL at customer:
 - `LambdaArchitecture=x86_64` (native builds, no cross-compilation)
 - VPC endpoint required for private API access (vpce-id format URL)
 - TLS inspection on outbound traffic (requires CA cert injection)
-- Permissions boundary on all IAM roles (`EnterprisePermissionsBoundary`)
+- Permissions boundary on all IAM roles (set via `PermissionsBoundaryArn` parameter)
 - Bedrock deny on `anthropic.*` models — must use Amazon Nova
 - `WebUIHosting=APIGateway` (ALB removed in v0.6.1)
 - `CreateTestVpc=false` on pipeline (no NAT Gateway, no VPC quota usage)

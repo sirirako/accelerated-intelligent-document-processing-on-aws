@@ -1,11 +1,11 @@
 # Get a JWT token from PingFederate
-# Supports both password grant (customer) and client_credentials grant
+# Supports both password grant and client_credentials grant
 #
-# Password grant (customer's Ping):
+# Password grant:
 #   .\Get-PingToken.ps1 -TokenEndpoint "https://ping.example.com/as/token.oauth2" -ClientId "..." -ClientSecret "..." -Username "..." -Password "..."
 #
 # Client credentials grant:
-#   .\Get-PingToken.ps1 -TokenEndpoint "https://..." -ClientId "..." -ClientSecret "..." -GrantType client_credentials
+#   .\Get-PingToken.ps1 -TokenEndpoint "https://ping.example.com/as/token.oauth2" -ClientId "..." -ClientSecret "..." -GrantType client_credentials
 
 param(
     [Parameter(Mandatory=$true)]
@@ -26,7 +26,7 @@ param(
 
     [string]$Scope = "edit",
 
-    [string]$ValidatorId = "VALIDATOR_ID"
+    [string]$ValidatorId = ""
 )
 
 $body = @{
@@ -46,7 +46,9 @@ if ($GrantType -eq "password") {
     }
     $body.username = $Username
     $body.password = $Password
-    $body.validator_id = $ValidatorId
+    if ($ValidatorId) {
+        $body.validator_id = $ValidatorId
+    }
 }
 
 try {
