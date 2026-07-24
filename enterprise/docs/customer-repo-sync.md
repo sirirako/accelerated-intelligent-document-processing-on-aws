@@ -42,28 +42,39 @@ git add -A
 git commit -m "upstream: v0.2.6"
 ```
 
-### Step 2: Merge into main
+### Step 2: Merge main INTO the release branch
+
+This brings the customer's local changes forward onto the new release code.
+Conflicts are resolved here — not on main.
 
 ```powershell
-git checkout main
-git merge upstream-v0.2.6
+git merge main
 ```
 
-If there are conflicts (customer's local changes vs our update), resolve them,
-then:
+If there are conflicts (customer's changes vs our update), resolve them:
 
 ```powershell
 git add -A
 git commit
 ```
 
-### Step 3: Push
+### Step 3: Test on the release branch
+
+Run the pipeline from this branch to verify everything works together
+(customer's changes + new release). Fix any issues on this branch.
+
+### Step 4: Merge to main (should be clean)
 
 ```powershell
+git checkout main
+git merge upstream-v0.2.6
 git push origin main
 ```
 
-### Step 4: Clean up the branch (optional)
+This should be a fast-forward or clean merge since all conflicts were already
+resolved in Step 2.
+
+### Step 5: Clean up the branch (optional)
 
 ```powershell
 git branch -d upstream-v0.2.6
@@ -108,11 +119,15 @@ enterprise/develop             main
       │                           │
       ├─ release zip ──────────►  ├─ upstream-v0.2.5 (from zip)
       │                           │       │
-      │                           │       └─── merge ──► main
+      │                           │       ├── merge main in (resolve conflicts)
+      │                           │       ├── test on this branch
+      │                           │       └── merge to main (clean)
       │                           │                        │
       │                           │              customer commits
       │                           │                        │
       ├─ release zip ──────────►  ├─ upstream-v0.2.6 (from zip)
       │                           │       │
-      │                           │       └─── merge ──► main
+      │                           │       ├── merge main in (resolve conflicts)
+      │                           │       ├── test on this branch
+      │                           │       └── merge to main (clean)
 ```
