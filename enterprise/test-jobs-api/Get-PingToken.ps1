@@ -27,7 +27,7 @@ if ($Scope) {
 try {
     $response = Invoke-RestMethod -Uri $TokenEndpoint -Method POST -Body $body -ContentType "application/x-www-form-urlencoded"
 
-    Write-Host "✅ Token retrieved successfully" -ForegroundColor Green
+    Write-Host "[OK] Token retrieved successfully" -ForegroundColor Green
     Write-Host ""
     Write-Host "Access Token:"
     Write-Host $response.access_token
@@ -57,10 +57,10 @@ try {
     # Copy to clipboard
     $response.access_token | Set-Clipboard
     Write-Host ""
-    Write-Host "📋 Token copied to clipboard" -ForegroundColor Yellow
+    Write-Host "[COPIED] Token copied to clipboard" -ForegroundColor Yellow
 
 } catch {
-    Write-Host "❌ Failed to get token: $_" -ForegroundColor Red
+    Write-Host "[ERROR] Failed to get token: $_" -ForegroundColor Red
     if ($_.Exception.Response) {
         $reader = [System.IO.StreamReader]::new($_.Exception.Response.GetResponseStream())
         Write-Host $reader.ReadToEnd()
