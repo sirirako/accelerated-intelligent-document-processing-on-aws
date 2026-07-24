@@ -90,3 +90,10 @@ parameters:
 | DNS error in browser | Standard API URL | Use VPC endpoint URL format |
 | SSL CERTIFICATE_VERIFY_FAILED | Missing VPC endpoint | Add bedrock-data-automation endpoint |
 | ResourceExistenceCheck failed | Orphaned resources | Delete pipeline/role/KMS alias manually |
+
+## Logging
+
+After every deploy (success or failure), create/update an activity log:
+`enterprise/.ai/memory/activities/YYYY-MM-DD-deploy.md`
+
+Document: what was deployed, which account, success/failure, errors hit, fixes applied.
