@@ -136,3 +136,11 @@ When you can't determine the right resolution:
 - Explain what each side does
 - Let the human decide
 - Do NOT guess
+
+## Logging
+
+After the merge is complete (or abandoned), create/update an activity log:
+`enterprise/.ai/memory/activities/YYYY-MM-DD-customer-merge.md`
+
+Document: which release was merged, conflicts encountered, resolutions chosen,
+test results, whether it was merged to main or rolled back.

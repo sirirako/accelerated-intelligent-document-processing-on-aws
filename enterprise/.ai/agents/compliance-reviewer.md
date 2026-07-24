@@ -107,6 +107,10 @@ Format as:
 - No violations found in <N> files reviewed
 ```
 
+### 5. Log
+Create/update activity: `enterprise/.ai/memory/activities/YYYY-MM-DD-compliance-review.md`
+Document what was reviewed, violations found, and resolution status.
+
 ## Examples of past violations
 
 | What | Where | Impact |
