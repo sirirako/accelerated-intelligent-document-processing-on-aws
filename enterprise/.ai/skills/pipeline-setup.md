@@ -177,7 +177,7 @@ zip -r /tmp/code.zip . \
 
 **Windows (PowerShell) — use Python (WinZip strips Unix permissions):**
 ```powershell
-python -c "import zipfile,os;exc={'.git','__pycache__','.venv','node_modules','.mypy_cache','dist','build','.tox'};zf=zipfile.ZipFile('code.zip','w',zipfile.ZIP_DEFLATED);[zf.write(os.path.join(r,f),os.path.join(r,f).replace(os.sep,'/')) for r,d,fs in os.walk('.') if not d.__setitem__(slice(None),[x for x in d if x not in exc]) for f in fs if not f.endswith('.pyc')];zf.close();print('Done')"
+python -c "import zipfile,os;exc={'.git','__pycache__','.venv','node_modules','.mypy_cache','dist','build','.tox'};zf=zipfile.ZipFile('code.zip','w',zipfile.ZIP_DEFLATED);[zf.write(os.path.join(r,f),os.path.join(r,f).replace(os.sep,'/')) for r,d,fs in os.walk('.') if not d.__setitem__(slice(None),[x for x in d if x not in exc]) for f in fs if not f.endswith('.pyc') and f!='code.zip'];zf.close();print('Done')"
 ```
 
 > **Why Python on Windows?** WinZip and `Compress-Archive` strip Unix file permissions (execute bits). Python's `zipfile` preserves forward-slash paths and avoids permission issues in CodeBuild.
