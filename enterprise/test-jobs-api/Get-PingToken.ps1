@@ -1,5 +1,11 @@
-# Get a JWT token from PingFederate (client credentials flow)
-# Usage: .\Get-PingToken.ps1 -TokenEndpoint "https://..." -ClientId "..." -ClientSecret "..."
+# Get a JWT token from PingFederate
+# Supports both password grant (customer) and client_credentials grant
+#
+# Password grant (customer's Ping):
+#   .\Get-PingToken.ps1 -TokenEndpoint "https://ping.example.com/as/token.oauth2" -ClientId "..." -ClientSecret "..." -Username "..." -Password "..."
+#
+# Client credentials grant:
+#   .\Get-PingToken.ps1 -TokenEndpoint "https://..." -ClientId "..." -ClientSecret "..." -GrantType client_credentials
 
 param(
     [Parameter(Mandatory=$true)]
@@ -11,17 +17,36 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$ClientSecret,
 
-    [string]$Scope = ""
+    [string]$Username = "",
+
+    [string]$Password = "",
+
+    [ValidateSet("password", "client_credentials")]
+    [string]$GrantType = "password",
+
+    [string]$Scope = "edit",
+
+    [string]$ValidatorId = "VALIDATOR_ID"
 )
 
 $body = @{
-    grant_type    = "client_credentials"
+    grant_type    = $GrantType
     client_id     = $ClientId
     client_secret = $ClientSecret
 }
 
 if ($Scope) {
     $body.scope = $Scope
+}
+
+if ($GrantType -eq "password") {
+    if (-not $Username -or -not $Password) {
+        Write-Host "[ERROR] Username and Password are required for password grant" -ForegroundColor Red
+        exit 1
+    }
+    $body.username = $Username
+    $body.password = $Password
+    $body.validator_id = $ValidatorId
 }
 
 try {
@@ -32,14 +57,19 @@ try {
     Write-Host "Access Token:"
     Write-Host $response.access_token
     Write-Host ""
-    Write-Host "Expires in: $($response.expires_in) seconds"
-    Write-Host "Token type: $($response.token_type)"
+    if ($response.expires_in) {
+        Write-Host "Expires in: $($response.expires_in) seconds"
+    }
+    if ($response.token_type) {
+        Write-Host "Token type: $($response.token_type)"
+    }
 
     # Decode payload (base64 middle section) for inspection
     $parts = $response.access_token.Split(".")
     if ($parts.Length -ge 2) {
         $payload = $parts[1]
-        # Fix base64 padding
+        # Fix base64url padding
+        $payload = $payload.Replace("-", "+").Replace("_", "/")
         $padding = 4 - ($payload.Length % 4)
         if ($padding -ne 4) { $payload += "=" * $padding }
         $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($payload))
@@ -52,6 +82,7 @@ try {
         Write-Host "  exp: $($json.exp)"
         if ($json.userRoles) { Write-Host "  userRoles: $($json.userRoles -join ', ')" }
         if ($json.memberOf) { Write-Host "  memberOf: $($json.memberOf -join ', ')" }
+        if ($json.scope) { Write-Host "  scope: $($json.scope)" }
     }
 
     # Copy to clipboard
