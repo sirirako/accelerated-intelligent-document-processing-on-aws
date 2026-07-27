@@ -1,0 +1,21 @@
+# Copy to .env_api_ping and fill in values
+# Ping token endpoint
+TOKEN_ENDPOINT=https://ping.example.com/as/token.oauth2
+
+# OAuth client credentials
+CLIENT_ID=<your-client-id>
+CLIENT_SECRET=<your-client-secret>
+
+# Grant type: "password" or "client_credentials"
+GRANT_TYPE=password
+
+# For password grant only:
+USERNAME=<your-username>
+PASSWORD=<your-password>
+VALIDATOR_ID=
+
+# OAuth scope
+SCOPE=edit
+
+# IDP Jobs API endpoint (VPC endpoint format for private API)
+API_ENDPOINT=https://<api-id>-<vpce-id>.execute-api.us-east-1.amazonaws.com/beta
