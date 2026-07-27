@@ -51,6 +51,16 @@ These will pass in our test account but FAIL at customer:
 - `WebUIHosting=APIGateway` (ALB removed in v0.6.1)
 - `CreateTestVpc=false` on pipeline (no NAT Gateway, no VPC quota usage)
 
+## Ping authorizer specifics
+
+- Customer uses **password grant** (not client_credentials) with username/password + client ID/secret
+- Token endpoint: Ping's `/as/token.oauth2`
+- TLS inspection intercepts JWKS fetch — authorizer needs `CA_CERT_PATH=/var/task/ca-bundle.pem`
+- `PingRequiredRoles` is MANDATORY after security hardening (fail-closed if empty)
+- Algorithms: ES256/RS256 only (HS256 removed — algorithm-confusion attack surface)
+- Token must have `exp` and `iss` claims (enforced, no longer optional)
+- Enterprise functions/layers use `!Ref LambdaArchitecture` (not hardcoded arm64)
+
 ## Pipeline template — hardcoded names that orphan on delete
 
 If redeploying pipeline with same PipelineName after a failed delete, manually remove:

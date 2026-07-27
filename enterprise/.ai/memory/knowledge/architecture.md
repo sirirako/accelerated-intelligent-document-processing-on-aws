@@ -27,7 +27,7 @@ processing logic (OCR, classification, extraction, assessment).
 
 ## Enterprise additions
 
-- **Ping JWT authorizer** — replaces Cognito on Jobs API (multi-issuer, role-based)
+- **Ping JWT authorizer** — replaces Cognito on Jobs API (multi-issuer, role-based, CA cert support for TLS inspection)
 - **Completion hook** — publishes to Amazon MQ (RabbitMQ + Ping OAuth2) on workflow complete
 - **Per-job configurationVersion** — callers specify which config version to process with
 - **Private registry** — Dockerfile/buildspec/template params for internal registries
