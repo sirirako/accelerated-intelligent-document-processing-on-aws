@@ -7,6 +7,7 @@ authorizer (headers: Authorization Bearer, custom token header, x-jwt-token).
 
 import logging
 import os
+import ssl
 
 import jwt
 from jwt import PyJWKClient
@@ -15,6 +16,27 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 _jwks_clients = {}
+
+def _get_ssl_context():
+    """Build SSL context, optionally trusting a custom CA bundle.
+
+    CA cert provided via:
+    - CA_CERT_PATH env var: path to a PEM file bundled with the function code
+    - DISABLE_SSL_VERIFY=true: skip verification entirely (testing only)
+    """
+    ca_path = os.getenv("CA_CERT_PATH", "")
+
+    if ca_path and os.path.exists(ca_path):
+        ctx = ssl.create_default_context(cafile=ca_path)
+    elif os.getenv("DISABLE_SSL_VERIFY", "").lower() in ("1", "true"):
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    else:
+        ctx = None
+    return ctx
+
+_ssl_context = _get_ssl_context()
 
 ISSUER_CONFIG = {
     os.getenv("ISSUER1", ""): os.getenv("JWKSURI1", ""),
@@ -90,7 +112,8 @@ def _validate_token(token):
         try:
             if jwks_url not in _jwks_clients:
                 _jwks_clients[jwks_url] = PyJWKClient(
-                    jwks_url, cache_keys=True, max_cached_keys=50, lifespan=3600
+                    jwks_url, cache_keys=True, max_cached_keys=50, lifespan=3600,
+                    ssl_context=_ssl_context,
                 )
 
             client = _jwks_clients[jwks_url]
