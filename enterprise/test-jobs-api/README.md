@@ -51,10 +51,52 @@ python test_jobs_api.py test-doc.zip
 python test_jobs_api.py test-doc.zip v2
 ```
 
+## Ping Auth (Enterprise)
+
+For deployments using Ping JWT authorizer (`EnableHeadless=true`):
+
+### Setup
+
+```bash
+cp env_api_ping.example .env_api_ping
+# Edit with Ping token endpoint, client ID/secret, username/password, API endpoint
+```
+
+### Run (PowerShell)
+
+```powershell
+# Full flow (gets token + tests API)
+.\test_jobs_api_ping.ps1 -ZipFile "test-doc.zip"
+
+# With a pre-fetched token
+.\Get-PingToken.ps1 -TokenEndpoint "https://..." -ClientId "..." -ClientSecret "..." -Username "..." -Password "..."
+.\test_jobs_api_ping.ps1 -ZipFile "test-doc.zip" -Token (Get-Clipboard)
+```
+
+### Run (Python)
+
+```bash
+python test_jobs_api_ping.py test-doc.zip
+
+# With pre-fetched token
+python test_jobs_api_ping.py test-doc.zip --token <jwt>
+```
+
+### Get a token only (for API Gateway console testing)
+
+```powershell
+.\Get-PingToken.ps1 -TokenEndpoint "https://..." -ClientId "..." -ClientSecret "..." -Username "..." -Password "..."
+# Token is decoded and copied to clipboard
+```
+
+---
+
 ## Notes
 
 - The Jobs API is a **Private API Gateway** — run the script from inside the VPC (WorkSpace, bastion, VPN)
+- For Ping auth: use the VPC endpoint URL format (`https://<api-id>-<vpce-id>.execute-api...`)
 - The Cognito token endpoint is public — token acquisition works from anywhere
+- The Ping token endpoint may require VPC access (depends on customer network)
 - Results are saved to `output/results.zip` and extracted to `output/results/`
 
 ## Output structure
