@@ -34,8 +34,17 @@
 - Changes: enforce exp/iss, fail-closed roles, drop HS256, strict issuer binding, coerce roles to set
 - `PingRequiredRoles` is now MANDATORY (empty = deny all)
 
+## Completion hook rewritten for ActiveMQ
+- Replaced RabbitMQ (pika/AMQP) with ActiveMQ (stomp.py/STOMP+SSL on port 61617)
+- Replaced client_credentials grant with ROPC (AD username/password from Secrets Manager)
+- New params: UsernameSecretArn, PasswordSecretArn, Scope, ValidatorId, Destination
+- Layer: stomp.py==8.2.0 replaces pika==1.3.2
+- build.sh updated (no --only-binary for pure Python stomp.py)
+- Test script: test_activemq.py for standalone broker testing
+- JFrog needs: stomp.py, docopt, websocket-client wheels
+
 ## Status
 - SAML Ping federation for UI: working
-- Jobs API Ping authorizer: deployed with hardened code, needs testing with real Ping token
-- Completion hook: needs update — customer uses ActiveMQ (not RabbitMQ) with ROPC grant
+- Jobs API Ping authorizer: hardened code deployed, needs testing with real Ping token
+- Completion hook: rewritten for ActiveMQ+ROPC, needs testing against customer's broker
 - pandas pinned to 3.0.3 at customer (3.0.5 wheel not in JFrog for cp312)
