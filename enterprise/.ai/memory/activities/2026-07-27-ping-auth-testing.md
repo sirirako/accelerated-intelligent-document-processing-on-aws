@@ -28,7 +28,14 @@
 - Permissions boundary blocks Anthropic models — must use Amazon Nova
 - Robert's layer refactor uses `BuildArchitecture: arm64` which is wrong for customer (x86_64) — deferred
 
+## Security hardening merged (cherry-pick from enterprise/securityreview)
+- Cherry-picked `b111ad15` (auth hardening) — merged with our CA cert support
+- Skipped `a25b05fd` (layer refactor) — uses arm64 BuildArchitecture, changes build model
+- Changes: enforce exp/iss, fail-closed roles, drop HS256, strict issuer binding, coerce roles to set
+- `PingRequiredRoles` is now MANDATORY (empty = deny all)
+
 ## Status
 - SAML Ping federation for UI: working
-- Jobs API Ping authorizer: deployed, needs testing with real Ping token
-- Completion hook: not yet tested (waiting for MQ broker)
+- Jobs API Ping authorizer: deployed with hardened code, needs testing with real Ping token
+- Completion hook: needs update — customer uses ActiveMQ (not RabbitMQ) with ROPC grant
+- pandas pinned to 3.0.3 at customer (3.0.5 wheel not in JFrog for cp312)

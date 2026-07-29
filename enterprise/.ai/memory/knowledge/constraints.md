@@ -53,13 +53,23 @@ These will pass in our test account but FAIL at customer:
 
 ## Ping authorizer specifics
 
-- Customer uses **password grant** (not client_credentials) with username/password + client ID/secret
+- Customer uses **password grant** (ROPC) with username/password + client ID/secret + validator_id
+- `validator_id` is a PingFederate param that selects which password validator to use (e.g. LDAP)
 - Token endpoint: Ping's `/as/token.oauth2`
 - TLS inspection intercepts JWKS fetch — authorizer needs `CA_CERT_PATH=/var/task/ca-bundle.pem`
 - `PingRequiredRoles` is MANDATORY after security hardening (fail-closed if empty)
 - Algorithms: ES256/RS256 only (HS256 removed — algorithm-confusion attack surface)
 - Token must have `exp` and `iss` claims (enforced, no longer optional)
+- Strict per-issuer JWKS binding — no fallback probing of other issuers
+- Role claims coerced to set (prevents substring matching bypass)
+- 30s leeway on expiry for clock drift
 - Enterprise functions/layers use `!Ref LambdaArchitecture` (not hardcoded arm64)
+
+## Completion hook (ActiveMQ)
+
+- Customer uses **ActiveMQ** (not RabbitMQ) — protocol TBD (STOMP? AMQP 1.0?)
+- Auth to MQ uses ROPC grant (same as API auth — needs username/password + client creds)
+- Current code uses pika (AMQP 0-9-1 for RabbitMQ) — needs update for ActiveMQ
 
 ## Pipeline template — hardcoded names that orphan on delete
 
