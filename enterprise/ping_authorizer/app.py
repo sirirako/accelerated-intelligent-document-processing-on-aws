@@ -48,7 +48,10 @@ ISSUER_CONFIG = {k: v for k, v in ISSUER_CONFIG.items() if k and v}
 REQUIRED_ROLES = [
     r.strip() for r in os.getenv("REQUIRED_ROLES", "").split(",") if r.strip()
 ]
-ALGORITHMS = ["ES256", "RS256", "HS256"]
+# Asymmetric algorithms only. HS256 must never be accepted alongside JWKS-sourced
+# (public) keys — doing so enables an algorithm-confusion forgery where the public
+# key is used as the HMAC secret.
+ALGORITHMS = ["ES256", "RS256"]
 
 
 def handler(event, context):
@@ -104,63 +107,58 @@ def _extract_token(event):
 
 def _validate_token(token):
     """Validate JWT with multiple issuer support."""
-    jwks_client = None
-    token_issuer = None
-    last_exception = None
+    # Read the (unverified) issuer claim WITHOUT trusting it, only to select the
+    # matching JWKS. The authoritative decode below re-verifies iss against the
+    # signing key, so a forged iss cannot escape its own issuer's JWKS.
+    try:
+        unverified_issuer = jwt.decode(token, options={"verify_signature": False}).get(
+            "iss"
+        )
+    except jwt.InvalidTokenError as e:
+        return False, None, f"Malformed token: {e}"
 
-    for issuer, jwks_url in ISSUER_CONFIG.items():
-        try:
-            if jwks_url not in _jwks_clients:
-                _jwks_clients[jwks_url] = PyJWKClient(
-                    jwks_url, cache_keys=True, max_cached_keys=50, lifespan=3600,
-                    ssl_context=_ssl_context,
-                )
-
-            client = _jwks_clients[jwks_url]
-            signing_key = client.get_signing_key_from_jwt(token)
-
-            temp_payload = jwt.decode(
-                token,
-                signing_key.key,
-                algorithms=ALGORITHMS,
-                options={"verify_exp": False, "verify_aud": False},
-            )
-            token_issuer = temp_payload.get("iss")
-
-            if token_issuer == issuer or token_issuer in ISSUER_CONFIG:
-                jwks_client = client
-                break
-        except Exception as e:
-            logger.info(f"Issuer {issuer} did not match: {type(e).__name__}: {e}")
-            last_exception = e
-            continue
-
-    if not token_issuer or token_issuer not in ISSUER_CONFIG:
-        if last_exception:
-            return False, None, str(last_exception)
-        return False, None, f"Unknown issuer: {token_issuer}"
+    jwks_url = ISSUER_CONFIG.get(unverified_issuer)
+    if not jwks_url:
+        # Do not fall back to probing other issuers — strict per-issuer binding.
+        return False, None, f"Unknown issuer: {unverified_issuer}"
+    token_issuer = unverified_issuer
 
     try:
-        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        if jwks_url not in _jwks_clients:
+            _jwks_clients[jwks_url] = PyJWKClient(
+                jwks_url, cache_keys=True, max_cached_keys=50, lifespan=3600,
+                ssl_context=_ssl_context,
+            )
+        signing_key = _jwks_clients[jwks_url].get_signing_key_from_jwt(token)
         payload = jwt.decode(
             token,
             signing_key.key,
             algorithms=ALGORITHMS,
             issuer=token_issuer,
-            options={"verify_exp": False, "verify_aud": False},
+            # verify_exp/nbf default to True. Require exp+iss so a token missing
+            # them is rejected rather than silently accepted.
+            options={"require": ["exp", "iss"], "verify_aud": False},
+            leeway=30,
         )
     except jwt.InvalidTokenError as e:
         return False, None, f"Token validation failed: {e}"
+    except Exception as e:  # signing-key resolution / network errors -> fail closed
+        return False, None, f"Token validation error: {type(e).__name__}"
 
-    # Role / entitlement check (skip if no roles configured)
-    if REQUIRED_ROLES:
-        user_roles = payload.get("userRoles", []) or payload.get("memberOf", [])
-        if not any(role in user_roles for role in REQUIRED_ROLES):
-            return (
-                False,
-                None,
-                f"User {payload.get('sub')} lacks required entitlements",
-            )
+    # Role / entitlement check. Fail CLOSED: if no roles are configured, deny.
+    if not REQUIRED_ROLES:
+        return False, None, "No REQUIRED_ROLES configured; denying by default"
+
+    user_roles = payload.get("userRoles") or payload.get("memberOf") or []
+    if isinstance(user_roles, str):
+        user_roles = [user_roles]
+    user_roles = set(user_roles)
+    if not any(role in user_roles for role in REQUIRED_ROLES):
+        return (
+            False,
+            None,
+            f"User {payload.get('sub')} lacks required entitlements",
+        )
 
     return True, payload, None
 
