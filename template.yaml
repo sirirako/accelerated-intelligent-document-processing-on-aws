@@ -1107,42 +1107,25 @@ Parameters:
     Type: String
     Default: ""
     Description: >-
-      Amazon MQ broker hostname (e.g. b-xxxx.mq.us-east-1.amazonaws.com).
+      ActiveMQ broker hostname (e.g. amq-broker.internal.example.com).
       Required when EnableCompletionHook=true.
 
   CompletionHookMQPort:
     Type: String
-    Default: "5671"
-    Description: "AMQPS port for the RabbitMQ broker."
+    Default: "61617"
+    Description: "ActiveMQ SSL port (OpenWire/STOMP over SSL)."
 
-  CompletionHookMQVhost:
+  CompletionHookMQDestination:
     Type: String
-    Default: "/"
-    Description: "RabbitMQ virtual host."
-
-  CompletionHookMQExchange:
-    Type: String
-    Default: ""
-    Description: "RabbitMQ exchange to publish to (empty = default exchange)."
-
-  CompletionHookMQRoutingKey:
-    Type: String
-    Default: "idp.document.completed"
-    Description: "RabbitMQ routing key for completion messages."
-
-  CompletionHookMQOAuthScope:
-    Type: String
-    Default: ""
-    Description: >-
-      OAuth2 scope to request from Ping for the MQ connection (e.g.
-      idp-mq.write:%2F/idp-events).
+    Default: "/queue/idp.document.completed"
+    Description: "ActiveMQ destination (queue or topic)."
 
   CompletionHookPingTokenUrl:
     Type: String
     Default: ""
     Description: >-
-      Ping token endpoint URL for client-credentials grant (e.g.
-      https://sso.corp.example.com/as/token). Required when
+      Ping token endpoint URL for ROPC grant (e.g.
+      https://ping.example.com/as/token.oauth2). Required when
       EnableCompletionHook=true.
 
   CompletionHookPingClientId:
@@ -1159,6 +1142,32 @@ Parameters:
     Description: >-
       Secrets Manager ARN containing the Ping client secret for the
       completion hook. Required when EnableCompletionHook=true.
+
+  CompletionHookPingUsernameSecretArn:
+    Type: String
+    Default: ""
+    AllowedPattern: "^(|arn:aws[a-z-]*:secretsmanager:.*)$"
+    Description: >-
+      Secrets Manager ARN containing the AD username for ROPC token grant.
+      Required when EnableCompletionHook=true.
+
+  CompletionHookPingPasswordSecretArn:
+    Type: String
+    Default: ""
+    AllowedPattern: "^(|arn:aws[a-z-]*:secretsmanager:.*)$"
+    Description: >-
+      Secrets Manager ARN containing the AD password for ROPC token grant.
+      Required when EnableCompletionHook=true.
+
+  CompletionHookPingScope:
+    Type: String
+    Default: ""
+    Description: "OAuth2 scope for the MQ token request (optional)."
+
+  CompletionHookPingValidatorId:
+    Type: String
+    Default: ""
+    Description: "PingFederate password validator ID for ROPC grant (optional)."
 
   # =========================================================================
   # === Enterprise Integration — END ========================================
@@ -2084,18 +2093,23 @@ Resources:
           PING_TOKEN_URL: !Ref CompletionHookPingTokenUrl
           PING_CLIENT_ID: !Ref CompletionHookPingClientId
           PING_CLIENT_SECRET_ARN: !Ref CompletionHookPingClientSecretArn
-          MQ_OAUTH_SCOPE: !Ref CompletionHookMQOAuthScope
+          PING_USERNAME_SECRET_ARN: !Ref CompletionHookPingUsernameSecretArn
+          PING_PASSWORD_SECRET_ARN: !Ref CompletionHookPingPasswordSecretArn
+          PING_SCOPE: !Ref CompletionHookPingScope
+          PING_VALIDATOR_ID: !Ref CompletionHookPingValidatorId
           MQ_HOST: !Ref CompletionHookMQHost
           MQ_PORT: !Ref CompletionHookMQPort
-          MQ_VHOST: !Ref CompletionHookMQVhost
-          MQ_EXCHANGE: !Ref CompletionHookMQExchange
-          MQ_ROUTING_KEY: !Ref CompletionHookMQRoutingKey
+          MQ_DESTINATION: !Ref CompletionHookMQDestination
+          MQ_CA_CERT_PATH: /var/task/ca-bundle.pem
       Policies:
         - Statement:
             - Effect: Allow
               Action:
                 - secretsmanager:GetSecretValue
-              Resource: !Ref CompletionHookPingClientSecretArn
+              Resource:
+                - !Ref CompletionHookPingClientSecretArn
+                - !Ref CompletionHookPingUsernameSecretArn
+                - !Ref CompletionHookPingPasswordSecretArn
       Tracing: Active
 
   ##########################################################################

@@ -1,0 +1,19 @@
+# Copy to .env_activemq and fill in values
+
+# ActiveMQ broker
+MQ_HOST=amq-broker.example.com
+MQ_PORT=61617
+MQ_DESTINATION=/queue/idp.document.completed
+MQ_DISABLE_HOST_VERIFY=false
+
+# Ping token (ROPC grant)
+PING_TOKEN_URL=https://ping.example.com/as/token.oauth2
+PING_CLIENT_ID=<client-id>
+PING_CLIENT_SECRET=<client-secret>
+PING_USERNAME=<ad-username>
+PING_PASSWORD=<ad-password>
+PING_SCOPE=
+PING_VALIDATOR_ID=
+
+# TLS (optional — for corporate proxy/self-signed certs)
+CA_CERT_PATH=
