@@ -30,12 +30,15 @@ pip install -q -r "$PING_LAYER_DIR/requirements.txt" \
 echo "  ✓ ping_verifier layer ready"
 
 # --- STOMP layer (ActiveMQ client) ---
+# stomp.py deps (docopt, websocket-client) are pre-vendored in the layer
+# because docopt is not available as a wheel in the customer's JFrog.
+# Only stomp.py itself is installed via pip (--no-deps).
 STOMP_LAYER_DIR="$SCRIPT_DIR/layers/pika"
 mkdir -p "$STOMP_LAYER_DIR/python"
 echo "  Installing stomp.py into STOMP layer..."
-pip install -q -r "$STOMP_LAYER_DIR/requirements.txt" \
+pip install -q stomp.py==8.2.0 \
     -t "$STOMP_LAYER_DIR/python/" \
-    --upgrade
+    --no-deps --upgrade
 echo "  ✓ STOMP layer ready"
 
 echo ""
