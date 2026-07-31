@@ -25,8 +25,19 @@ Parameters:
     Type: String
     Description: 'Name of the target IDP stack to upload configurations to'
 
+  ConfigTableKmsKeyArn:
+    Type: String
+    Default: ''
+    Description: >-
+      Optional ARN of the customer-managed KMS key that encrypts the target
+      stack''s ConfigurationTable. Required when the IDP stack was deployed with
+      a customer-managed encryption key — the CodeBuild role needs kms:Decrypt
+      (read) and kms:GenerateDataKey (write) on it. Leave blank if the table
+      uses an AWS-owned/managed key.
+
 Conditions:
   CreateSourceBucket: !Equals ['', '']  # Always false — bucket must pre-exist
+  HasConfigTableKmsKey: !Not [!Equals [!Ref ConfigTableKmsKeyArn, '']]
 
 Resources:
   # =========================================================================
@@ -56,11 +67,27 @@ Resources:
                 Resource:
                   - !Sub 'arn:aws:s3:::${SourceBucketName}'
                   - !Sub 'arn:aws:s3:::${SourceBucketName}/*'
-              # CloudFormation — read stack outputs (idp-cli needs this)
+              # S3 — CodePipeline delivers the input artifact to CodeBuild via
+              # the artifact bucket, so CodeBuild must read (and write output
+              # artifacts) there. Without this the DOWNLOAD_SOURCE phase fails
+              # with AccessDenied on s3:GetObject.
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::${ArtifactBucket}'
+                  - !Sub 'arn:aws:s3:::${ArtifactBucket}/*'
+              # CloudFormation — read stack outputs + resources.
+              # idp_sdk resolves the ConfigurationTable physical id via
+              # list_stack_resources (ConfigOperation._get_config_table), so
+              # ListStackResources is required in addition to DescribeStacks.
               - Effect: Allow
                 Action:
                   - cloudformation:DescribeStacks
                   - cloudformation:ListStacks
+                  - cloudformation:ListStackResources
                 Resource:
                   - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${IdpStackName}*'
               # DynamoDB — write config to the IDP configuration table
@@ -72,6 +99,21 @@ Resources:
                   - dynamodb:Query
                 Resource:
                   - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${IdpStackName}-*'
+              # KMS — the ConfigurationTable is encrypted with the stack's
+              # customer-managed key, so GetItem needs Decrypt and PutItem/
+              # UpdateItem need GenerateDataKey. Only added when a key ARN is
+              # supplied (AWS-owned keys don't need an explicit grant).
+              - !If
+                - HasConfigTableKmsKey
+                - Effect: Allow
+                  Action:
+                    - kms:Decrypt
+                    - kms:Encrypt
+                    - kms:GenerateDataKey
+                    - kms:DescribeKey
+                  Resource:
+                    - !Ref ConfigTableKmsKeyArn
+                - !Ref 'AWS::NoValue'
               # SSM — read IDP settings (idp-cli config-upload reads stack settings)
               - Effect: Allow
                 Action:
@@ -120,7 +162,15 @@ Resources:
                 python: 3.12
               commands:
                 - pip install pyyaml boto3
-                - pip install -e lib/idp_cli_pkg 2>/dev/null || pip install idp-cli 2>/dev/null || echo "idp-cli not available, using direct upload"
+                # Install the LOCAL packages in dependency order. idp-cli's
+                # "idp-sdk" / "idp_common" requirements would otherwise resolve
+                # from PyPI (a 3.4kB idp-sdk stub, and no idp_common), so
+                # `from idp_sdk import IDPClient` fails at import and the CLI
+                # crashes with `click is None`. Installing local paths first
+                # satisfies those deps with the real code before idp-cli.
+                - pip install -e lib/idp_common_pkg
+                - pip install -e lib/idp_sdk
+                - pip install -e lib/idp_cli_pkg
             build:
               commands:
                 - python3 enterprise/config-pipeline/scripts/upload_configs.py

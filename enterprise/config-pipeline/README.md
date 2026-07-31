@@ -8,17 +8,23 @@ main deployment pipeline — configs change more often than infrastructure.
 
 ```
 S3 source bucket:
-├── configs/
-│   ├── lending-v1.yaml      ← config versions (extraction rules, schemas)
-│   ├── lending-v2.yaml
-│   └── claims-v1.yaml
-└── config-pipeline.yaml      ← (optional) which versions to upload
+├── configs/config.zip        ← zip of the WHOLE repo (see note below)
+└── deploy/config-pipeline.yaml  ← (optional) which versions to upload
 ```
 
-1. Drop/update `configs/config.zip` in S3 (zip of the configs/ directory)
+1. Drop/update `configs/config.zip` in S3
 2. Pipeline triggers automatically
 3. CodeBuild runs `upload_configs.py` → calls `idp-cli config-upload` for each config
 4. Done in seconds (no Docker build, no stack update)
+
+> **Important — what goes into `config.zip`:** the CodeBuild buildspec runs
+> `pip install -e lib/idp_cli_pkg` and
+> `python3 enterprise/config-pipeline/scripts/upload_configs.py`, and the
+> script globs `configs/*.yaml` relative to the artifact root. CodeBuild
+> extracts `config.zip` to the build root, so the zip must contain the whole
+> repo tree (`lib/idp_cli_pkg/`, `enterprise/config-pipeline/scripts/`, and
+> `configs/*.yaml`) — not just the `configs/` directory. See "Trigger the
+> pipeline" below.
 
 ## Deploy the pipeline
 
@@ -35,21 +41,24 @@ aws cloudformation deploy \
 ## Trigger the pipeline
 
 ```bash
-# Zip your configs and upload
-cd configs/
-zip ../config.zip *.yaml
-aws s3 cp ../config.zip s3://<source-bucket>/configs/config.zip
+# Put the config YAMLs you want to promote in configs/, then zip the WHOLE
+# repo (the buildspec needs lib/idp_cli_pkg and enterprise/config-pipeline/).
+# Run from the repo root:
+zip -r config.zip . -x '.git/*' -x '*/node_modules/*'
+aws s3 cp config.zip s3://<source-bucket>/configs/config.zip
 ```
 
 The pipeline triggers automatically on upload.
 
 ## Pipeline config (optional)
 
-If `config-pipeline.yaml` exists in the source bucket root, the pipeline
-reads it to determine which configs to upload:
+If `deploy/config-pipeline.yaml` exists in the source bucket (the key is
+configurable via the `ConfigPipelineConfigKey` template parameter, default
+`deploy/config-pipeline.yaml`), the pipeline reads it to determine which
+configs to upload:
 
 ```yaml
-# config-pipeline.yaml
+# deploy/config-pipeline.yaml
 stack_name: idp-prod                # override target stack
 config_versions:                    # only upload these (skip others)
   - lending-v2
