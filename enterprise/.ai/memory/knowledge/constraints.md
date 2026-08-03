@@ -67,9 +67,106 @@ These will pass in our test account but FAIL at customer:
 
 ## Completion hook (ActiveMQ)
 
-- Customer uses **ActiveMQ** (not RabbitMQ) — protocol TBD (STOMP? AMQP 1.0?)
-- Auth to MQ uses ROPC grant (same as API auth — needs username/password + client creds)
-- Current code uses pika (AMQP 0-9-1 for RabbitMQ) — needs update for ActiveMQ
+- Customer uses **ActiveMQ** (not RabbitMQ)
+- ⚠️ **UNRESOLVED: protocol mismatch.** The customer's broker URL is
+  `failover:(ssl://amq-lz1-broker.<redacted>:61617?verifyHostName=false)`.
+  That is **OpenWire over TLS**, not STOMP:
+  - `61617` is ActiveMQ's OpenWire-SSL port (STOMP+SSL is **61614**)
+  - `ssl://` is the Java/OpenWire client scheme (STOMP would be `stomp+ssl://`)
+  - `verifyHostName` is an OpenWire client option, not a STOMP one
+
+  Our client is `stomp.py`, which speaks **only STOMP** and cannot talk OpenWire.
+  There is no pure-Python OpenWire client.
+
+  Asked 2026-08-03 whether the broker supports STOMP; answer was *"We have not
+  validated STOMP protocol."* That means untested, **not** unavailable — so it is
+  still an open question, and one we can answer ourselves.
+
+  **The decisive question is Amazon MQ vs self-managed ActiveMQ:**
+  - **Amazon MQ** — STOMP+SSL on 61614 is enabled **by default** on every broker.
+    Nothing to turn on; "not validated" just means no one tried it.
+  - **Self-managed ActiveMQ on EC2** — connectors come from `activemq.xml`
+    `<transportConnectors>`; STOMP may genuinely be absent and require a config
+    change plus a broker restart.
+
+  The hostname (`amq-lz1-broker.<domain>`) is a custom domain, so it does not
+  reveal which — it could be a CNAME to an Amazon MQ endpoint (native form:
+  `b-<uuid>-1.mq.<region>.amazonaws.com`) or an EC2 host.
+
+  Do not wait on the answer: `enterprise/test-jobs-api/probe_mq_ports.py` probes
+  every ActiveMQ wire port (TCP → TLS → STOMP CONNECT) and reports which
+  protocols actually answer. Needs only network reach — no credentials, no JWT.
+  An `ERROR` frame counts as success: it proves a STOMP connector is live.
+
+  If STOMP is truly unavailable, stomp.py is the wrong client and the hook needs
+  rework (AMQP 1.0 on 5671 via `qpid-proton`, or a JMS bridge).
+
+  The earlier "STOMP over SSL, port 61617" note in this file was wrong — it
+  combined the right protocol with the OpenWire port. Do not trust `61617` as a
+  STOMP port anywhere (`app.py` default, `env_activemq.example`, skill docs).
+- Auth to MQ uses ROPC grant (same as API auth — needs username/password + client creds).
+  The Ping JWT is passed as the STOMP `passcode` with an empty `login`.
+- Client is `stomp.py==8.2.0` (pika/AMQP removed). Implementation:
+  `enterprise/completion_hook/mq_activemq.py`
+- Layer directory is still named `enterprise/layers/pika/` and the CFN layer is still
+  `EnterprisePikaLayer` — **legacy names, they contain stomp.py**. Rename is pending
+  (touches `build.sh` + template layer paths).
+- stomp.py needs `docopt` and `websocket-client` vendored into the layer (its CLI
+  imports them at package import time) — both must be in JFrog
+- Two independent TLS trust paths, each with its own env var. **Both must be set**
+  — the completion hook shipped with only `MQ_CA_CERT_PATH`, so every Ping token
+  fetch failed with `CERTIFICATE_VERIFY_FAILED` before the broker was ever reached:
+  - Ping token endpoint → `CA_CERT_PATH` (`ping_token.py`)
+  - ActiveMQ broker → `MQ_CA_CERT_PATH` (`mq_activemq.py`)
+  - `MQ_DISABLE_HOST_VERIFY=true` when the broker cert CN/SAN doesn't match the
+    hostname (customer's connection URL uses `verifyHostName=false`)
+- Lambda needs outbound security-group egress to 61617
+
+### CA bundle lives in the function code, NOT in a layer
+
+`CA_CERT_PATH=/var/task/ca-bundle.pem`. `/var/task/` is the function's `CodeUri`
+(`enterprise/completion_hook/`); Lambda **layers** mount at `/opt/`, so a bundle
+placed in a layer would land at `/opt/python/ca-bundle.pem` and never be found.
+Put `ca-bundle.pem` in the `CodeUri` directory. Do not expect to see it in the
+layer — `build.sh` does not copy it there.
+
+The bundle is customer-supplied (their corporate CA for TLS inspection) and
+exists **only in the customer's repo**, never in ours. Its absence upstream is
+expected, not a bug — which is why both readers now log loudly when the file is
+missing instead of silently falling back to the system CA store, where the only
+symptom is a bare `CERTIFICATE_VERIFY_FAILED: self-signed certificate in
+certificate chain`.
+
+Same pattern applies to `enterprise/ping_authorizer/` (also `/var/task/ca-bundle.pem`).
+
+### stomp.py TLS API — do not use `use_ssl=`/`ssl_context=`
+
+`stomp.Connection(..., use_ssl=True, ssl_context=ctx)` **does not exist** in
+stomp.py 8.x. Those kwargs are from other STOMP libraries; passing them raises
+`TypeError: unexpected keyword argument 'use_ssl'` before any network I/O. TLS is
+configured with `conn.transport.set_ssl(for_hosts=[(host, port)], ca_certs=...)`.
+
+`set_ssl()` alone is not sufficient here. The library builds its own SSLContext
+inline at connect time and offers only two modes:
+
+| `ca_certs` | Result |
+|-----------|--------|
+| set | `CERT_REQUIRED` **and** hostname verification on |
+| `None` | verification disabled entirely (`CERT_NONE`) |
+
+The customer's broker needs chain validation *with* the hostname check off —
+neither mode. `mq_activemq._ssl_context_override()` swaps `stomp.transport.ssl`
+for a shim returning our pre-built context, so `CERT_REQUIRED` +
+`check_hostname=False` survives.
+
+Gotcha: the library re-asserts `verify_mode` on whatever context it gets, derived
+solely from the truthiness of `ca_certs`. The `ca_certs` argument and the
+injected context must encode the *same* decision or the library silently
+overrides it (this is why `_build_ssl_context` returns both).
+
+`ConnectFailedException` with an empty message means a TLS failure the library
+swallowed inside its reconnect loop. Diagnose with `openssl s_client`, or
+`test_activemq.py --insecure` to confirm it's trust and not auth/network.
 
 ## Pipeline template — hardcoded names that orphan on delete
 
