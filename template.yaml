@@ -2100,7 +2100,17 @@ Resources:
           MQ_HOST: !Ref CompletionHookMQHost
           MQ_PORT: !Ref CompletionHookMQPort
           MQ_DESTINATION: !Ref CompletionHookMQDestination
+          # Two independent TLS trust paths. Both point at the CA bundle shipped
+          # in the function code (CodeUri -> /var/task/), which under TLS
+          # inspection must be the corporate CA, not a public bundle.
+          #   CA_CERT_PATH    -> Ping token endpoint (ping_token.py)
+          #   MQ_CA_CERT_PATH -> ActiveMQ broker     (mq_activemq.py)
+          CA_CERT_PATH: /var/task/ca-bundle.pem
           MQ_CA_CERT_PATH: /var/task/ca-bundle.pem
+          # The broker cert's CN/SAN does not match its hostname - the customer's
+          # own connection URL carries `?verifyHostName=false`. This skips only
+          # the hostname check; the CA chain is still fully validated.
+          MQ_DISABLE_HOST_VERIFY: "true"
       Policies:
         - Statement:
             - Effect: Allow

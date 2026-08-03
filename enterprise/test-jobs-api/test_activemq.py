@@ -13,8 +13,17 @@ Usage:
     python test_activemq.py --host amq-broker.example.com --port 61617 \
         --destination /queue/test --token <pre-fetched-jwt>
 
+Diagnosing TLS failures, in order:
+    1. --insecure                      does it connect at all? (skips ALL
+                                       validation - diagnostics only)
+    2. --ca-cert <corporate-ca-bundle> is the chain trusted?
+    3. add --no-verify-host            is only the hostname wrong?
+                                       (keeps chain validation)
+
 Requirements:
-    pip install stomp.py boto3 requests
+    stomp.py is used from enterprise/layers/pika/python if present (the exact
+    version the Lambda runs), so no pip install is needed. boto3/requests are
+    only needed if fetching secrets.
 """
 
 import argparse
@@ -78,21 +87,43 @@ def get_ping_token(token_url, client_id, client_secret, username, password,
 
 
 def test_stomp_connection(host, port, destination, token, message=None,
-                          ca_cert=None, disable_host_verify=False):
-    """Connect to ActiveMQ via STOMP+SSL and publish a test message."""
+                          ca_cert=None, disable_host_verify=False,
+                          insecure=False):
+    """Connect to ActiveMQ via STOMP+SSL and publish a test message.
+
+    Uses the same TLS setup as the Lambda (enterprise/completion_hook/
+    mq_activemq.py) so a pass here means the deployed hook will also connect.
+    stomp.py has no use_ssl=/ssl_context= arguments; TLS goes through
+    set_ssl() plus a context override. See that module's docstring.
+    """
+    # Prefer the vendored layer over a pip install: it is the exact stomp.py the
+    # Lambda runs, and it works air-gapped with no pip install step.
+    vendored = SCRIPT_DIR.parent / "layers" / "pika" / "python"
+    if (vendored / "stomp").is_dir():
+        sys.path.insert(0, str(vendored))
     import stomp
+
+    sys.path.insert(0, str(SCRIPT_DIR.parent / "completion_hook"))
+    import mq_activemq
 
     print(f"  Broker: {host}:{port}")
     print(f"  Destination: {destination}")
 
-    ssl_ctx = ssl.create_default_context()
-    if ca_cert and os.path.exists(ca_cert):
-        ssl_ctx = ssl.create_default_context(cafile=ca_cert)
+    if insecure:
+        os.environ["MQ_INSECURE_SKIP_VERIFY"] = "true"
+    if ca_cert:
+        os.environ["MQ_CA_CERT_PATH"] = ca_cert
     if disable_host_verify:
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
+        os.environ["MQ_DISABLE_HOST_VERIFY"] = "true"
 
-    conn = stomp.Connection([(host, port)], use_ssl=True, ssl_context=ssl_ctx)
+    ca_bundle = mq_activemq._resolve_ca_bundle()
+    print(f"  CA bundle: {ca_bundle or '(none - insecure mode)'}")
+    ssl_ctx, ca_certs_arg = mq_activemq._build_ssl_context(ca_bundle)
+    print(f"  verify_mode={ssl_ctx.verify_mode!r} "
+          f"check_hostname={ssl_ctx.check_hostname}")
+
+    conn = stomp.Connection([(host, port)])
+    conn.transport.set_ssl(for_hosts=[(host, port)], ca_certs=ca_certs_arg)
 
     # Listener to see responses
     class TestListener(stomp.ConnectionListener):
@@ -108,7 +139,8 @@ def test_stomp_connection(host, port, destination, token, message=None,
     conn.set_listener("test", TestListener())
 
     print("  Connecting (login='', passcode=JWT)...")
-    conn.connect(login="", passcode=token, wait=True)
+    with mq_activemq._ssl_context_override(ssl_ctx):
+        conn.connect(login="", passcode=token, wait=True)
     print("  Connected!")
 
     if message is None:
@@ -131,7 +163,7 @@ def test_stomp_connection(host, port, destination, token, message=None,
             "persistent": "true",
         },
     )
-    print(f"  OK - message published!")
+    print("  OK - message published!")
     print(f"  Body: {json.dumps(message, indent=2)}")
 
     conn.disconnect()
@@ -145,7 +177,12 @@ def main():
     parser.add_argument("--destination", default="/queue/idp.test", help="Queue/topic")
     parser.add_argument("--token", help="Pre-fetched JWT (skip Ping token request)")
     parser.add_argument("--ca-cert", help="CA certificate file path")
-    parser.add_argument("--no-verify-host", action="store_true", help="Disable hostname verification")
+    parser.add_argument("--no-verify-host", action="store_true",
+                        help="Skip hostname check, keep CA chain validation "
+                             "(use when broker cert CN/SAN != hostname)")
+    parser.add_argument("--insecure", action="store_true",
+                        help="Skip ALL certificate validation. Broker bring-up "
+                             "diagnostics only - never for production.")
     args = parser.parse_args()
 
     env = load_env()
@@ -153,7 +190,10 @@ def main():
     host = args.host or env.get("MQ_HOST")
     port = args.port or int(env.get("MQ_PORT", "61617"))
     destination = args.destination or env.get("MQ_DESTINATION", "/queue/idp.test")
-    ca_cert = args.ca_cert or env.get("CA_CERT_PATH")
+    # Two trust paths, as in the Lambda: CA_CERT_PATH for the Ping endpoint,
+    # MQ_CA_CERT_PATH for the broker. --ca-cert overrides both.
+    ping_ca_cert = args.ca_cert or env.get("CA_CERT_PATH")
+    mq_ca_cert = args.ca_cert or env.get("MQ_CA_CERT_PATH") or ping_ca_cert
     disable_host_verify = args.no_verify_host or env.get("MQ_DISABLE_HOST_VERIFY", "").lower() in ("1", "true")
 
     if not host:
@@ -177,7 +217,7 @@ def main():
             token_url, client_id, client_secret, username, password,
             scope=env.get("PING_SCOPE", ""),
             validator_id=env.get("PING_VALIDATOR_ID", ""),
-            ca_cert=ca_cert,
+            ca_cert=ping_ca_cert,
         )
     else:
         print(f"1. Using pre-fetched token: {token[:30]}...")
@@ -186,12 +226,33 @@ def main():
     try:
         test_stomp_connection(
             host, port, destination, token,
-            ca_cert=ca_cert,
+            ca_cert=mq_ca_cert,
             disable_host_verify=disable_host_verify,
+            insecure=args.insecure,
         )
         print("\n[OK] All tests passed!")
     except Exception as e:
         print(f"\n[FAILED] {type(e).__name__}: {e}")
+        # stomp.py swallows the underlying SSLError inside its reconnect loop and
+        # raises a bare ConnectFailedException, so point at how to see the cause.
+        if type(e).__name__ == "ConnectFailedException":
+            print(
+                "\nConnectFailedException hides the real cause. To diagnose:\n"
+                "  1. Confirm TLS separately:\n"
+                f"     openssl s_client -connect {host}:{port} "
+                f"-CAfile {mq_ca_cert or '<ca-bundle>'} -showcerts\n"
+                "  2. Compare the cert CN/SAN to the hostname you connect to.\n"
+                "     If they differ, re-run with --no-verify-host (keeps chain\n"
+                "     validation, skips only the hostname check).\n"
+                "  3. If s_client says 'unable to get local issuer certificate',\n"
+                "     the CA bundle is wrong/incomplete - TLS inspection means\n"
+                "     you need the corporate CA, not the public one.\n"
+                "  4. To confirm it is TLS and not auth/network, try --insecure.\n"
+                "     If that connects, the problem is certificate trust.\n"
+                "  5. Enable library logging for the raw error:\n"
+                "     python -c \"import logging;logging.basicConfig("
+                "level=logging.DEBUG)\" style init, or set STOMP debug.\n"
+            )
         sys.exit(1)
 
 

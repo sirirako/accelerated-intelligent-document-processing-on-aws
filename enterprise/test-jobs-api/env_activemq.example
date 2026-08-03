@@ -15,5 +15,12 @@ PING_PASSWORD=<ad-password>
 PING_SCOPE=
 PING_VALIDATOR_ID=
 
-# TLS (optional — for corporate proxy/self-signed certs)
+# TLS — two independent trust paths, matching the Lambda's env vars.
+# Under TLS inspection both usually point at the same corporate CA bundle, but
+# they are separate because the Ping endpoint and the broker can be re-signed
+# by different issuers.
+#
+# CA bundle for the Ping token endpoint
 CA_CERT_PATH=
+# CA bundle for the ActiveMQ broker (falls back to CA_CERT_PATH if unset)
+MQ_CA_CERT_PATH=

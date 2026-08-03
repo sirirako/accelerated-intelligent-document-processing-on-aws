@@ -5,8 +5,8 @@ via the password grant, and presents the JWT to ActiveMQ as the STOMP passcode.
 Caches the token per warm container until near expiry.
 """
 
-import base64
 import json
+import logging
 import os
 import ssl
 import time
@@ -14,6 +14,8 @@ import urllib.parse
 import urllib.request
 
 import boto3
+
+logger = logging.getLogger(__name__)
 
 _secrets = boto3.client("secretsmanager")
 _cache: dict = {}
@@ -32,11 +34,32 @@ def _get_secret(secret_arn: str) -> str:
 
 
 def _get_ssl_context():
-    """Build SSL context for Ping token endpoint (corporate TLS proxy)."""
+    """Build SSL context for Ping token endpoint (corporate TLS proxy).
+
+    Returns None to fall back to the system CA store. Under TLS inspection that
+    fallback always fails with CERTIFICATE_VERIFY_FAILED ("self-signed
+    certificate in certificate chain"), so log loudly which case we are in —
+    the bare urllib error does not say whether a bundle was even loaded.
+    """
     ca_path = os.getenv("CA_CERT_PATH", "")
-    if ca_path and os.path.exists(ca_path):
-        return ssl.create_default_context(cafile=ca_path)
-    return None
+    if not ca_path:
+        logger.warning(
+            "CA_CERT_PATH is not set - using the system CA store for the Ping "
+            "token endpoint. This fails under TLS inspection."
+        )
+        return None
+    if not os.path.exists(ca_path):
+        logger.warning(
+            "CA_CERT_PATH=%s does not exist - using the system CA store. The "
+            "CA bundle ships in the function code (CodeUri -> /var/task/), not "
+            "in a Lambda layer (which mounts at /opt/). This fails under TLS "
+            "inspection.",
+            ca_path,
+        )
+        return None
+
+    logger.info("Using CA bundle %s for the Ping token endpoint", ca_path)
+    return ssl.create_default_context(cafile=ca_path)
 
 
 _ssl_context = _get_ssl_context()
