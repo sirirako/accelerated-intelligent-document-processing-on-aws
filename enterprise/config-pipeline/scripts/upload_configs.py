@@ -12,12 +12,19 @@ Web UI between runs, so a zip-to-zip diff would silently skip a version that had
 drifted. Re-uploading an unchanged config is safe -- ConfigurationManager
 preserves IsActive and CreatedAt, so only UpdatedAt changes.
 
-IMPORTANT -- upload is a MERGE, not a replace. For an existing version,
-`idp-cli config-upload` applies the YAML as deltas over the stored config, so a
-key *removed* from the YAML is NOT removed from the deployed config, and a null
-means "restore to default" rather than "delete". Export with
-`config-download --format full` so every key is present and the merge behaves as
-a full overwrite.
+Configs must be exported with `config-download --format full` (the default). Then
+the uploaded version becomes an exact copy of the source, deletions included.
+
+`config-upload` applies the YAML as a recursive dict.update() -- not a code-style
+three-way merge -- so every key present in the file overwrites what the target
+had, and `--format full` emits every key. Lists (`classes`, `policy_classes`) are
+replaced wholesale rather than merged element-by-element, so deleting a class or
+an attribute inside a class propagates.
+
+Stale data survives only for a key ABSENT from the upload, which nothing tells
+the target to change. That is what `--format minimal` causes: it strips keys
+matching a default, so a target holding an override would keep it. A null means
+"restore to default" rather than "set to null".
 
 Environment variables (set by CodeBuild):
   IDP_STACK_NAME        target IDP stack name (required)

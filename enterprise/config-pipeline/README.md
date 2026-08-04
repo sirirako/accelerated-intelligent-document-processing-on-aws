@@ -124,16 +124,10 @@ Re-uploading an unchanged config is safe: `ConfigurationManager.save_configurati
 preserves `IsActive` and `CreatedAt`, so re-uploading a non-active version does
 not activate it. Only `UpdatedAt` changes.
 
-## Upload is a MERGE, not a replace
+## `--format full` gives the target an exact copy
 
-For an existing version, `config-upload` applies your YAML as **deltas** over the
-stored config:
-
-- A key you **remove** from the YAML is **not removed** from the deployed config.
-- A `null` means "restore this field to its default", not "delete it".
-
-So always export with `--format full`, which includes every key and makes the
-merge behave as a full overwrite:
+Export with `--format full` (the default) and the uploaded version becomes
+byte-identical to what you tested in dev, deletions included:
 
 ```bash
 idp-cli config-download \
@@ -143,8 +137,30 @@ idp-cli config-download \
   --output configs/<version>.yaml
 ```
 
-A hand-trimmed or `--format minimal` config will leave removed keys behind in the
-target stack.
+This is not a code-style merge — there is no three-way merge and no keeping both
+sides. `config-upload` applies the YAML as a recursive `dict.update()`: every key
+present in your file **overwrites** what the target had. `--format full` emits
+every key, so every key is overwritten.
+
+Deleting things in dev therefore propagates. `classes` and `policy_classes` are
+lists, and lists are replaced wholesale rather than merged element-by-element, so
+removing a class *or an attribute inside a class* takes effect in the target.
+
+The one way stale data survives is a key that is **absent** from the upload —
+nothing tells the target to change it, so it keeps its old value. That is what
+`--format minimal` causes: it strips every key matching a default, so if dev is
+at the default and the target carries an override, the target keeps its override.
+Same for a hand-trimmed file. Use `full`, not `minimal`.
+
+Two smaller caveats:
+
+- A `null` means "restore this field to its default", not "set to null". With
+  `--format full` this is a no-op for the four fields that default to null
+  (`test_set`, `notes`, `pricing`, `summary`).
+- Identical **per version**, not a mirror of dev. The pipeline only ever writes;
+  it never deletes. A version in the target that the zip does not mention is left
+  in place, and `IsActive` is preserved, so uploading does not change which
+  version is active.
 
 ## Troubleshooting
 
@@ -154,5 +170,5 @@ target stack.
 | `AccessDeniedException` on DynamoDB/KMS | `ConfigurationTableKmsKeyArn` not passed |
 | `ConfigurationTable not found in stack` | Wrong `IdpStackName`, or missing `cloudformation:ListStackResources` |
 | `FATAL: idp-cli not on PATH` | `deploy/code.zip` missing or stale in the bucket |
-| Removed keys still present | Config exported with `--format minimal`; re-export with `full` |
+| Target keeps an old value | Config exported with `--format minimal`, which omits keys at their default; re-export with `full` |
 | Role creation refused | `PermissionsBoundaryArn` not passed |
