@@ -1,5 +1,26 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Lightweight pipeline for IDP document configuration promotion'
+Description: >-
+  Lightweight pipeline for IDP document configuration promotion. Promotes
+  document configs (extraction rules, classification schemas) from a config
+  repository into a deployed IDP stack, without a code build or stack update.
+
+# =============================================================================
+# Two source actions, one pipeline.
+#
+#   CodeSource   (deploy/code.zip)      -> supplies lib/idp_cli_pkg + lib/idp_sdk
+#                                          and the upload script. NOT a trigger.
+#   ConfigSource (configs/config.zip)   -> the configs to promote. THE trigger.
+#
+# The config zip is produced by the config repository's own CI; the code zip is
+# whatever the deployment pipeline last published. Only the config zip fires an
+# execution, so publishing code does not silently promote configs.
+#
+# Both live in the SDLC source bucket, which already has versioning (required
+# for an S3 source action) and EventBridge notifications enabled.
+# =============================================================================
 
 Parameters:
   PipelineName:
@@ -9,24 +30,106 @@ Parameters:
 
   SourceBucketName:
     Type: String
-    Description: 'S3 bucket containing config files and pipeline config'
+    Description: >-
+      S3 bucket holding both zips. Normally the existing SDLC source bucket
+      (genaiic-sdlc-sourcecode-<account>-<region>). MUST have versioning
+      enabled or the S3 source action will never trigger.
 
-  SourceKey:
+  CodeSourceKey:
+    Type: String
+    Default: deploy/code.zip
+    Description: 'S3 key of the repo zip (supplies idp-cli). Does not trigger the pipeline.'
+
+  ConfigSourceKey:
     Type: String
     Default: configs/config.zip
-    Description: 'S3 key that triggers the pipeline when updated'
+    Description: 'S3 key of the config zip from the config repo CI. Triggers the pipeline.'
 
-  ConfigPipelineConfigKey:
+  ConfigManifestName:
     Type: String
-    Default: deploy/config-pipeline.yaml
-    Description: 'S3 key of the pipeline config file (stack name, versions to upload)'
+    Default: configs-manifest.yaml
+    Description: >-
+      (Optional) Name of a manifest file at the root of the config zip, listing
+      which config versions to upload. When absent, every *.yaml/*.yml in the
+      zip is uploaded.
 
   IdpStackName:
     Type: String
-    Description: 'Name of the target IDP stack to upload configurations to'
+    Description: >-
+      Target IDP stack that receives the configurations. This is the ONLY place
+      the target is set - deliberately not overridable from inside the artifact.
+
+  RequireApproval:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'true'
+    Description: >-
+      Require a manual approval before configs are written to the target stack.
+      Leave 'true' for production targets; 'false' gives unattended promotion
+      for dev/test.
+
+  ApprovalNotificationEmail:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) Email notified when an approval is pending. The subscription
+      must be confirmed once via the email AWS sends.
+
+  # ── VPC (required in air-gapped environments) ──
+  VpcId:
+    Type: String
+    Default: ''
+    Description: '(Optional) VPC ID for CodeBuild to run in a private network'
+  PrivateSubnetIds:
+    Type: CommaDelimitedList
+    Default: ''
+    Description: '(Optional) Private subnet IDs for CodeBuild VPC config'
+  CodeBuildSecurityGroupIds:
+    Type: CommaDelimitedList
+    Default: ''
+    Description: '(Optional) Security group ID(s) for CodeBuild VPC config'
+
+  # ── Air-gapped / private registry parameters (mirrors the SDLC pipeline) ──
+  PipConfigSecretArn:
+    Type: String
+    Default: ''
+    Description: '(Optional) Secrets Manager ARN for pip config (private PyPI)'
+  UvConfigSecretArn:
+    Type: String
+    Default: ''
+    Description: '(Optional) Secrets Manager ARN for UV config (private PyPI)'
+  CACertBundleS3Uri:
+    Type: String
+    Default: ''
+    Description: '(Optional) S3 URI for the corporate CA cert bundle (TLS inspection)'
+  PermissionsBoundaryArn:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) Permissions boundary ARN attached to every role created here.
+      Required in environments with an SCP/org boundary mandate - role creation
+      is refused without it.
+
+  ConfigurationTableKmsKeyArn:
+    Type: String
+    Default: ''
+    Description: >-
+      (Optional) ARN of the CMK encrypting the target stack's ConfigurationTable
+      (the stack's CustomerManagedEncryptionKey). Required when the table uses a
+      customer-managed key, which is the default - without it every write is
+      denied by KMS. Leave empty only for an AWS-managed key.
 
 Conditions:
-  CreateSourceBucket: !Equals ['', '']  # Always false — bucket must pre-exist
+  DeployInVPC: !Not [!Equals [!Ref VpcId, '']]
+  HasPipConfigSecret: !Not [!Equals [!Ref PipConfigSecretArn, '']]
+  HasUvConfigSecret: !Not [!Equals [!Ref UvConfigSecretArn, '']]
+  HasCACertBundle: !Not [!Equals [!Ref CACertBundleS3Uri, '']]
+  HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, '']]
+  HasConfigTableKmsKey: !Not [!Equals [!Ref ConfigurationTableKmsKeyArn, '']]
+  NeedsApproval: !Equals [!Ref RequireApproval, 'true']
+  HasApprovalEmail: !And
+    - !Condition NeedsApproval
+    - !Not [!Equals [!Ref ApprovalNotificationEmail, '']]
 
 Resources:
   # =========================================================================
@@ -35,49 +138,83 @@ Resources:
   ConfigCodeBuildRole:
     Type: AWS::IAM::Role
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref 'AWS::NoValue']
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
-              Service: codebuild.amazonaws.com
+              Service: !Sub 'codebuild.${AWS::URLSuffix}'
             Action: sts:AssumeRole
       Policies:
         - PolicyName: ConfigUploadPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              # S3 — read config files from source bucket
+              # S3 — read both zips plus the pipeline's artifact store
               - Effect: Allow
                 Action:
                   - s3:GetObject
                   - s3:GetObjectVersion
                   - s3:ListBucket
                 Resource:
-                  - !Sub 'arn:aws:s3:::${SourceBucketName}'
-                  - !Sub 'arn:aws:s3:::${SourceBucketName}/*'
-              # CloudFormation — read stack outputs (idp-cli needs this)
+                  - !Sub 'arn:${AWS::Partition}:s3:::${SourceBucketName}'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${SourceBucketName}/*'
               - Effect: Allow
                 Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/*'
+              # CloudFormation — idp_sdk resolves ConfigurationTable by listing
+              # the stack's resources (ConfigOperations._get_config_table).
+              # ListStackResources is the call it actually makes; Describe* is
+              # kept for stack-output lookups elsewhere in the SDK.
+              - Effect: Allow
+                Action:
+                  - cloudformation:ListStackResources
                   - cloudformation:DescribeStacks
-                  - cloudformation:ListStacks
                 Resource:
-                  - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${IdpStackName}*'
-              # DynamoDB — write config to the IDP configuration table
+                  - !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${IdpStackName}/*'
+              # DynamoDB — write config versions to the IDP configuration table.
+              # ConfigurationManager reads (get_item), enumerates versions
+              # (scan), and writes full snapshots (put_item).
               - Effect: Allow
                 Action:
-                  - dynamodb:PutItem
                   - dynamodb:GetItem
+                  - dynamodb:PutItem
                   - dynamodb:UpdateItem
                   - dynamodb:Query
+                  - dynamodb:Scan
                 Resource:
-                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${IdpStackName}-*'
-              # SSM — read IDP settings (idp-cli config-upload reads stack settings)
-              - Effect: Allow
-                Action:
-                  - ssm:GetParameter
-                Resource:
-                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${IdpStackName}-Settings'
+                  - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${IdpStackName}-*'
+              # KMS — the ConfigurationTable is encrypted with the stack's CMK.
+              # Every in-stack writer carries this grant; without it DynamoDB
+              # returns AccessDenied on both read and write.
+              - !If
+                - HasConfigTableKmsKey
+                - Effect: Allow
+                  Action:
+                    - kms:Encrypt
+                    - kms:Decrypt
+                    - kms:ReEncrypt*
+                    - kms:GenerateDataKey*
+                    - kms:DescribeKey
+                  Resource: !Ref ConfigurationTableKmsKeyArn
+                - !Ref 'AWS::NoValue'
+              # Secrets Manager — private registry credentials
+              - !If
+                - HasPipConfigSecret
+                - Effect: Allow
+                  Action: secretsmanager:GetSecretValue
+                  Resource: !Ref PipConfigSecretArn
+                - !Ref 'AWS::NoValue'
+              - !If
+                - HasUvConfigSecret
+                - Effect: Allow
+                  Action: secretsmanager:GetSecretValue
+                  Resource: !Ref UvConfigSecretArn
+                - !Ref 'AWS::NoValue'
               # CloudWatch Logs
               - Effect: Allow
                 Action:
@@ -85,48 +222,156 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource:
-                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${PipelineName}*'
+                  - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${PipelineName}*'
+              # VPC networking for CodeBuild in a private subnet
+              - !If
+                - DeployInVPC
+                - Effect: Allow
+                  Action:
+                    - ec2:CreateNetworkInterface
+                    - ec2:DescribeDhcpOptions
+                    - ec2:DescribeNetworkInterfaces
+                    - ec2:DeleteNetworkInterface
+                    - ec2:DescribeSubnets
+                    - ec2:DescribeSecurityGroups
+                    - ec2:DescribeVpcs
+                  Resource: '*'
+                - !Ref 'AWS::NoValue'
+              - !If
+                - DeployInVPC
+                - Effect: Allow
+                  Action: ec2:CreateNetworkInterfacePermission
+                  Resource: !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*'
+                  Condition:
+                    StringEquals:
+                      ec2:AuthorizedService: !Sub 'codebuild.${AWS::URLSuffix}'
+                - !Ref 'AWS::NoValue'
+
+  ConfigCodeBuildCACertPolicy:
+    Type: AWS::IAM::Policy
+    Condition: HasCACertBundle
+    Properties:
+      PolicyName: CACertBundleAccess
+      Roles:
+        - !Ref ConfigCodeBuildRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: s3:GetObject
+            Resource: !Sub
+              - 'arn:${AWS::Partition}:s3:::${BucketAndKey}'
+              - BucketAndKey: !Select [1, !Split ["s3://", !Ref CACertBundleS3Uri]]
 
   # =========================================================================
   # CodeBuild Project
   # =========================================================================
+  ConfigCodeBuildLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/codebuild/${PipelineName}'
+      RetentionInDays: 90
+
   ConfigCodeBuild:
     Type: AWS::CodeBuild::Project
     Properties:
       Name: !Ref PipelineName
       Description: 'Uploads IDP document configurations to the target stack'
       ServiceRole: !GetAtt ConfigCodeBuildRole.Arn
-      TimeoutInMinutes: 10
+      TimeoutInMinutes: 20
       Artifacts:
         Type: CODEPIPELINE
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Ref ConfigCodeBuildLogGroup
+      VpcConfig: !If
+        - DeployInVPC
+        - VpcId: !Ref VpcId
+          Subnets: !Ref PrivateSubnetIds
+          SecurityGroupIds: !Ref CodeBuildSecurityGroupIds
+        - !Ref 'AWS::NoValue'
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
         Image: aws/codebuild/amazonlinux-x86_64-standard:5.0
         EnvironmentVariables:
-          - Name: SOURCE_BUCKET
-            Value: !Ref SourceBucketName
           - Name: IDP_STACK_NAME
             Value: !Ref IdpStackName
-          - Name: CONFIG_PIPELINE_CONFIG_KEY
-            Value: !Ref ConfigPipelineConfigKey
+          - Name: CONFIG_MANIFEST_NAME
+            Value: !Ref ConfigManifestName
+          - Name: CA_CERT_BUNDLE_S3_URI
+            Value: !Ref CACertBundleS3Uri
+          - !If
+            - HasPipConfigSecret
+            - Name: PIP_CONF
+              Type: SECRETS_MANAGER
+              Value: !Ref PipConfigSecretArn
+            - !Ref 'AWS::NoValue'
+          - !If
+            - HasUvConfigSecret
+            - Name: UV_CONF
+              Type: SECRETS_MANAGER
+              Value: !Ref UvConfigSecretArn
+            - !Ref 'AWS::NoValue'
       Source:
         Type: CODEPIPELINE
         BuildSpec: |
           version: 0.2
+          env:
+            variables:
+              PIP_DISABLE_PIP_VERSION_CHECK: "1"
           phases:
             install:
               runtime-versions:
                 python: 3.12
               commands:
-                - pip install pyyaml boto3
-                - pip install -e lib/idp_cli_pkg 2>/dev/null || pip install idp-cli 2>/dev/null || echo "idp-cli not available, using direct upload"
+                # ── Private registry / TLS-inspection setup ──
+                # No-ops when the env vars are unset, so the same buildspec
+                # works in a normal account and in the air-gapped one.
+                - mkdir -p /root/.config/pip /root/.config/uv
+                - |
+                  if [ -n "${CA_CERT_BUNDLE_S3_URI:-}" ]; then
+                    echo "Installing CA certificate bundle from $CA_CERT_BUNDLE_S3_URI..."
+                    aws s3 cp "$CA_CERT_BUNDLE_S3_URI" /tmp/ca-bundle
+                    case "$CA_CERT_BUNDLE_S3_URI" in
+                      *.tar.gz|*.tgz) tar xzf /tmp/ca-bundle -C /etc/pki/ca-trust/source/anchors/ ;;
+                      *.tar)          tar xf /tmp/ca-bundle -C /etc/pki/ca-trust/source/anchors/ ;;
+                      *.crt|*.pem)    cp /tmp/ca-bundle /etc/pki/ca-trust/source/anchors/custom-ca.crt ;;
+                      *)              tar xzf /tmp/ca-bundle -C /etc/pki/ca-trust/source/anchors/ 2>/dev/null || tar xf /tmp/ca-bundle -C /etc/pki/ca-trust/source/anchors/ 2>/dev/null || cp /tmp/ca-bundle /etc/pki/ca-trust/source/anchors/custom-ca.crt ;;
+                    esac
+                    update-ca-trust extract
+                  fi
+                - |
+                  if [ -n "${PIP_CONF:-}" ]; then
+                    echo "Configuring pip for private PyPI..."
+                    echo "$PIP_CONF" > /root/.config/pip/pip.conf
+                  fi
+                - |
+                  if [ -n "${UV_CONF:-}" ]; then
+                    echo "Configuring uv for private PyPI..."
+                    echo "$UV_CONF" > /root/.config/uv/uv.toml
+                  fi
+                # ── Install the CLI from the code artifact ──
+                # These MUST hard-fail. Masking a failed install here only
+                # defers it to an uncaught FileNotFoundError when the upload
+                # script shells out to a missing idp-cli binary.
+                # idp-sdk is not published to PyPI, so it is installed from the
+                # code artifact rather than resolved from a registry.
+                - cd "$CODEBUILD_SRC_DIR_CodeSource"
+                - pip install -e "lib/idp_common_pkg[core]" || { echo "FATAL: idp_common install failed"; exit 1; }
+                - pip install -e lib/idp_sdk || { echo "FATAL: idp_sdk install failed"; exit 1; }
+                - pip install -e lib/idp_cli_pkg || { echo "FATAL: idp-cli install failed"; exit 1; }
+                - which idp-cli || { echo "FATAL: idp-cli not on PATH after install"; exit 1; }
             build:
               commands:
-                - python3 enterprise/config-pipeline/scripts/upload_configs.py
+                # Primary artifact is ConfigSource, so $CODEBUILD_SRC_DIR is the
+                # unpacked config zip; the script is read from the code artifact.
+                - cd "$CODEBUILD_SRC_DIR"
+                - python3 "$CODEBUILD_SRC_DIR_CodeSource/enterprise/config-pipeline/scripts/upload_configs.py"
 
   # =========================================================================
-  # CodePipeline
+  # Pipeline artifact store
   # =========================================================================
   ArtifactBucket:
     Type: AWS::S3::Bucket
@@ -135,21 +380,70 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
       LifecycleConfiguration:
         Rules:
           - Id: ExpireArtifacts
             Status: Enabled
             ExpirationInDays: 7
+            NoncurrentVersionExpirationInDays: 7
 
+  ArtifactBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ArtifactBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}'
+              - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+
+  # =========================================================================
+  # Approval notifications
+  # =========================================================================
+  ApprovalTopic:
+    Type: AWS::SNS::Topic
+    Condition: NeedsApproval
+    Properties:
+      TopicName: !Sub '${PipelineName}-approvals'
+      DisplayName: 'IDP config promotion approvals'
+      KmsMasterKeyId: alias/aws/sns
+
+  ApprovalSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasApprovalEmail
+    Properties:
+      TopicArn: !Ref ApprovalTopic
+      Protocol: email
+      Endpoint: !Ref ApprovalNotificationEmail
+
+  # =========================================================================
+  # CodePipeline
+  # =========================================================================
   CodePipelineRole:
     Type: AWS::IAM::Role
     Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref 'AWS::NoValue']
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
-              Service: codepipeline.amazonaws.com
+              Service: !Sub 'codepipeline.${AWS::URLSuffix}'
             Action: sts:AssumeRole
       Policies:
         - PolicyName: CodePipelinePolicy
@@ -162,30 +456,45 @@ Resources:
                   - s3:GetObjectVersion
                   - s3:GetBucketVersioning
                   - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::${SourceBucketName}'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${SourceBucketName}/*'
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
                   - s3:PutObject
                 Resource:
-                  - !Sub 'arn:aws:s3:::${SourceBucketName}/*'
-                  - !Sub 'arn:aws:s3:::${SourceBucketName}'
-                  - !Sub 'arn:aws:s3:::${ArtifactBucket}/*'
-                  - !Sub 'arn:aws:s3:::${ArtifactBucket}'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/*'
               - Effect: Allow
                 Action:
                   - codebuild:BatchGetBuilds
                   - codebuild:StartBuild
                 Resource: !GetAtt ConfigCodeBuild.Arn
+              - !If
+                - NeedsApproval
+                - Effect: Allow
+                  Action: sns:Publish
+                  Resource: !Ref ApprovalTopic
+                - !Ref 'AWS::NoValue'
 
   ConfigPipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
       Name: !Ref PipelineName
       RoleArn: !GetAtt CodePipelineRole.Arn
+      PipelineType: V2
       ArtifactStore:
         Type: S3
         Location: !Ref ArtifactBucket
       Stages:
         - Name: Source
           Actions:
-            - Name: SourceAction
+            # The config zip is the trigger. PollForSourceChanges is false on
+            # both actions; the EventBridge rule below starts the pipeline.
+            - Name: ConfigSource
               ActionTypeId:
                 Category: Source
                 Owner: AWS
@@ -193,10 +502,40 @@ Resources:
                 Version: '1'
               Configuration:
                 S3Bucket: !Ref SourceBucketName
-                S3ObjectKey: !Ref SourceKey
-                PollForSourceChanges: 'true'
+                S3ObjectKey: !Ref ConfigSourceKey
+                PollForSourceChanges: 'false'
               OutputArtifacts:
-                - Name: SourceOutput
+                - Name: ConfigSource
+              RunOrder: 1
+            # Supplies idp-cli. Publishing code does not trigger a promotion.
+            - Name: CodeSource
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: S3
+                Version: '1'
+              Configuration:
+                S3Bucket: !Ref SourceBucketName
+                S3ObjectKey: !Ref CodeSourceKey
+                PollForSourceChanges: 'false'
+              OutputArtifacts:
+                - Name: CodeSource
+              RunOrder: 1
+        - !If
+          - NeedsApproval
+          - Name: Approve
+            Actions:
+              - Name: ManualApproval
+                ActionTypeId:
+                  Category: Approval
+                  Owner: AWS
+                  Provider: Manual
+                  Version: '1'
+                Configuration:
+                  NotificationArn: !Ref ApprovalTopic
+                  CustomData: !Sub 'Promote document configs to IDP stack ${IdpStackName}?'
+                RunOrder: 1
+          - !Ref 'AWS::NoValue'
         - Name: UploadConfigs
           Actions:
             - Name: UploadAction
@@ -207,8 +546,59 @@ Resources:
                 Version: '1'
               Configuration:
                 ProjectName: !Ref ConfigCodeBuild
+                PrimarySource: ConfigSource
               InputArtifacts:
-                - Name: SourceOutput
+                - Name: ConfigSource
+                - Name: CodeSource
+              RunOrder: 1
+
+  # =========================================================================
+  # Trigger — EventBridge on the config zip only
+  # =========================================================================
+  PipelineTriggerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref 'AWS::NoValue']
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: !Sub 'events.${AWS::URLSuffix}'
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: TriggerPipelinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: codepipeline:StartPipelineExecution
+                Resource: !Sub 'arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${PipelineName}'
+
+  # Requires EventBridge notifications on the source bucket. The SDLC source
+  # bucket already has them (NotificationConfiguration.EventBridgeEnabled).
+  PipelineTriggerRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${PipelineName}-trigger'
+      Description: 'Start the config pipeline when the config zip is updated'
+      EventPattern:
+        source:
+          - aws.s3
+        detail-type:
+          - Object Created
+        detail:
+          bucket:
+            name:
+              - !Ref SourceBucketName
+          object:
+            key:
+              - !Ref ConfigSourceKey
+      State: ENABLED
+      Targets:
+        - Arn: !Sub 'arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${PipelineName}'
+          Id: PipelineTrigger
+          RoleArn: !GetAtt PipelineTriggerRole.Arn
 
 Outputs:
   PipelineName:
@@ -216,7 +606,14 @@ Outputs:
     Description: 'Config pipeline name'
   SourceBucket:
     Value: !Ref SourceBucketName
-    Description: 'Drop config.zip here to trigger the pipeline'
+    Description: 'Bucket holding both the config zip and the code zip'
+  ConfigSourceKey:
+    Value: !Ref ConfigSourceKey
+    Description: 'Updating this key triggers a promotion'
   TargetStack:
     Value: !Ref IdpStackName
     Description: 'IDP stack that receives the configurations'
+  ApprovalTopicArn:
+    Condition: NeedsApproval
+    Value: !Ref ApprovalTopic
+    Description: 'SNS topic for pending-approval notifications'

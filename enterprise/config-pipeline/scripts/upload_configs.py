@@ -2,13 +2,26 @@
 """
 Upload IDP document configurations to the target stack.
 
-Reads config-pipeline.yaml from S3 to determine which config versions to upload,
-then runs `idp-cli config-upload` for each one.
+Run by the config pipeline's CodeBuild stage. The working directory is the
+unpacked config artifact (the zip produced by the config repository's CI), so
+config files are discovered relative to the current directory.
+
+Every config in the artifact is uploaded on every run. That is deliberate: the
+config repository is the source of truth, and a config can also be edited in the
+Web UI between runs, so a zip-to-zip diff would silently skip a version that had
+drifted. Re-uploading an unchanged config is safe -- ConfigurationManager
+preserves IsActive and CreatedAt, so only UpdatedAt changes.
+
+IMPORTANT -- upload is a MERGE, not a replace. For an existing version,
+`idp-cli config-upload` applies the YAML as deltas over the stored config, so a
+key *removed* from the YAML is NOT removed from the deployed config, and a null
+means "restore to default" rather than "delete". Export with
+`config-download --format full` so every key is present and the merge behaves as
+a full overwrite.
 
 Environment variables (set by CodeBuild):
-  SOURCE_BUCKET — S3 bucket with configs
-  IDP_STACK_NAME — target IDP stack name
-  CONFIG_PIPELINE_CONFIG_KEY — S3 key for pipeline config (optional)
+  IDP_STACK_NAME        target IDP stack name (required)
+  CONFIG_MANIFEST_NAME  optional manifest filename at the artifact root
 """
 
 import glob
@@ -16,57 +29,129 @@ import os
 import subprocess
 import sys
 
-import boto3
 import yaml
 
-SOURCE_BUCKET = os.environ.get("SOURCE_BUCKET", "")
 IDP_STACK_NAME = os.environ.get("IDP_STACK_NAME", "")
-CONFIG_KEY = os.environ.get("CONFIG_PIPELINE_CONFIG_KEY", "deploy/config-pipeline.yaml")
+MANIFEST_NAME = os.environ.get("CONFIG_MANIFEST_NAME", "configs-manifest.yaml")
+
+# Extensions accepted for a config file, in preference order. Used both when
+# globbing and when resolving a bare version name from the manifest.
+CONFIG_EXTENSIONS = (".yaml", ".yml")
 
 
-def load_pipeline_config():
-    """Load config-pipeline.yaml from S3 (optional — if missing, upload all configs/)."""
-    if not SOURCE_BUCKET:
+def load_manifest():
+    """Load the optional manifest from the config artifact root.
+
+    Absent manifest is the normal case and means "upload everything".
+    """
+    if not os.path.exists(MANIFEST_NAME):
+        print(f"No {MANIFEST_NAME} in the artifact - uploading every config found")
         return {}
+
     try:
-        s3 = boto3.client("s3")
-        obj = s3.get_object(Bucket=SOURCE_BUCKET, Key=CONFIG_KEY)
-        config = yaml.safe_load(obj["Body"].read()) or {}
-        print(f"Loaded pipeline config from s3://{SOURCE_BUCKET}/{CONFIG_KEY}")
-        return config
+        with open(MANIFEST_NAME, "r", encoding="utf-8") as f:
+            manifest = yaml.safe_load(f) or {}
     except Exception as e:
-        print(f"No pipeline config found ({e}) — will upload all configs/*.yaml")
-        return {}
+        # A manifest that exists but cannot be parsed is an authoring error.
+        # Uploading everything anyway could promote configs the author meant to
+        # hold back, so fail instead of guessing.
+        print(f"ERROR: {MANIFEST_NAME} exists but could not be parsed: {e}")
+        sys.exit(1)
+
+    if not isinstance(manifest, dict):
+        print(f"ERROR: {MANIFEST_NAME} must contain a YAML mapping")
+        sys.exit(1)
+
+    # The target stack comes from the pipeline's CloudFormation parameter only.
+    # Honouring a stack_name here would let a file inside the artifact retarget
+    # the promotion -- e.g. point a dev config drop at the production stack.
+    if "stack_name" in manifest:
+        print(
+            f"WARNING: ignoring 'stack_name' in {MANIFEST_NAME}. The target stack "
+            "is fixed by the pipeline's IdpStackName parameter and cannot be "
+            "overridden from inside the artifact."
+        )
+
+    print(f"Loaded manifest {MANIFEST_NAME}")
+    return manifest
 
 
 def find_config_files():
-    """Find all YAML config files in the configs/ directory."""
-    patterns = ["configs/*.yaml", "configs/*.yml"]
-    files = []
-    for pattern in patterns:
-        files.extend(glob.glob(pattern))
-    return sorted(files)
+    """Find every config file at the artifact root, deduped by version name.
+
+    If both <name>.yaml and <name>.yml exist they would upload to the same
+    version, with the winner decided by sort order. Treat that as an error
+    rather than letting one silently overwrite the other.
+    """
+    by_version: dict[str, list[str]] = {}
+    for ext in CONFIG_EXTENSIONS:
+        for path in glob.glob(f"*{ext}"):
+            if os.path.basename(path) == MANIFEST_NAME:
+                continue
+            by_version.setdefault(version_of(path), []).append(path)
+
+    conflicts = {v: p for v, p in by_version.items() if len(p) > 1}
+    if conflicts:
+        for version, paths in sorted(conflicts.items()):
+            print(f"ERROR: version '{version}' matches multiple files: {sorted(paths)}")
+        sys.exit(1)
+
+    return sorted(paths[0] for paths in by_version.values())
+
+
+def resolve_manifest_entry(entry):
+    """Resolve a manifest entry to a path on disk.
+
+    Entries are version names ("lending-v2"), but a filename with an extension
+    is accepted too. Returns None when nothing matches.
+    """
+    if entry.endswith(CONFIG_EXTENSIONS):
+        return entry if os.path.exists(entry) else None
+
+    for ext in CONFIG_EXTENSIONS:
+        candidate = f"{entry}{ext}"
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
+def version_of(config_file):
+    """Version name for a config file: its basename without the extension."""
+    return os.path.splitext(os.path.basename(config_file))[0]
 
 
 def upload_config(config_file, version, stack_name):
     """Upload a single config version using idp-cli."""
-    print(f"\n  Uploading: {config_file} as version '{version}' to stack '{stack_name}'")
+    print(f"\n  Uploading {config_file} as version '{version}' to {stack_name}")
 
     cmd = [
-        "idp-cli", "config-upload",
-        "--stack-name", stack_name,
-        "--config-file", config_file,
-        "--config-version", version,
+        "idp-cli",
+        "config-upload",
+        "--stack-name",
+        stack_name,
+        "--config-file",
+        config_file,
+        "--config-version",
+        version,
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode == 0:
-        print(f"  OK: {version} uploaded successfully")
-    else:
-        print(f"  FAILED: {version}")
-        print(f"  stdout: {result.stdout}")
-        print(f"  stderr: {result.stderr}")
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError:
+        # The install phase is supposed to hard-fail before this point; if it
+        # somehow did not, say so plainly rather than dying on a bare traceback.
+        print("  FAILED: idp-cli is not installed or not on PATH")
         return False
+
+    if result.returncode != 0:
+        print(f"  FAILED: {version} (exit {result.returncode})")
+        if result.stdout:
+            print(f"  stdout: {result.stdout}")
+        if result.stderr:
+            print(f"  stderr: {result.stderr}")
+        return False
+
+    print(f"  OK: {version}")
     return True
 
 
@@ -75,41 +160,54 @@ def main():
         print("ERROR: IDP_STACK_NAME not set")
         sys.exit(1)
 
-    pipeline_config = load_pipeline_config()
-    stack_name = pipeline_config.get("stack_name", IDP_STACK_NAME)
+    manifest = load_manifest()
+    stack_name = IDP_STACK_NAME
 
-    # Determine which configs to upload
-    config_versions = pipeline_config.get("config_versions")
+    print(f"Working directory: {os.getcwd()}")
+    print(f"Target stack: {stack_name}")
 
-    if config_versions:
-        # Explicit list — upload only these
-        config_files = [f"configs/{v}.yaml" for v in config_versions]
-        print(f"Uploading {len(config_versions)} specified config version(s) to {stack_name}")
+    requested = manifest.get("config_versions")
+    missing = []
+
+    if requested:
+        if not isinstance(requested, list):
+            print(f"ERROR: 'config_versions' in {MANIFEST_NAME} must be a list")
+            sys.exit(1)
+
+        config_files = []
+        for entry in requested:
+            path = resolve_manifest_entry(str(entry))
+            if path:
+                config_files.append(path)
+            else:
+                missing.append(str(entry))
+
+        print(f"Manifest lists {len(requested)} config version(s)")
+        for entry in missing:
+            print(f"  MISSING: no file in the artifact for '{entry}'")
     else:
-        # No explicit list — upload all configs/*.yaml
         config_files = find_config_files()
-        print(f"Uploading all {len(config_files)} config file(s) to {stack_name}")
+        print(f"Found {len(config_files)} config file(s) in the artifact")
 
-    if not config_files:
-        print("No config files found in configs/. Nothing to upload.")
+    if not config_files and not missing:
+        # Nothing to do and nothing wrong. Succeed so an empty drop is not
+        # reported as a pipeline failure.
+        print("No config files found. Nothing to upload.")
         sys.exit(0)
 
-    # Upload each config
-    success = 0
-    failed = 0
+    succeeded, failed = [], list(missing)
     for config_file in config_files:
-        if not os.path.exists(config_file):
-            print(f"  SKIP: {config_file} not found")
-            failed += 1
-            continue
-        version = os.path.splitext(os.path.basename(config_file))[0]
+        version = version_of(config_file)
         if upload_config(config_file, version, stack_name):
-            success += 1
+            succeeded.append(version)
         else:
-            failed += 1
+            failed.append(version)
 
-    print(f"\nDone: {success} uploaded, {failed} failed")
-    if failed > 0:
+    print(f"\nDone: {len(succeeded)} uploaded, {len(failed)} failed")
+    if succeeded:
+        print(f"  uploaded: {', '.join(sorted(succeeded))}")
+    if failed:
+        print(f"  failed:   {', '.join(sorted(failed))}")
         sys.exit(1)
 
 

@@ -166,7 +166,7 @@ validate-buildspec: ## Validate AWS CodeBuild buildspec files
 check-arn-partitions: ## Check CloudFormation templates for hardcoded ARN partitions
 	@echo "Checking CloudFormation templates for hardcoded ARN partitions and service principals..."
 	@FOUND_ISSUES=0; \
-	for template in template.yaml patterns/*/template.yaml patterns/*/sagemaker_classifier_endpoint.yaml options/*/template.yaml feature-platform/*/template.yaml; do \
+	for template in template.yaml patterns/*/template.yaml patterns/*/sagemaker_classifier_endpoint.yaml options/*/template.yaml feature-platform/*/template.yaml enterprise/*/cfn/*.yml; do \
 		if [ -f "$$template" ]; then \
 			echo "Checking $$template..."; \
 			ARN_MATCHES=$$(grep -n "arn:aws:" "$$template" | grep -v "arn:\$${AWS::Partition}:" || true); \
