@@ -116,7 +116,21 @@ def deploy_stack(stack_name, admin_email, template_url, pipeline_config):
         cmd += " --headless"
 
     if config_params:
-        param_str = ",".join(f"{k}={v}" for k, v in config_params.items() if v)
+        # Pass every key present in the config, empty values included.
+        #
+        # idp-cli sends UsePreviousValue for any parameter it is NOT given, so
+        # omitting a key preserves whatever the stack already has rather than
+        # clearing it. Dropping falsy values here would therefore make a
+        # parameter impossible to blank out once set -- `PermissionsBoundaryArn:
+        # ""` would never reach the CLI and the old boundary would survive every
+        # deploy. It would also discard the legitimate values "0" and "false".
+        #
+        # So presence in the file is the signal: `Key: ""` (or a bare `Key:`,
+        # which YAML parses as None) means "set this to empty". To leave a
+        # parameter alone, omit or comment out the line.
+        param_str = ",".join(
+            f"{k}={'' if v is None else v}" for k, v in config_params.items()
+        )
         cmd += f' --parameters "{param_str}"'
 
     run_command(cmd, timeout=3 * 3600)
