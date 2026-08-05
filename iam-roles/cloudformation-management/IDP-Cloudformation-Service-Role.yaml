@@ -87,6 +87,15 @@ Resources:
                   - iam:PassRole
                   - iam:CreateServiceLinkedRole
                   - iam:DeleteServiceLinkedRole
+                  # Required when the stack is deployed with PermissionsBoundaryArn:
+                  # every stack-created role gets the boundary applied. CreateRole
+                  # can set a boundary inline, but updating an existing role's
+                  # boundary is a separate action, so without these an update of a
+                  # boundary-enabled stack fails with AccessDenied on every role --
+                  # and the rollback fails the same way, leaving the stack in
+                  # UPDATE_ROLLBACK_FAILED.
+                  - iam:PutRolePermissionsBoundary
+                  - iam:DeleteRolePermissionsBoundary
                 Resource: '*'
               - Effect: Allow
                 Action:
