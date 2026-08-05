@@ -39,11 +39,16 @@ admin_email: admin@example.com
 
 # Stack parameters (passed to idp-cli deploy --parameters "...")
 parameters:
-  WebUIHosting: ALB
-  ALBVpcId: vpc-xxx
-  ALBSubnetIds: subnet-aaa,subnet-bbb
+  WebUIHosting: APIGateway
+  ApiGatewayVisibility: PRIVATE
+  ApiGatewayVpcEndpointId: vpce-xxx
   # ... all CloudFormation parameters for this environment
 ```
+
+Parameter names must match `template.yaml` exactly — CloudFormation rejects an
+unknown or removed name and the deploy stage fails at `UpdateStack`, before
+anything is changed. Check against the template after pulling a new release;
+`WebUIHosting: ALB` and the `ALB*` parameters were removed in v0.6.1.
 
 The pipeline's `codebuild_deployment.py` reads this file and constructs the
 `idp-cli deploy` command with these parameters.

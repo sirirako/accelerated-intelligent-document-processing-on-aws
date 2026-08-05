@@ -12,11 +12,8 @@ skip_tests: true
 
 parameters:
   # --- Hosting ---
-  WebUIHosting: ALB
-  ALBScheme: internal
-  ALBVpcId: ""              # fill with dev VPC ID
-  ALBSubnetIds: ""          # fill with dev subnet IDs (comma-separated)
-  ALBCertificateArn: ""     # fill with dev ACM cert ARN
+  # v0.6.1 removed the ALB option; APIGateway is the private-network mode.
+  WebUIHosting: APIGateway
 
   # --- Private networking ---
   ApiGatewayVisibility: PRIVATE
@@ -35,15 +32,15 @@ parameters:
   PingJwksUri2: ""
   PingRequiredRoles: ""     # comma-separated required roles (empty = any valid token)
 
-  # --- Completion hook (Amazon MQ) ---
+  # --- Completion hook (Amazon MQ for ActiveMQ, STOMP over TLS) ---
   EnableCompletionHook: "false"   # enable when MQ is ready
   CompletionHookMQHost: ""
-  CompletionHookMQExchange: ""
-  CompletionHookMQRoutingKey: "idp.document.completed"
-  CompletionHookMQOAuthScope: ""
+  CompletionHookMQPort: "61617"
+  CompletionHookMQDestination: "/queue/idp.document.completed"
   CompletionHookPingTokenUrl: ""
   CompletionHookPingClientId: ""
   CompletionHookPingClientSecretArn: ""
+  CompletionHookPingScope: ""
 
   # --- Private registry ---
   # DockerConfigSecretArn: ""
