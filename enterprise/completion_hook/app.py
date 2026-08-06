@@ -22,7 +22,7 @@ PING_SCOPE = os.environ.get("PING_SCOPE", "")
 PING_VALIDATOR_ID = os.environ.get("PING_VALIDATOR_ID", "")
 
 MQ_HOST = os.environ["MQ_HOST"]
-MQ_PORT = int(os.environ.get("MQ_PORT", "61617"))
+MQ_PORT = int(os.environ.get("MQ_PORT", "61614"))  # STOMP+SSL, not OpenWire (61617)
 MQ_DESTINATION = os.environ.get("MQ_DESTINATION", "/queue/idp.document.completed")
 
 

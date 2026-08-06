@@ -35,7 +35,7 @@ parameters:
   # --- Completion hook (Amazon MQ for ActiveMQ, STOMP over TLS) ---
   EnableCompletionHook: "true"
   CompletionHookMQHost: ""          # fill with prod ActiveMQ broker hostname
-  CompletionHookMQPort: "61617"
+  CompletionHookMQPort: "61614"   # STOMP+SSL (not OpenWire 61617)
   CompletionHookMQDestination: "/queue/idp.document.completed"
   CompletionHookPingTokenUrl: ""    # fill with prod Ping token endpoint
   CompletionHookPingClientId: ""

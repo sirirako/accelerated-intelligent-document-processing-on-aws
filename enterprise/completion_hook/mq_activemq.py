@@ -140,7 +140,7 @@ def publish(
 
     Args:
         host: ActiveMQ broker hostname
-        port: SSL port (typically 61617)
+        port: STOMP+SSL port (61614 on Amazon MQ; NOT OpenWire 61617)
         destination: Queue or topic (e.g. /queue/idp.document.completed)
         token: Ping JWT used as STOMP passcode
         body: Message body (bytes)

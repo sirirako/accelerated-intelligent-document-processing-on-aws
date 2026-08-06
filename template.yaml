@@ -1112,8 +1112,8 @@ Parameters:
 
   CompletionHookMQPort:
     Type: String
-    Default: "61617"
-    Description: "ActiveMQ SSL port (OpenWire/STOMP over SSL)."
+    Default: "61614"
+    Description: "ActiveMQ STOMP+SSL port. The hook speaks STOMP (stomp.py), so this must be the STOMP+SSL connector (61614 on Amazon MQ), NOT OpenWire (61617)."
 
   CompletionHookMQDestination:
     Type: String

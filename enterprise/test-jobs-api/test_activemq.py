@@ -10,7 +10,7 @@ Usage:
     2. Run: python test_activemq.py
 
     Or with explicit params:
-    python test_activemq.py --host amq-broker.example.com --port 61617 \
+    python test_activemq.py --host amq-broker.example.com --port 61614 \
         --destination /queue/test --token <pre-fetched-jwt>
 
 Diagnosing TLS failures, in order:
@@ -173,7 +173,8 @@ def test_stomp_connection(host, port, destination, token, message=None,
 def main():
     parser = argparse.ArgumentParser(description="Test ActiveMQ STOMP connection")
     parser.add_argument("--host", help="ActiveMQ broker hostname")
-    parser.add_argument("--port", type=int, default=61617, help="SSL port")
+    parser.add_argument("--port", type=int, default=61614,
+                        help="STOMP+SSL port (61614 on Amazon MQ; NOT OpenWire 61617)")
     parser.add_argument("--destination", default="/queue/idp.test", help="Queue/topic")
     parser.add_argument("--token", help="Pre-fetched JWT (skip Ping token request)")
     parser.add_argument("--ca-cert", help="CA certificate file path")
@@ -188,7 +189,7 @@ def main():
     env = load_env()
 
     host = args.host or env.get("MQ_HOST")
-    port = args.port or int(env.get("MQ_PORT", "61617"))
+    port = args.port or int(env.get("MQ_PORT", "61614"))
     destination = args.destination or env.get("MQ_DESTINATION", "/queue/idp.test")
     # Two trust paths, as in the Lambda: CA_CERT_PATH for the Ping endpoint,
     # MQ_CA_CERT_PATH for the broker. --ca-cert overrides both.

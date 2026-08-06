@@ -2,7 +2,7 @@
 
 # ActiveMQ broker
 MQ_HOST=amq-broker.example.com
-MQ_PORT=61617
+MQ_PORT=61614
 MQ_DESTINATION=/queue/idp.document.completed
 MQ_DISABLE_HOST_VERIFY=false
 
