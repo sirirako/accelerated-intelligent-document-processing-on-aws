@@ -358,11 +358,18 @@ Resources:
                 # script shells out to a missing idp-cli binary.
                 # idp-sdk is not published to PyPI, so it is installed from the
                 # code artifact rather than resolved from a registry.
+                #
+                # Each command is single-quoted: the unquoted ": " in
+                # `echo "FATAL: ..."` makes the buildspec YAML parser read the
+                # command as a mapping, not a string, and CodeBuild then rejects
+                # the whole buildspec at DOWNLOAD_SOURCE ("found subkeys
+                # instead"). Deploying the stack does not catch this -- only a
+                # run does.
                 - cd "$CODEBUILD_SRC_DIR_CodeSource"
-                - pip install -e "lib/idp_common_pkg[core]" || { echo "FATAL: idp_common install failed"; exit 1; }
-                - pip install -e lib/idp_sdk || { echo "FATAL: idp_sdk install failed"; exit 1; }
-                - pip install -e lib/idp_cli_pkg || { echo "FATAL: idp-cli install failed"; exit 1; }
-                - which idp-cli || { echo "FATAL: idp-cli not on PATH after install"; exit 1; }
+                - 'pip install -e "lib/idp_common_pkg[core]" || { echo "FATAL: idp_common install failed"; exit 1; }'
+                - 'pip install -e lib/idp_sdk || { echo "FATAL: idp_sdk install failed"; exit 1; }'
+                - 'pip install -e lib/idp_cli_pkg || { echo "FATAL: idp-cli install failed"; exit 1; }'
+                - 'which idp-cli || { echo "FATAL: idp-cli not on PATH after install"; exit 1; }'
             build:
               commands:
                 # Primary artifact is ConfigSource, so $CODEBUILD_SRC_DIR is the
