@@ -7,5 +7,6 @@ ping_verifier/python/cffi*/
 ping_verifier/python/pycparser*/
 ping_verifier/python/_cffi_backend*
 ping_verifier/python/*.dist-info/
+ping_verifier/python/bin/
 # Keep ping_verifier.py (our code, not a dependency)
 !ping_verifier/python/ping_verifier.py
