@@ -67,6 +67,28 @@ standard API Gateway domain. Standard domain only works with private DNS inside 
 **Decision:** `configurationVersion` field on `POST /jobs` is set as S3 object metadata.
 The pipeline reads it from the object — no pipeline changes needed.
 
+## Enterprise version tracked separately from upstream
+
+**Decision:** The fork's version lives in `enterprise/VERSION`, distinct from the root
+`VERSION` (which mirrors the upstream application release we've merged). Format is
+`<upstream-base>-ent.<n>`, e.g. `0.6.1-ent.1` — "upstream 0.6.1 base, enterprise
+iteration 1." The enterprise counter increments each time we ship enterprise changes to
+the customer; on an upstream merge the base rolls to the new upstream version and the
+counter resets to 1 (e.g. `0.6.2-ent.1`). Git tags for enterprise releases are
+`enterprise-v<enterprise-version>`, e.g. `enterprise-v0.6.1-ent.1`.
+
+**Why:** Root `VERSION` and `CHANGELOG.md` track *upstream* — reusing that number for
+enterprise builds collides with upstream's real releases (our "0.6.2" vs upstream's
+0.6.2) and conflates two clocks that move independently: which AWS release we've merged
+vs. how many times we've shipped on top of it. `enterprise/*` is enterprise-owned
+(never overwritten by upstream per merge-rules), so `enterprise/VERSION` is merge-safe.
+Each bump pairs with an activity log entry under `enterprise/.ai/memory/activities/`,
+which serves as the per-iteration changelog.
+
+**Alternatives:** `0.6.1+ent.1` (SemVer build-metadata — most correct, but `+` is awkward
+in git tags and stripped by some tooling); a fully independent enterprise number like
+`1.0.0` (loses the at-a-glance upstream base in the string).
+
 ## Separate config pipeline from deployment pipeline
 
 **Decision:** Document configuration promotion runs in its own pipeline, separate from
