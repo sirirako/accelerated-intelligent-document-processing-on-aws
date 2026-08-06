@@ -44,6 +44,7 @@ Point your AI tool at this directory:
 │   ├── pipeline-merge.md       # Merging pipeline template changes
 │   ├── pipeline-setup.md       # SDLC pipeline setup end-to-end
 │   ├── private-registry.md     # JFrog / air-gapped registry configuration
+│   ├── release.md              # Cut an enterprise release — bump enterprise/VERSION, tag
 │   ├── test.md                 # Test suites, Jobs API testing (incl. Ping auth)
 │   └── upstream-sync.md        # Full upstream merge checklist
 ├── agents/                     # Personas with hard rules and workflows

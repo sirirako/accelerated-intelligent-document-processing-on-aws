@@ -254,6 +254,8 @@ print('YAML valid')
 - [ ] `make lint` passes
 - [ ] `make test` passes
 - [ ] `./enterprise/build.sh` succeeds
+- [ ] **root `VERSION` updated to the new upstream version** (this is upstream's clock)
+- [ ] **`enterprise/VERSION` base rolled to the new upstream version and counter reset to 1** (e.g. `0.6.1-ent.N` → `0.6.2-ent.1`). The base is bumped here; the counter increments on later enterprise builds. See `release.md`.
 
 ### Build project verification commands
 
