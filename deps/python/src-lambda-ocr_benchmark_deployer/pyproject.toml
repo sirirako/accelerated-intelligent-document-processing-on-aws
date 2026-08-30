@@ -1,0 +1,13 @@
+[project]
+name = "src-lambda-ocr_benchmark_deployer"
+version = "0.0.0"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "huggingface-hub==0.20.0",
+    "Pillow==12.1.1",
+    "cfnresponse"
+]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"

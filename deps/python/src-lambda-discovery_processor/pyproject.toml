@@ -1,0 +1,11 @@
+[project]
+name = "src-lambda-discovery_processor"
+version = "0.0.0"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "aws-requests-auth==0.4.3"
+]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"

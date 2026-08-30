@@ -1,0 +1,13 @@
+[project]
+name = "src-lambda-agentcore_gateway_manager"
+version = "0.0.0"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "cfnresponse",
+    "bedrock_agentcore_starter_toolkit",
+    "ruamel-yaml>=0.17.0,<0.19.0"
+]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"

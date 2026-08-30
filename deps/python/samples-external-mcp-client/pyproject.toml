@@ -1,0 +1,12 @@
+[project]
+name = "samples-external-mcp-client"
+version = "0.0.0"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "requests>=2.31.0",
+    "boto3>=1.26.0"
+]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"

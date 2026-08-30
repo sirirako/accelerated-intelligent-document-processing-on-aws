@@ -1,0 +1,12 @@
+[project]
+name = "patterns-unified-src-ocr_function"
+version = "0.0.0"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "numpy>=1.24.0,<2.0.0",
+    "pandas>=1.5.0,<3.0.0"
+]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
